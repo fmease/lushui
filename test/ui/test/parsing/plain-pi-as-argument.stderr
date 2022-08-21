@@ -1,15 +1,15 @@
 error[E010]: found ‘:’ but expected expression or ‘=’
- --> ${TEST_FOLDER}/parsing/plain-pi-as-argument.lushui:1:17
-  |
-1 | main = function (A: Type) -> Type
-  |                 --------- treated as a function argument,
-  |                           not as the domain of a pi type literal
-  |
- --> ${TEST_FOLDER}/parsing/plain-pi-as-argument.lushui:1:19
-  |
-1 | main = function (A: Type) -> Type
-  |                   ^ unexpected token
-  |
+  ┌─ ${TEST_FOLDER}/parsing/plain-pi-as-argument.lushui:1:17
+  │
+1 │ main = function (A: Type) -> Type
+  │                 ───────── treated as a function argument,
+  │                           not as the domain of a pi type literal
+  │
+  ├─ ${TEST_FOLDER}/parsing/plain-pi-as-argument.lushui:1:19
+  │
+1 │ main = function (A: Type) -> Type
+  │                   ═ unexpected token
+  │
  help: add round brackets around the potential pi type literal to disambiguate the expression
 
 error: aborting due to previous error

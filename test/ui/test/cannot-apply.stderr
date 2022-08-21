@@ -1,14 +1,14 @@
 error[E031]: type mismatch
- --> ${TEST_FOLDER}/cannot-apply.lushui:1:21
-  |
-1 | Abomination: Type = 0 1
-  |                     ^ has wrong type
-  |
- --> ${TEST_FOLDER}/cannot-apply.lushui:1:23
-  |
-1 | Abomination: Type = 0 1
-  |                       - applied to this
-  |
+  ┌─ ${TEST_FOLDER}/cannot-apply.lushui:1:21
+  │
+1 │ Abomination: Type = 0 1
+  │                     ═ has wrong type
+  │
+  ├─ ${TEST_FOLDER}/cannot-apply.lushui:1:23
+  │
+1 │ Abomination: Type = 0 1
+  │                       ─ applied to this
+  │
  note: expected type ‘_ -> _’
         but got type ‘extern.core.nat.Nat’
 

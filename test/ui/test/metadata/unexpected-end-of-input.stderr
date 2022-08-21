@@ -1,9 +1,9 @@
 error: found end of input but expected value
- --> ${TEST_FOLDER}/metadata/unexpected-end-of-input.metadata:1:6
-  |
-1 | key:
-  |    ><
-  |
+  ┌─ ${TEST_FOLDER}/metadata/unexpected-end-of-input.metadata:1:6
+  │
+1 │ key:
+  │    ⟫⟪
+  │
 
 error: aborting due to previous error
 

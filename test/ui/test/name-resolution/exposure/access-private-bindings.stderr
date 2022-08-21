@@ -1,37 +1,37 @@
 error[E029]: binding ‘topmost.outer.south’ is private
- --> ${TEST_FOLDER}/name-resolution/exposure/access-private-bindings.lushui:3:13
-  |
-3 | use outer.((south.Structure as S) (north.Structure as N))
-  |             ^^^^^
-  |
+  ┌─ ${TEST_FOLDER}/name-resolution/exposure/access-private-bindings.lushui:3:13
+  │
+3 │ use outer.((south.Structure as S) (north.Structure as N))
+  │             ═════
+  │
 
 error[E029]: binding ‘topmost.outer.north.Structure’ is private
- --> ${TEST_FOLDER}/name-resolution/exposure/access-private-bindings.lushui:3:42
-  |
-3 | use outer.((south.Structure as S) (north.Structure as N))
-  |                                          ^^^^^^^^^
-  |
+  ┌─ ${TEST_FOLDER}/name-resolution/exposure/access-private-bindings.lushui:3:42
+  │
+3 │ use outer.((south.Structure as S) (north.Structure as N))
+  │                                          ═════════
+  │
 
 error[E029]: binding ‘topmost.outer.south’ is private
- --> ${TEST_FOLDER}/name-resolution/exposure/access-private-bindings.lushui:4:11
-  |
-4 | use outer.south
-  |           ^^^^^
-  |
+  ┌─ ${TEST_FOLDER}/name-resolution/exposure/access-private-bindings.lushui:4:11
+  │
+4 │ use outer.south
+  │           ═════
+  │
 
 error[E029]: binding ‘topmost.outer.north.Structure’ is private
- --> ${TEST_FOLDER}/name-resolution/exposure/access-private-bindings.lushui:8:22
-  |
-8 |     It: Type = north.Structure
-  |                      ^^^^^^^^^
-  |
+  ┌─ ${TEST_FOLDER}/name-resolution/exposure/access-private-bindings.lushui:8:22
+  │
+8 │     It: Type = north.Structure
+  │                      ═════════
+  │
 
 error[E029]: binding ‘topmost.outer.south’ is private
-  --> ${TEST_FOLDER}/name-resolution/exposure/access-private-bindings.lushui:19:22
-   |
-19 | Struct: Type = outer.south
-   |                      ^^^^^
-   |
+   ┌─ ${TEST_FOLDER}/name-resolution/exposure/access-private-bindings.lushui:19:22
+   │
+19 │ Struct: Type = outer.south
+   │                      ═════
+   │
 
 error: aborting due to 5 previous errors
 

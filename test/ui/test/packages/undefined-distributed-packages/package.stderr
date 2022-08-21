@@ -1,25 +1,25 @@
 error: could not load the dependency ‘kore’
-  --> ${TEST_FOLDER}/packages/undefined-distributed-packages/package.metadata:12:13
-   |
-12 |             kore: { provider: distribution },
-   |             ^^^^
-   |
+   ┌─ ${TEST_FOLDER}/packages/undefined-distributed-packages/package.metadata:12:13
+   │
+12 │             kore: { provider: distribution },
+   │             ════
+   │
   note: ‘${DISTRIBUTED_LIBRARIES_FOLDER}/kore/package.metadata’: No such file or directory (os error 2)
 
 error: could not load the dependency ‘core’
-  --> ${TEST_FOLDER}/packages/undefined-distributed-packages/package.metadata:13:13
-   |
-13 |             core: { component: kore, provider: distribution },
-   |             ^^^^
-   |
+   ┌─ ${TEST_FOLDER}/packages/undefined-distributed-packages/package.metadata:13:13
+   │
+13 │             core: { component: kore, provider: distribution },
+   │             ════
+   │
   note: ‘${DISTRIBUTED_LIBRARIES_FOLDER}/kore/package.metadata’: No such file or directory (os error 2)
 
 error: could not load the dependency ‘who’
-  --> ${TEST_FOLDER}/packages/undefined-distributed-packages/package.metadata:14:13
-   |
-14 |             who: { component: "dis", provider: distribution },
-   |             ^^^
-   |
+   ┌─ ${TEST_FOLDER}/packages/undefined-distributed-packages/package.metadata:14:13
+   │
+14 │             who: { component: "dis", provider: distribution },
+   │             ═══
+   │
   note: ‘${DISTRIBUTED_LIBRARIES_FOLDER}/dis/package.metadata’: No such file or directory (os error 2)
 
 error: aborting due to 3 previous errors

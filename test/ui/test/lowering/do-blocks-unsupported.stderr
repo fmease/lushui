@@ -1,11 +1,11 @@
 error: do blocks are not supported yet
- --> ${TEST_FOLDER}/lowering/do-blocks-unsupported.lushui:2:5
-  |
-2 |       do
- ... _____^
-6 | |         pure (goal beta)
-  | |________________________^
-  |
+  ┌─ ${TEST_FOLDER}/lowering/do-blocks-unsupported.lushui:2:5
+  │
+2 │       do
+  · ╔═════╝
+6 │ ║         pure (goal beta)
+  │ ╚════════════════════════╝
+  │
 
 error: aborting due to previous error
 

@@ -1,14 +1,14 @@
 error[E061]: ‘i-definitely-do-not-exist’ is not an intrinsic function
-  --> ${TEST_FOLDER}/unrecognized-intrinsic-function.lushui:10:1
-   |
-10 | @intrinsic
-   | ----------
-   |
-  --> ${TEST_FOLDER}/unrecognized-intrinsic-function.lushui:11:1
-   |
-11 | i-definitely-do-not-exist: I-Do-Exist
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^
-   |
+   ┌─ ${TEST_FOLDER}/unrecognized-intrinsic-function.lushui:10:1
+   │
+10 │ @intrinsic
+   │ ──────────
+   │
+   ├─ ${TEST_FOLDER}/unrecognized-intrinsic-function.lushui:11:1
+   │
+11 │ i-definitely-do-not-exist: I-Do-Exist
+   │ ═════════════════════════
+   │
 
 error: aborting due to previous error
 

@@ -1,9 +1,9 @@
 error: found ‘,’ but expected end of input
- --> ${TEST_FOLDER}/metadata/top-level-record-trailing-comma.metadata:3:2
-  |
-3 | },
-  |  ^
-  |
+  ┌─ ${TEST_FOLDER}/metadata/top-level-record-trailing-comma.metadata:3:2
+  │
+3 │ },
+  │  ═
+  │
 
 error: aborting due to previous error
 

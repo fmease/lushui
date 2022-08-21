@@ -1,18 +1,18 @@
 error: unterminated text
- --> ${TEST_FOLDER}/metadata/unterminated-text.metadata:2:12
-  |
-2 |       where: "the long
- ... ____________^
-4 | | }
-  | |_^
-  |
+  ┌─ ${TEST_FOLDER}/metadata/unterminated-text.metadata:2:12
+  │
+2 │       where: "the long
+  · ╔════════════╝
+4 │ ║ }
+  │ ╚═╝
+  │
 
 error: found end of input but expected ‘,’
- --> ${TEST_FOLDER}/metadata/unterminated-text.metadata:4:3
-  |
-4 | }
-  | ><
-  |
+  ┌─ ${TEST_FOLDER}/metadata/unterminated-text.metadata:4:3
+  │
+4 │ }
+  │ ⟫⟪
+  │
 
 error: aborting due to 2 previous errors
 

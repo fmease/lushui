@@ -1,9 +1,9 @@
 error: found ‘,’ but expected value
- --> ${TEST_FOLDER}/metadata/empty-list-with-comma.metadata:1:2
-  |
-1 | [,]
-  |  ^
-  |
+  ┌─ ${TEST_FOLDER}/metadata/empty-list-with-comma.metadata:1:2
+  │
+1 │ [,]
+  │  ═
+  │
 
 error: aborting due to previous error
 

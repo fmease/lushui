@@ -1,18 +1,18 @@
 error[E015]: the declaration ‘foo’ does not have a type annotation
- --> ${TEST_FOLDER}/lowering/let-in-without-definition.lushui:1:4
-  |
-1 | foo = let x f in 0
-  |   ><
-  |
+  ┌─ ${TEST_FOLDER}/lowering/let-in-without-definition.lushui:1:4
+  │
+1 │ foo = let x f in 0
+  │   ⟫⟪
+  │
  note: type annotations are mandatory on declarations
  help: provide a type annotation for the declaration with ‘: ?type’
 
 error[E012]: the let-binding ‘x’ has no definition
- --> ${TEST_FOLDER}/lowering/let-in-without-definition.lushui:1:14
-  |
-1 | foo = let x f in 0
-  |             ><
-  |
+  ┌─ ${TEST_FOLDER}/lowering/let-in-without-definition.lushui:1:14
+  │
+1 │ foo = let x f in 0
+  │             ⟫⟪
+  │
  help: provide a definition with ‘= ?value’
 
 error: aborting due to 2 previous errors

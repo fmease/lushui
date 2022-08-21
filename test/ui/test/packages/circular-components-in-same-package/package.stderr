@@ -1,50 +1,50 @@
 error: the library component ‘loops’ is circular
-  --> ${TEST_FOLDER}/packages/circular-components-in-same-package/package.metadata:11:25
-   |
-11 |         dependencies: { loops: {} },
-   |                         ^^^^^
-   |
+   ┌─ ${TEST_FOLDER}/packages/circular-components-in-same-package/package.metadata:11:25
+   │
+11 │         dependencies: { loops: {} },
+   │                         ═════
+   │
 
 error: the library components ‘cycle1component1’, ‘cycle1component0’ and ‘cycle1component2’ are circular
-  --> ${TEST_FOLDER}/packages/circular-components-in-same-package/package.metadata:18:25
-   |
-18 |         dependencies: { cycle1component1: {} },
-   |                         ^^^^^^^^^^^^^^^^
-   |
-  --> ${TEST_FOLDER}/packages/circular-components-in-same-package/package.metadata:23:25
-   |
-23 |         dependencies: { cycle1component2: {} },
-   |                         ^^^^^^^^^^^^^^^^
-   |
-  --> ${TEST_FOLDER}/packages/circular-components-in-same-package/package.metadata:28:25
-   |
-28 |         dependencies: { cycle1component0: {} },
-   |                         ^^^^^^^^^^^^^^^^
-   |
+   ┌─ ${TEST_FOLDER}/packages/circular-components-in-same-package/package.metadata:18:25
+   │
+18 │         dependencies: { cycle1component1: {} },
+   │                         ════════════════
+   │
+   ├─ ${TEST_FOLDER}/packages/circular-components-in-same-package/package.metadata:23:25
+   │
+23 │         dependencies: { cycle1component2: {} },
+   │                         ════════════════
+   │
+   ├─ ${TEST_FOLDER}/packages/circular-components-in-same-package/package.metadata:28:25
+   │
+28 │         dependencies: { cycle1component0: {} },
+   │                         ════════════════
+   │
 
 error: the library components ‘cycle2component1’ and ‘cycle2component0’ are circular
-  --> ${TEST_FOLDER}/packages/circular-components-in-same-package/package.metadata:36:13
-   |
-36 |             cycle2component1: {},
-   |             ^^^^^^^^^^^^^^^^
-   |
-  --> ${TEST_FOLDER}/packages/circular-components-in-same-package/package.metadata:44:25
-   |
-44 |         dependencies: { cycle2component0: {}, unrelated: {} },
-   |                         ^^^^^^^^^^^^^^^^
-   |
+   ┌─ ${TEST_FOLDER}/packages/circular-components-in-same-package/package.metadata:36:13
+   │
+36 │             cycle2component1: {},
+   │             ════════════════
+   │
+   ├─ ${TEST_FOLDER}/packages/circular-components-in-same-package/package.metadata:44:25
+   │
+44 │         dependencies: { cycle2component0: {}, unrelated: {} },
+   │                         ════════════════
+   │
 
 error: the library components ‘snake0’ and ‘snake1’ are circular
-  --> ${TEST_FOLDER}/packages/circular-components-in-same-package/package.metadata:54:58
-   |
-54 |     snake0: { type: library, path: "s0", dependencies: { snake1: {} } },
-   |                                                          ^^^^^^
-   |
-  --> ${TEST_FOLDER}/packages/circular-components-in-same-package/package.metadata:55:58
-   |
-55 |     snake1: { type: library, path: "s1", dependencies: { snake0: {} } },
-   |                                                          ^^^^^^
-   |
+   ┌─ ${TEST_FOLDER}/packages/circular-components-in-same-package/package.metadata:54:58
+   │
+54 │     snake0: { type: library, path: "s0", dependencies: { snake1: {} } },
+   │                                                          ══════
+   │
+   ├─ ${TEST_FOLDER}/packages/circular-components-in-same-package/package.metadata:55:58
+   │
+55 │     snake1: { type: library, path: "s1", dependencies: { snake0: {} } },
+   │                                                          ══════
+   │
 
 error: aborting due to 4 previous errors
 

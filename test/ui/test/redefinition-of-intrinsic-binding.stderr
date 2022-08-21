@@ -1,14 +1,14 @@
 error[E040]: the intrinsic type ‘Text’ is defined multiple times
- --> ${TEST_FOLDER}/redefinition-of-intrinsic-binding.lushui:4:6
-  |
-4 | data Text: Type
-  |      ---- previous definition
-  |
- --> ${TEST_FOLDER}/redefinition-of-intrinsic-binding.lushui:8:10
-  |
-8 |     data Text: Type
-  |          ^^^^ redefinition
-  |
+  ┌─ ${TEST_FOLDER}/redefinition-of-intrinsic-binding.lushui:4:6
+  │
+4 │ data Text: Type
+  │      ──── previous definition
+  │
+  ├─ ${TEST_FOLDER}/redefinition-of-intrinsic-binding.lushui:8:10
+  │
+8 │     data Text: Type
+  │          ════ redefinition
+  │
 
 error: aborting due to previous error
 

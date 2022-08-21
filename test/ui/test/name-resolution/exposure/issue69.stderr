@@ -1,9 +1,9 @@
 error[E022]: binding ‘Box’ is not a module
- --> ${TEST_FOLDER}/name-resolution/exposure/issue69.lushui:3:10
-  |
-3 | @(public Box)
-  |          ^^^
-  |
+  ┌─ ${TEST_FOLDER}/name-resolution/exposure/issue69.lushui:3:10
+  │
+3 │ @(public Box)
+  │          ═══
+  │
 
 error: aborting due to previous error
 

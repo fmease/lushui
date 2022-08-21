@@ -41,11 +41,11 @@ fn format_single_line_primary_highlight() {
         Some(&map),
         "\
 error: message
- --> :2:2
-  |
-2 | beta
-  |  ^^^
-  |",
+  ┌─ :2:2
+  │
+2 │ beta
+  │  ═══
+  │",
     );
 }
 
@@ -61,13 +61,13 @@ fn format_two_line_primary_highlight() {
         Some(&map),
         "\
 error
- --> :1:1
-  |
-1 |   alpha
-  |  _^
-2 | | beta
-  | |__^
-  |",
+  ┌─ :1:1
+  │
+1 │   alpha
+  │ ╔═╝
+2 │ ║ beta
+  │ ╚══╝
+  │",
     );
 }
 
@@ -86,13 +86,13 @@ fn format_multi_line_primary_highlight() {
         Some(&map),
         "\
 error[E000]: explanation
- --> :2:3
-  |
-2 |   beta
- ... ___^
-4 | | delta
-  | |_____^
-  |",
+  ┌─ :2:3
+  │
+2 │   beta
+  · ╔═══╝
+4 │ ║ delta
+  │ ╚═════╝
+  │",
     );
 }
 
@@ -118,11 +118,11 @@ fn format_triple_digit_line_number() {
         Some(&map),
         "\
 warning: this is a sentence
-   --> :121:2
-    |
-121 | 这是一个句子
-    |   ^^^^^^
-    |",
+    ┌─ :121:2
+    │
+121 │ 这是一个句子
+    │   ══════
+    │",
     );
 }
 
@@ -143,21 +143,21 @@ fn format_primary_secondary_highlights() {
         Some(&map),
         "\
 error[E001]: important
- --> :1:1
-  |
-1 | 2ndry
-  | ---
-  |
- --> :2:1
-  |
-2 | PRIM
-  | ^^^^
-  |
- --> :3:4
-  |
-3 | 2ndry
-  |    --
-  |",
+  ┌─ :1:1
+  │
+1 │ 2ndry
+  │ ───
+  │
+  ├─ :2:1
+  │
+2 │ PRIM
+  │ ════
+  │
+  ├─ :3:4
+  │
+3 │ 2ndry
+  │    ──
+  │",
     );
 }
 
@@ -176,16 +176,16 @@ fn format_primary_secondary_highlight_differing_line_number_widths() {
         Some(&map),
         "\
 internal compiler error: placeholder
-  --> :2:2
-   |
- 2 | primary
-   |  ^^^^
-   |
-  --> :12:1
-   |
-12 | secondary
-   | ---------
-   |",
+   ┌─ :2:2
+   │
+ 2 │ primary
+   │  ════
+   │
+   ├─ :12:1
+   │
+12 │ secondary
+   │ ─────────
+   │",
     );
 }
 
@@ -204,16 +204,16 @@ fn format_highlights_in_different_files() {
         Some(&map),
         "\
 internal debugging message
- --> ONE:2:2
-  |
-2 | bc
-  |  ^
-  |
- --> TWO:1:1
-  |
-1 | zyx
-  | --
-  |",
+  ┌─ ONE:2:2
+  │
+2 │ bc
+  │  ═
+  │
+  ├─ TWO:1:1
+  │
+1 │ zyx
+  │ ──
+  │",
     );
 }
 
@@ -232,16 +232,16 @@ fn format_highlights_same_line() {
         Some(&map),
         "\
 error: tag
- --> identity:1:1
-  |
-1 | sequence
-  | ^^^^^
-  |
- --> identity:1:5
-  |
-1 | sequence
-  |     ----
-  |",
+  ┌─ identity:1:1
+  │
+1 │ sequence
+  │ ═════
+  │
+  ├─ identity:1:5
+  │
+1 │ sequence
+  │     ────
+  │",
     );
 }
 
@@ -262,30 +262,30 @@ fn format_labeled_highlights() {
         Some(&map),
         "\
 error: labels
- --> :1:2
-  |
-1 | alpha
-  |  ^^ pointer
-  |
- --> :2:1
-  |
-2 | beta
-  | ---- content
-  |
- --> :3:1
-  |
-3 |   gamma
-  |  _^
-4 | | delta
-  | |_____^ explanation
-  |
- --> :5:5
-  |
-5 |   epsilon
-  |  _____-
-6 | | zeta
-  | |_- message
-  |",
+  ┌─ :1:2
+  │
+1 │ alpha
+  │  ══ pointer
+  │
+  ├─ :2:1
+  │
+2 │ beta
+  │ ──── content
+  │
+  ├─ :3:1
+  │
+3 │   gamma
+  │ ╔═╝
+4 │ ║ delta
+  │ ╚═════╝ explanation
+  │
+  ├─ :5:5
+  │
+5 │   epsilon
+  │ ┌─────┘
+6 │ │ zeta
+  │ └─┘ message
+  │",
     );
 }
 
@@ -306,36 +306,36 @@ fn format_multi_line_labeled_highlights() {
         Some(&map),
         "\
 error: multi-line labels
- --> :1:2
-  |
-1 | alpha
-  |  ^^ pointer
-  |     context
-  |     filler
-  |
- --> :2:1
-  |
-2 | beta
-  | ---- content
-  |        indented
-  |
- --> :3:1
-  |
-3 |   gamma
-  |  _^
-4 | | delta
-  | |_____^ explanation
-  |         addendum
-  |
- --> :5:5
-  |
-5 |   epsilon
-  |  _____-
-6 | | zeta
-  | |_- message
-  |
-  |     bottom
-  |",
+  ┌─ :1:2
+  │
+1 │ alpha
+  │  ══ pointer
+  │     context
+  │     filler
+  │
+  ├─ :2:1
+  │
+2 │ beta
+  │ ──── content
+  │        indented
+  │
+  ├─ :3:1
+  │
+3 │   gamma
+  │ ╔═╝
+4 │ ║ delta
+  │ ╚═════╝ explanation
+  │         addendum
+  │
+  ├─ :5:5
+  │
+5 │   epsilon
+  │ ┌─────┘
+6 │ │ zeta
+  │ └─┘ message
+  │
+  │     bottom
+  │",
     );
 }
 
@@ -356,36 +356,36 @@ fn format_multi_line_labeled_highlights_no_trailing_line_break() {
         Some(&map),
         "\
 error: multi-line labels
- --> :1:2
-  |
-1 | alpha
-  |  ^^ pointer
-  |     context
-  |     filler
-  |
- --> :2:1
-  |
-2 | beta
-  | ---- content
-  |        indented
-  |
- --> :3:1
-  |
-3 |   gamma
-  |  _^
-4 | | delta
-  | |_____^ explanation
-  |         addendum
-  |
- --> :5:5
-  |
-5 |   epsilon
-  |  _____-
-6 | | zeta
-  | |_- message
-  |
-  |     bottom
-  |",
+  ┌─ :1:2
+  │
+1 │ alpha
+  │  ══ pointer
+  │     context
+  │     filler
+  │
+  ├─ :2:1
+  │
+2 │ beta
+  │ ──── content
+  │        indented
+  │
+  ├─ :3:1
+  │
+3 │   gamma
+  │ ╔═╝
+4 │ ║ delta
+  │ ╚═════╝ explanation
+  │         addendum
+  │
+  ├─ :5:5
+  │
+5 │   epsilon
+  │ ┌─────┘
+6 │ │ zeta
+  │ └─┘ message
+  │
+  │     bottom
+  │",
     );
 }
 
@@ -425,11 +425,11 @@ fn format_subdiagnostics() {
         Some(&map),
         "\
 warning: it
- --> :1:5
-  |
-1 | ****  ****
-  |     ^^
-  |
+  ┌─ :1:5
+  │
+1 │ ****  ****
+  │     ══
+  │
  help: helpful
  help: less helpful",
     );
@@ -451,11 +451,11 @@ fn format_subdiagnostics_two_digit_line_numbers() {
         Some(&map),
         "\
 warning: it
-  --> :10:5
-   |
-10 | ****  ****
-   |     ^^
-   |
+   ┌─ :10:5
+   │
+10 │ ****  ****
+   │     ══
+   │
   help: helpful
   help: less helpful",
     );
@@ -477,11 +477,11 @@ fn format_multi_line_subdiagnostics() {
         Some(&map),
         "\
 warning: it
- --> :1:5
-  |
-1 | ****  ****
-  |     ^^
-  |
+  ┌─ :1:5
+  │
+1 │ ****  ****
+  │     ══
+  │
  help: helpful
        tip
        hopefully
@@ -502,21 +502,21 @@ fn format_multiple_primary_highlights() {
         Some(&map),
         "\
 error
- --> :1:1
-  |
-1 | gamma
-  | ^
-  |
- --> :1:3
-  |
-1 | gamma
-  |   ^
-  |
- --> :1:5
-  |
-1 | gamma
-  |     ^
-  |",
+  ┌─ :1:1
+  │
+1 │ gamma
+  │ ═
+  │
+  ├─ :1:3
+  │
+1 │ gamma
+  │   ═
+  │
+  ├─ :1:5
+  │
+1 │ gamma
+  │     ═
+  │",
     );
 }
 
@@ -532,11 +532,11 @@ fn format_zero_length_highlight() {
         Some(&map),
         "\
 internal debugging message: nil
- --> :1:3
-  |
-1 | sample
-  |  ><
-  |",
+  ┌─ :1:3
+  │
+1 │ sample
+  │  ⟫⟪
+  │",
     );
 }
 
@@ -552,11 +552,33 @@ fn format_zero_length_highlight_start_of_line() {
         Some(&map),
         "\
 internal debugging message: nil
- --> :1:1
-  |
-1 |  sample
-  | ><
-  |",
+  ┌─ :1:1
+  │
+1 │  sample
+  │ ⟫⟪
+  │",
+    );
+}
+
+#[test]
+fn format_zero_length_secondary_highlight() {
+    let mut map = SourceMap::default();
+    map.add_str(None, "sample\n");
+
+    let diagnostic = Diagnostic::debug()
+        .message("nil")
+        .secondary_span(span(3, 3));
+
+    assert_format(
+        &diagnostic,
+        Some(&map),
+        "\
+internal debugging message: nil
+  ┌─ :1:3
+  │
+1 │ sample
+  │  ⟩⟨
+  │",
     );
 }
 
@@ -572,11 +594,11 @@ fn format_highlight_line_break() {
         Some(&map),
         "\
 error
- --> :1:20
-  |
-1 | This is a sentence.
-  |                   >< EOL
-  |",
+  ┌─ :1:20
+  │
+1 │ This is a sentence.
+  │                   ⟫⟪ EOL
+  │",
     );
 }
 
@@ -592,11 +614,11 @@ fn format_highlight_end_of_input() {
         Some(&map),
         "\
 error
- --> :1:20
-  |
-1 | This is a sentence.
-  |                   >< EOI
-  |",
+  ┌─ :1:20
+  │
+1 │ This is a sentence.
+  │                   ⟫⟪ EOI
+  │",
     );
 }
 
@@ -614,11 +636,11 @@ fn format_highlight_end_of_input_with_trailing_line_break() {
         Some(&map),
         "\
 error
- --> :1:21
-  |
-1 | This is a sentence.
-  |                   >< EOI
-  |",
+  ┌─ :1:21
+  │
+1 │ This is a sentence.
+  │                   ⟫⟪ EOI
+  │",
     );
 }
 
@@ -640,11 +662,11 @@ fn format_highlight_containing_final_line_break() {
         Some(&map),
         "\
 warning: weird corner case
- --> :1:1
-  |
-1 | This is a sentence.
-  | ^^^^^^^^^^^^^^^^^^^
-  |",
+  ┌─ :1:1
+  │
+1 │ This is a sentence.
+  │ ═══════════════════
+  │",
     );
 }
 
@@ -664,11 +686,11 @@ fn format_highlight_containing_final_end_of_input() {
         Some(&map),
         "\
 internal compiler error
- --> :1:1
-  |
-1 | EVERYTHING
-  | ^^^^^^^^^^
-  |",
+  ┌─ :1:1
+  │
+1 │ EVERYTHING
+  │ ══════════
+  │",
     );
 }
 
@@ -686,11 +708,11 @@ fn format_highlight_in_empty_file() {
         Some(&map),
         "\
 error: this file has to contain something reasonable
- --> empty.txt:1:1
-  |
-1 |  
-  | ><
-  |",
+  ┌─ empty.txt:1:1
+  │
+1 │  
+  │ ⟫⟪
+  │",
     );
 }
 
@@ -719,17 +741,17 @@ fn format_path_no_highlights() {
         None,
         "\
 error: there is something wrong with this file
- --> path/to/file.ext",
+  ── path/to/file.ext",
     );
 }
 
 #[test]
-fn format_path_together_with_highlights() {
+fn format_path_together_with_highlight() {
     let mut map = SourceMap::default();
     map.add_str(Some("root.cfg".into()), "allow_plain_text = false\n");
 
     let diagnostic = Diagnostic::error()
-        .message("that file is not acceptable")
+        .message("this file is not acceptable")
         .path("problematic.txt".into())
         .labeled_primary_span(span(20, 25), "because you set this");
 
@@ -737,15 +759,33 @@ fn format_path_together_with_highlights() {
         &diagnostic,
         Some(&map),
         "\
-error: that file is not acceptable
- --> problematic.txt
-  |
- --> root.cfg:1:20
-  |
-1 | allow_plain_text = false
-  |                    ^^^^^ because you set this
-  |",
+error: this file is not acceptable
+  ┌─ problematic.txt
+  │
+  ├─ root.cfg:1:20
+  │
+1 │ allow_plain_text = false
+  │                    ═════ because you set this
+  │",
     );
+}
+
+#[test]
+fn format_path_together_with_subdiagnostic() {
+    let diagnostic = Diagnostic::warning()
+        .message("this file looks spooky")
+        .path("scary.exe".into())
+        .help("better delete it");
+
+    assert_format(
+        &diagnostic,
+        None,
+        "\
+warning: this file looks spooky
+  ┌─ scary.exe
+  │
+ help: better delete it",
+    )
 }
 
 // @Task Fix this!
@@ -763,13 +803,13 @@ fn format_two_line_break_highlight_containing_first() {
         Some(&map),
         "\
 internal compiler error
- --> :1:1
-  |
-1 |   alpha
-  |  _^
-2 | | beta
-  | |____^
-  |",
+  ┌─ :1:1
+  │
+1 │   alpha
+  │ ╔═╝
+2 │ ║ beta
+  │ ╚════╝
+  │",
     );
 }
 
@@ -788,10 +828,10 @@ fn format_two_line_breaks_highlight_containing_second() {
         Some(&map),
         "\
 internal compiler error
- --> :1:1
-  |
-1 | alpha
-  | ^^^^^
-  |",
+  ┌─ :1:1
+  │
+1 │ alpha
+  │ ═════
+  │",
     );
 }

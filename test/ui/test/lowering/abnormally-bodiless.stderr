@@ -1,26 +1,26 @@
 error[E012]: the declaration ‘blank’ has no definition
- --> ${TEST_FOLDER}/lowering/abnormally-bodiless.lushui:1:19
-  |
-1 | blank: Declaration
-  |                  ><
-  |
+  ┌─ ${TEST_FOLDER}/lowering/abnormally-bodiless.lushui:1:19
+  │
+1 │ blank: Declaration
+  │                  ⟫⟪
+  │
  help: provide a definition with ‘=’
 
 error[E015]: the declaration ‘Blank’ does not have a type annotation
- --> ${TEST_FOLDER}/lowering/abnormally-bodiless.lushui:3:11
-  |
-3 | data Blank
-  |          ><
-  |
+  ┌─ ${TEST_FOLDER}/lowering/abnormally-bodiless.lushui:3:11
+  │
+3 │ data Blank
+  │          ⟫⟪
+  │
  note: type annotations are mandatory on declarations
  help: provide a type annotation for the declaration with ‘: ?type’
 
 error[E012]: the declaration ‘Blank’ has no definition
- --> ${TEST_FOLDER}/lowering/abnormally-bodiless.lushui:3:11
-  |
-3 | data Blank
-  |          ><
-  |
+  ┌─ ${TEST_FOLDER}/lowering/abnormally-bodiless.lushui:3:11
+  │
+3 │ data Blank
+  │          ⟫⟪
+  │
  help: provide a definition with ‘of’
 
 error: aborting due to 3 previous errors

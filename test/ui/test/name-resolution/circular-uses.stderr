@@ -1,31 +1,31 @@
 error[E024]: the declarations ‘topmost.fake-my-dude.alpha0’ and ‘topmost.alpha1’ are circular
- --> ${TEST_FOLDER}/name-resolution/circular-uses.lushui:1:35
-  |
-1 | use fake-my-dude.alpha0.((self as alpha1))
-  |                                   ^^^^^^
-  |
- --> ${TEST_FOLDER}/name-resolution/circular-uses.lushui:7:25
-  |
-7 |     use super.alpha1 as alpha0
-  |                         ^^^^^^
-  |
+  ┌─ ${TEST_FOLDER}/name-resolution/circular-uses.lushui:1:35
+  │
+1 │ use fake-my-dude.alpha0.((self as alpha1))
+  │                                   ══════
+  │
+  ├─ ${TEST_FOLDER}/name-resolution/circular-uses.lushui:7:25
+  │
+7 │     use super.alpha1 as alpha0
+  │                         ══════
+  │
 
 error[E024]: the declarations ‘topmost.fake-my-dude.beta2’, ‘topmost.fake-my-dude.beta0’ and ‘topmost.fake-my-dude.beta1’ are circular
-  --> ${TEST_FOLDER}/name-resolution/circular-uses.lushui:4:18
-   |
- 4 |     use beta0 as beta1
-   |                  ^^^^^
-   |
-  --> ${TEST_FOLDER}/name-resolution/circular-uses.lushui:9:18
-   |
- 9 |     use beta1 as beta2
-   |                  ^^^^^
-   |
-  --> ${TEST_FOLDER}/name-resolution/circular-uses.lushui:11:23
-   |
-11 |     use self.beta2 as beta0
-   |                       ^^^^^
-   |
+   ┌─ ${TEST_FOLDER}/name-resolution/circular-uses.lushui:4:18
+   │
+ 4 │     use beta0 as beta1
+   │                  ═════
+   │
+   ├─ ${TEST_FOLDER}/name-resolution/circular-uses.lushui:9:18
+   │
+ 9 │     use beta1 as beta2
+   │                  ═════
+   │
+   ├─ ${TEST_FOLDER}/name-resolution/circular-uses.lushui:11:23
+   │
+11 │     use self.beta2 as beta0
+   │                       ═════
+   │
 
 error: aborting due to 2 previous errors
 

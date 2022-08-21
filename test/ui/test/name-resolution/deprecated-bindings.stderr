@@ -1,23 +1,23 @@
 warning[deprecated]: use of deprecated binding ‘topmost.Foo’
- --> ${TEST_FOLDER}/name-resolution/deprecated-bindings.lushui:7:13
-  |
-7 | Bar: Type = Foo
-  |             ^^^
-  |
+  ┌─ ${TEST_FOLDER}/name-resolution/deprecated-bindings.lushui:7:13
+  │
+7 │ Bar: Type = Foo
+  │             ═══
+  │
 
 warning[deprecated]: use of deprecated binding ‘topmost.Baz’: it was not the right thing
-  --> ${TEST_FOLDER}/name-resolution/deprecated-bindings.lushui:12:11
-   |
-12 | X: Type = Baz Bar
-   |           ^^^
-   |
+   ┌─ ${TEST_FOLDER}/name-resolution/deprecated-bindings.lushui:12:11
+   │
+12 │ X: Type = Baz Bar
+   │           ═══
+   │
 
 warning[deprecated]: use of deprecated binding ‘topmost.Bar’
-  --> ${TEST_FOLDER}/name-resolution/deprecated-bindings.lushui:12:15
-   |
-12 | X: Type = Baz Bar
-   |               ^^^
-   |
+   ┌─ ${TEST_FOLDER}/name-resolution/deprecated-bindings.lushui:12:15
+   │
+12 │ X: Type = Baz Bar
+   │               ═══
+   │
 
 warning: emitted 3 warnings
 

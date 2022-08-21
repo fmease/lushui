@@ -1,142 +1,142 @@
 error[E013]: attribute ‘intrinsic’ is ascribed to a use-declaration
- --> ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:4:1
-  |
-4 | @intrinsic
-  | ^^^^^^^^^^ misplaced attribute
-  |
- --> ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:6:1
-  |
-6 | use self.()
-  | ----------- incompatible item
-  |
+  ┌─ ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:4:1
+  │
+4 │ @intrinsic
+  │ ══════════ misplaced attribute
+  │
+  ├─ ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:6:1
+  │
+6 │ use self.()
+  │ ─────────── incompatible item
+  │
  note: attribute ‘intrinsic’ can only be ascribed to function or data declarations
 
 error[E013]: attribute ‘intrinsic’ is ascribed to a use-declaration
- --> ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:5:1
-  |
-5 | @intrinsic
-  | ^^^^^^^^^^ misplaced attribute
-  |
- --> ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:6:1
-  |
-6 | use self.()
-  | ----------- incompatible item
-  |
+  ┌─ ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:5:1
+  │
+5 │ @intrinsic
+  │ ══════════ misplaced attribute
+  │
+  ├─ ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:6:1
+  │
+6 │ use self.()
+  │ ─────────── incompatible item
+  │
  note: attribute ‘intrinsic’ can only be ascribed to function or data declarations
 
 error[E013]: attribute ‘intrinsic’ is ascribed to a use-declaration
- --> ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:8:1
-  |
-8 | @intrinsic @abstract @(location "/")
-  | ^^^^^^^^^^ misplaced attribute
-  |
- --> ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:9:1
-  |
-9 | use something.substantial.(root0 root1)
-  | --------------------------------------- incompatible item
-  |
+  ┌─ ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:8:1
+  │
+8 │ @intrinsic @abstract @(location "/")
+  │ ══════════ misplaced attribute
+  │
+  ├─ ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:9:1
+  │
+9 │ use something.substantial.(root0 root1)
+  │ ─────────────────────────────────────── incompatible item
+  │
  note: attribute ‘intrinsic’ can only be ascribed to function or data declarations
 
 error[E013]: attribute ‘abstract’ is ascribed to a use-declaration
- --> ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:8:12
-  |
-8 | @intrinsic @abstract @(location "/")
-  |            ^^^^^^^^^ misplaced attribute
-  |
- --> ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:9:1
-  |
-9 | use something.substantial.(root0 root1)
-  | --------------------------------------- incompatible item
-  |
+  ┌─ ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:8:12
+  │
+8 │ @intrinsic @abstract @(location "/")
+  │            ═════════ misplaced attribute
+  │
+  ├─ ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:9:1
+  │
+9 │ use something.substantial.(root0 root1)
+  │ ─────────────────────────────────────── incompatible item
+  │
  note: attribute ‘abstract’ can only be ascribed to data declarations
 
 error[E013]: attribute ‘location’ is ascribed to a use-declaration
- --> ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:8:22
-  |
-8 | @intrinsic @abstract @(location "/")
-  |                      ^^^^^^^^^^^^^^^ misplaced attribute
-  |
- --> ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:9:1
-  |
-9 | use something.substantial.(root0 root1)
-  | --------------------------------------- incompatible item
-  |
+  ┌─ ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:8:22
+  │
+8 │ @intrinsic @abstract @(location "/")
+  │                      ═══════════════ misplaced attribute
+  │
+  ├─ ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:9:1
+  │
+9 │ use something.substantial.(root0 root1)
+  │ ─────────────────────────────────────── incompatible item
+  │
  note: attribute ‘location’ can only be ascribed to out-of-line module declarations
 
 error[E013]: attribute ‘include’ is ascribed to a function declaration
-  --> ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:11:1
-   |
-11 | @include
-   | ^^^^^^^^ misplaced attribute
-   |
-  --> ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:12:1
-   |
-12 |   binding: Binding =
-   |  _-
-13 | |     @intrinsic make-binding @(public super) resource
-   | |____________________________________________________- incompatible item
-   |
+   ┌─ ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:11:1
+   │
+11 │ @include
+   │ ════════ misplaced attribute
+   │
+   ├─ ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:12:1
+   │
+12 │   binding: Binding =
+   │ ┌─┘
+13 │ │     @intrinsic make-binding @(public super) resource
+   │ └────────────────────────────────────────────────────┘ incompatible item
+   │
   note: attribute ‘include’ can only be ascribed to text literals
 
 error[E013]: attribute ‘intrinsic’ is ascribed to a path expression
-  --> ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:13:5
-   |
-13 |     @intrinsic make-binding @(public super) resource
-   |     ^^^^^^^^^^ misplaced attribute
-   |
-  --> ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:13:16
-   |
-13 |     @intrinsic make-binding @(public super) resource
-   |                ------------ incompatible item
-   |
+   ┌─ ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:13:5
+   │
+13 │     @intrinsic make-binding @(public super) resource
+   │     ══════════ misplaced attribute
+   │
+   ├─ ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:13:16
+   │
+13 │     @intrinsic make-binding @(public super) resource
+   │                ──────────── incompatible item
+   │
   note: attribute ‘intrinsic’ can only be ascribed to function or data declarations
 
 error[E013]: attribute ‘public’ is ascribed to a path expression
-  --> ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:13:29
-   |
-13 |     @intrinsic make-binding @(public super) resource
-   |                             ^^^^^^^^^^^^^^^ misplaced attribute
-   |
-  --> ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:13:45
-   |
-13 |     @intrinsic make-binding @(public super) resource
-   |                                             -------- incompatible item
-   |
+   ┌─ ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:13:29
+   │
+13 │     @intrinsic make-binding @(public super) resource
+   │                             ═══════════════ misplaced attribute
+   │
+   ├─ ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:13:45
+   │
+13 │     @intrinsic make-binding @(public super) resource
+   │                                             ──────── incompatible item
+   │
   note: attribute ‘public’ can only be ascribed to declarations except constructors and module headers
 
 error[E013]: attribute ‘public’ is ascribed to a constructor declaration
-  --> ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:16:5
-   |
-16 |     @public manifest
-   |     ^^^^^^^ misplaced attribute
-   |
-  --> ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:16:13
-   |
-16 |     @public manifest
-   |             -------- incompatible item
-   |
+   ┌─ ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:16:5
+   │
+16 │     @public manifest
+   │     ═══════ misplaced attribute
+   │
+   ├─ ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:16:13
+   │
+16 │     @public manifest
+   │             ──────── incompatible item
+   │
   note: attribute ‘public’ can only be ascribed to declarations except constructors and module headers
 
 error[E015]: the declaration ‘manifest’ does not have a type annotation
-  --> ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:16:21
-   |
-16 |     @public manifest
-   |                    ><
-   |
+   ┌─ ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:16:21
+   │
+16 │     @public manifest
+   │                    ⟫⟪
+   │
   note: type annotations are mandatory on declarations
   help: provide a type annotation for the declaration with ‘: ?type’
 
 error[E013]: attribute ‘static’ is ascribed to a path pattern
-  --> ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:20:9
-   |
-20 |         @static box => it
-   |         ^^^^^^^ misplaced attribute
-   |
-  --> ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:20:17
-   |
-20 |         @static box => it
-   |                 --- incompatible item
-   |
+   ┌─ ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:20:9
+   │
+20 │         @static box => it
+   │         ═══════ misplaced attribute
+   │
+   ├─ ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:20:17
+   │
+20 │         @static box => it
+   │                 ─── incompatible item
+   │
   note: attribute ‘static’ can only be ascribed to expressions
 
 error: aborting due to 11 previous errors

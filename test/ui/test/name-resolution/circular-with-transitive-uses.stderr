@@ -1,40 +1,40 @@
 error[E024]: the declarations ‘topmost.thing’ and ‘topmost.indirect.thing’ are circular
- --> ${TEST_FOLDER}/name-resolution/circular-with-transitive-uses.lushui:1:14
-  |
-1 | use indirect.thing
-  |              ^^^^^
-  |
- --> ${TEST_FOLDER}/name-resolution/circular-with-transitive-uses.lushui:2:40
-  |
-2 | module indirect of { @public use super.thing }
-  |                                        ^^^^^
-  |
+  ┌─ ${TEST_FOLDER}/name-resolution/circular-with-transitive-uses.lushui:1:14
+  │
+1 │ use indirect.thing
+  │              ═════
+  │
+  ├─ ${TEST_FOLDER}/name-resolution/circular-with-transitive-uses.lushui:2:40
+  │
+2 │ module indirect of { @public use super.thing }
+  │                                        ═════
+  │
 
 error[E024]: the declaration ‘topmost.alpha’ is circular
- --> ${TEST_FOLDER}/name-resolution/circular-with-transitive-uses.lushui:4:11
-  |
-4 | use alpha.alpha
-  |           ^^^^^
-  |
+  ┌─ ${TEST_FOLDER}/name-resolution/circular-with-transitive-uses.lushui:4:11
+  │
+4 │ use alpha.alpha
+  │           ═════
+  │
 
 error[E024]: the declarations ‘topmost.bridge’ and ‘topmost.omega’ are circular
- --> ${TEST_FOLDER}/name-resolution/circular-with-transitive-uses.lushui:6:20
-  |
-6 | use omega.omega as bridge
-  |                    ^^^^^^
-  |
- --> ${TEST_FOLDER}/name-resolution/circular-with-transitive-uses.lushui:7:15
-  |
-7 | use bridge as omega
-  |               ^^^^^
-  |
+  ┌─ ${TEST_FOLDER}/name-resolution/circular-with-transitive-uses.lushui:6:20
+  │
+6 │ use omega.omega as bridge
+  │                    ══════
+  │
+  ├─ ${TEST_FOLDER}/name-resolution/circular-with-transitive-uses.lushui:7:15
+  │
+7 │ use bridge as omega
+  │               ═════
+  │
 
 error[E024]: the declaration ‘topmost.cycle’ is circular
- --> ${TEST_FOLDER}/name-resolution/circular-with-transitive-uses.lushui:9:5
-  |
-9 | use cycle
-  |     ^^^^^
-  |
+  ┌─ ${TEST_FOLDER}/name-resolution/circular-with-transitive-uses.lushui:9:5
+  │
+9 │ use cycle
+  │     ═════
+  │
 
 error: aborting due to 4 previous errors
 

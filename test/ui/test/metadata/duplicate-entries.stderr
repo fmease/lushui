@@ -1,26 +1,26 @@
 error[E803]: the entry ‘first’ is defined multiple times
- --> ${TEST_FOLDER}/metadata/duplicate-entries.metadata:1:1
-  |
-1 | first: 23, first: "",
-  | ----- previous definition
-  |
- --> ${TEST_FOLDER}/metadata/duplicate-entries.metadata:1:12
-  |
-1 | first: 23, first: "",
-  |            ^^^^^ redefinition
-  |
+  ┌─ ${TEST_FOLDER}/metadata/duplicate-entries.metadata:1:1
+  │
+1 │ first: 23, first: "",
+  │ ───── previous definition
+  │
+  ├─ ${TEST_FOLDER}/metadata/duplicate-entries.metadata:1:12
+  │
+1 │ first: 23, first: "",
+  │            ═════ redefinition
+  │
 
 error[E803]: the entry ‘it’ is defined multiple times
- --> ${TEST_FOLDER}/metadata/duplicate-entries.metadata:4:5
-  |
-4 |     it: [],
-  |     -- previous definition
-  |
- --> ${TEST_FOLDER}/metadata/duplicate-entries.metadata:5:5
-  |
-5 |     it: 0'000,
-  |     ^^ redefinition
-  |
+  ┌─ ${TEST_FOLDER}/metadata/duplicate-entries.metadata:4:5
+  │
+4 │     it: [],
+  │     ── previous definition
+  │
+  ├─ ${TEST_FOLDER}/metadata/duplicate-entries.metadata:5:5
+  │
+5 │     it: 0'000,
+  │     ══ redefinition
+  │
 
 error: aborting due to 2 previous errors
 

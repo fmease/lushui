@@ -78,15 +78,36 @@ impl<'a> Formatter<'a> {
             Some(rows_of_lines)
         };
 
-        let bar = "|".color(color_palette::FRAME).bold();
+        let bar = Line::Vertical.single().color(palette::FRAME);
+        let mut needs_upward_connection = false;
 
         if let Some(path) = &self.diagnostic.path {
-            format_path(path, padding, f)?;
+            let path = path.to_string_lossy();
+            let is_final = highlights.is_empty() && self.diagnostic.subdiagnostics.is_empty();
 
-            if !highlights.is_empty() {
+            writeln!(f)?;
+            write!(
+                f,
+                "{padding} {}",
+                format!(
+                    "{}{} {path}",
+                    if is_final {
+                        Line::Horizontal
+                    } else {
+                        Line::DownAndRight
+                    }
+                    .single(),
+                    Line::Horizontal.single()
+                )
+                .color(palette::FRAME)
+            )?;
+
+            if !is_final {
                 writeln!(f)?;
                 write!(f, "{padding} {bar}")?;
             }
+
+            needs_upward_connection = true;
         }
 
         let Some(rows_of_lines) = rows_of_lines else {
@@ -94,7 +115,26 @@ impl<'a> Formatter<'a> {
         };
 
         for (highlight, lines) in highlights.iter().zip(rows_of_lines) {
-            format_location(&lines, padding, f)?;
+            let path = lines.path.map(Path::to_string_lossy).unwrap_or_default();
+            let line = lines.first.number;
+            let column = lines.first.highlight.start;
+
+            writeln!(f)?;
+            write!(
+                f,
+                "{padding} {}",
+                format!(
+                    "{}{} {path}:{line}:{column}",
+                    if needs_upward_connection {
+                        Line::VerticalAndRight
+                    } else {
+                        Line::DownAndRight
+                    }
+                    .single(),
+                    Line::Horizontal.single()
+                )
+                .color(palette::FRAME)
+            )?;
 
             match &lines.last {
                 None => self.format_single_line_highlight(highlight, &lines, &bar, padding, f),
@@ -104,6 +144,10 @@ impl<'a> Formatter<'a> {
 
             writeln!(f)?;
             write!(f, "{padding} {bar}")?;
+
+            if !needs_upward_connection {
+                needs_upward_connection = true;
+            }
         }
 
         Ok(())
@@ -117,11 +161,11 @@ impl<'a> Formatter<'a> {
         padding: &str,
         f: &mut fmt::Formatter<'_>,
     ) -> fmt::Result {
-        let line_number = lines.first.number;
+        let number = format!("{0:>1$}", lines.first.number, padding.len()).color(palette::FRAME);
         let snippet = lines.first.content;
         let highlight_prefix_width = lines.first.highlight.prefix_width;
         let zero_length_highlight = lines.first.highlight.width == 0;
-        let role_color = highlight.role.color(self.diagnostic.severity.color());
+        let color = highlight.role.color(self.diagnostic.severity.color());
         let mut lines_of_label = highlight.label.iter().flat_map(|label| label.split('\n'));
 
         let snippet_padding = match zero_length_highlight && highlight_prefix_width == 0 {
@@ -131,29 +175,31 @@ impl<'a> Formatter<'a> {
 
         writeln!(f)?;
         writeln!(f, "{padding} {bar}")?;
-        writeln!(
-            f,
-            "{line_number:>padding$} {bar} {snippet_padding}{snippet}",
-            padding = padding.len(),
-        )?;
+        writeln!(f, "{number} {bar} {snippet_padding}{snippet}")?;
 
         let underline_padding = " ".repeat(match zero_length_highlight {
             true => highlight_prefix_width.saturating_sub(1),
             false => highlight_prefix_width,
         });
         let underline = if !zero_length_highlight {
-            highlight.role.symbol().repeat(lines.first.highlight.width)
+            Line::Horizontal
+                .to_str(highlight.role)
+                .repeat(lines.first.highlight.width)
         } else {
-            "><".to_owned()
+            format!(
+                "{}{}",
+                Line::RightAngleBracket.to_str(highlight.role),
+                Line::LeftAngleBracket.to_str(highlight.role),
+            )
         };
-        let underline = underline.color(role_color).bold();
+        let underline = underline.color(color);
 
         // the underline and the label
         {
             write!(f, "{padding} {bar} {underline_padding}{underline}")?;
 
             if let Some(line_of_label) = lines_of_label.next() {
-                write!(f, " {}", line_of_label.color(role_color))?;
+                write!(f, " {}", line_of_label.color(color))?;
             }
 
             let spacing = " ".repeat(
@@ -170,7 +216,7 @@ impl<'a> Formatter<'a> {
                 write!(f, "{padding} {bar}")?;
 
                 if !line_of_label.is_empty() {
-                    write!(f, " {spacing} {}", line_of_label.color(role_color))?;
+                    write!(f, " {spacing} {}", line_of_label.color(color))?;
                 }
             }
         }
@@ -187,59 +233,56 @@ impl<'a> Formatter<'a> {
         padding: &str,
         f: &mut fmt::Formatter<'_>,
     ) -> fmt::Result {
-        let role_color = highlight.role.color(self.diagnostic.severity.color());
+        let color = highlight.role.color(self.diagnostic.severity.color());
         let mut lines_of_label = highlight.label.iter().flat_map(|label| label.split('\n'));
         // the hand is currently not dependent on the Unicode width of the first character
-        let hand = highlight.role.symbol().color(role_color).bold();
+        let hand = Line::UpAndLeft.to_str(highlight.role).color(color);
 
         // the upper arm
         {
-            let line_number = lines.first.number;
+            let number =
+                format!("{0:>1$}", lines.first.number, padding.len()).color(palette::FRAME);
             let snippet = lines.first.content;
-            let horizontal_arm = "_"
+            let joint = Line::DownAndRight.to_str(highlight.role).color(color);
+            let horizontal_arm = Line::Horizontal
+                .to_str(highlight.role)
                 .repeat(lines.first.highlight.prefix_width + 1)
-                .color(role_color)
-                .bold();
+                .color(color);
             let ellipsis_or_bar = if final_line.number - lines.first.number > 1 {
-                "...".into()
+                "·".color(palette::FRAME)
             } else {
-                format!(" {bar} ")
+                bar.clone()
             };
 
             writeln!(f)?;
             writeln!(f, "{padding} {bar}")?;
+            writeln!(f, "{number} {bar}   {snippet}")?;
             writeln!(
                 f,
-                "{line_number:>padding$} {bar}   {snippet}",
-                padding = padding.len(),
+                "{padding} {ellipsis_or_bar} {joint}{horizontal_arm}{hand}"
             )?;
-            writeln!(f, "{padding}{ellipsis_or_bar} {horizontal_arm}{hand}")?;
         }
 
         // the connector and the lower arm
         {
-            let line_number = final_line.number;
+            let number = format!("{0:>1$}", final_line.number, padding.len()).color(palette::FRAME);
             let snippet = &final_line.content;
             // the arm is currently not dependent on the Unicode width of the last character
-            let horizontal_arm = "_"
+            let horizontal_arm = Line::Horizontal
+                .to_str(highlight.role)
                 .repeat(final_line.highlight.width)
-                .color(role_color)
-                .bold();
-            let vertical_arm = "|".color(role_color).bold();
-
-            writeln!(
-                f,
-                "{line_number:>padding$} {bar} {vertical_arm} {snippet}",
-                padding = padding.len(),
-            )?;
+                .color(color);
+            let vertical_arm = Line::Vertical.to_str(highlight.role).color(color);
+            let joint = Line::UpAndRight.to_str(highlight.role).color(color);
+            writeln!(f, "{number} {bar} {vertical_arm} {snippet}")?;
 
             // the lower arm and the label
             {
-                write!(f, "{padding} {bar} {vertical_arm}{horizontal_arm}{hand}")?;
+                write!(f, "{padding} {bar} {joint}{horizontal_arm}{hand}")?;
 
                 if let Some(line_of_label) = lines_of_label.next() {
                     if !line_of_label.is_empty() {
-                        write!(f, " {}", line_of_label.color(role_color))?;
+                        write!(f, " {}", line_of_label.color(color))?;
                     }
                 }
 
@@ -250,7 +293,7 @@ impl<'a> Formatter<'a> {
                     write!(f, "{padding} {bar}")?;
 
                     if !line_of_label.is_empty() {
-                        write!(f, " {spacing} {}", line_of_label.color(role_color))?;
+                        write!(f, " {spacing} {}", line_of_label.color(color))?;
                     }
                 }
             }
@@ -271,34 +314,6 @@ impl fmt::Display for Formatter<'_> {
         }
         Ok(())
     }
-}
-
-fn format_location(
-    lines: &LinesWithHighlight<'_>,
-    padding: &str,
-    f: &mut fmt::Formatter<'_>,
-) -> fmt::Result {
-    let path = lines.path.map(Path::to_string_lossy).unwrap_or_default();
-    let line = lines.first.number;
-    let column = lines.first.highlight.start;
-
-    writeln!(f)?;
-    write!(
-        f,
-        "{padding}{}",
-        format!("--> {path}:{line}:{column}").color(color_palette::FRAME)
-    )
-}
-
-fn format_path(path: &Path, padding: &str, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    let path = path.to_string_lossy();
-
-    writeln!(f)?;
-    write!(
-        f,
-        "{padding}{}",
-        format!("--> {path}").color(color_palette::FRAME)
-    )
 }
 
 fn format_subdiagnostic(
@@ -356,9 +371,9 @@ impl Severity {
 
     pub(super) const fn color(self) -> Color {
         match self {
-            Self::Bug | Self::Error => color_palette::ERROR,
-            Self::Warning => color_palette::WARNING,
-            Self::Debug => color_palette::DEBUG,
+            Self::Bug | Self::Error => palette::ERROR,
+            Self::Warning => palette::WARNING,
+            Self::Debug => palette::DEBUG,
         }
     }
 }
@@ -370,7 +385,7 @@ impl fmt::Display for Severity {
 }
 
 impl Subseverity {
-    const COLOR: Color = color_palette::HELP;
+    const COLOR: Color = palette::HELP;
 }
 
 impl fmt::Display for Subseverity {
@@ -383,19 +398,59 @@ impl Role {
     const fn color(self, primary: Color) -> Color {
         match self {
             Self::Primary => primary,
-            Self::Secondary => color_palette::HELP,
-        }
-    }
-
-    const fn symbol(self) -> &'static str {
-        match self {
-            Self::Primary => "^",
-            Self::Secondary => "-",
+            Self::Secondary => palette::HELP,
         }
     }
 }
 
-mod color_palette {
+#[derive(Clone, Copy)]
+enum Line {
+    Horizontal,
+    Vertical,
+    DownAndRight,
+    VerticalAndRight,
+    UpAndLeft,
+    UpAndRight,
+    RightAngleBracket,
+    LeftAngleBracket,
+}
+
+impl Line {
+    const fn single(self) -> &'static str {
+        match self {
+            Self::Horizontal => "─",
+            Self::Vertical => "│",
+            Self::DownAndRight => "┌",
+            Self::VerticalAndRight => "├",
+            Self::UpAndLeft => "┘",
+            Self::UpAndRight => "└",
+            Self::LeftAngleBracket => "⟨",
+            Self::RightAngleBracket => "⟩",
+        }
+    }
+
+    const fn double(self) -> &'static str {
+        match self {
+            Self::Horizontal => "═",
+            Self::Vertical => "║",
+            Self::DownAndRight => "╔",
+            Self::VerticalAndRight => "╠",
+            Self::UpAndLeft => "╝",
+            Self::UpAndRight => "╚",
+            Self::LeftAngleBracket => "⟪",
+            Self::RightAngleBracket => "⟫",
+        }
+    }
+
+    const fn to_str(self, role: Role) -> &'static str {
+        match role {
+            Role::Primary => self.double(),
+            Role::Secondary => self.single(),
+        }
+    }
+}
+
+mod palette {
     use colored::Color;
 
     pub(super) const FRAME: Color = Color::BrightBlue;

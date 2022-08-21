@@ -1,9 +1,9 @@
 error: found end of input but expected ‘,’
- --> ${TEST_FOLDER}/metadata/unbalanced-brackets.metadata:5:2
-  |
-5 |  
-  | ><
-  |
+  ┌─ ${TEST_FOLDER}/metadata/unbalanced-brackets.metadata:5:2
+  │
+5 │  
+  │ ⟫⟪
+  │
 
 error: aborting due to previous error
 

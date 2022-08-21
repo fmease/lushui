@@ -1,9 +1,9 @@
 error: found ‘:’ but expected ‘,’
- --> ${TEST_FOLDER}/metadata/unexpected-key-in-list.metadata:1:13
-  |
-1 | list: [first: 0, second: 2]
-  |             ^
-  |
+  ┌─ ${TEST_FOLDER}/metadata/unexpected-key-in-list.metadata:1:13
+  │
+1 │ list: [first: 0, second: 2]
+  │             ═
+  │
 
 error: aborting due to previous error
 

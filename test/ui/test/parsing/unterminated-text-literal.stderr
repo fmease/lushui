@@ -1,11 +1,11 @@
 error[E047]: unterminated text literal
- --> ${TEST_FOLDER}/parsing/unterminated-text-literal.lushui:1:15
-  |
-1 |   value: Text = "open end
- ... _______________^
-4 | |     field: Res -> Field
-  | |_______________________^
-  |
+  ┌─ ${TEST_FOLDER}/parsing/unterminated-text-literal.lushui:1:15
+  │
+1 │   value: Text = "open end
+  · ╔═══════════════╝
+4 │ ║     field: Res -> Field
+  │ ╚═══════════════════════╝
+  │
 
 error: aborting due to previous error
 

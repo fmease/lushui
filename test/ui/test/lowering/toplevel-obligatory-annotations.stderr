@@ -1,99 +1,99 @@
 error[E015]: the declaration ‘Alpha’ does not have a type annotation
- --> ${TEST_FOLDER}/lowering/toplevel-obligatory-annotations.lushui:1:11
-  |
-1 | data Alpha of
-  |          ><
-  |
+  ┌─ ${TEST_FOLDER}/lowering/toplevel-obligatory-annotations.lushui:1:11
+  │
+1 │ data Alpha of
+  │          ⟫⟪
+  │
  note: type annotations are mandatory on declarations
  help: provide a type annotation for the declaration with ‘: ?type’
 
 error[E015]: the parameter ‘a’ does not have a type annotation
- --> ${TEST_FOLDER}/lowering/toplevel-obligatory-annotations.lushui:2:11
-  |
-2 |     alpha a
-  |           ^
-  |
+  ┌─ ${TEST_FOLDER}/lowering/toplevel-obligatory-annotations.lushui:2:11
+  │
+2 │     alpha a
+  │           ═
+  │
  note: type annotations are mandatory on parameters of declarations
  help: provide a type annotation for the parameter with ‘(a: ?type)’
 
 error[E015]: the declaration ‘alpha’ does not have a type annotation
- --> ${TEST_FOLDER}/lowering/toplevel-obligatory-annotations.lushui:2:12
-  |
-2 |     alpha a
-  |           ><
-  |
+  ┌─ ${TEST_FOLDER}/lowering/toplevel-obligatory-annotations.lushui:2:12
+  │
+2 │     alpha a
+  │           ⟫⟪
+  │
  note: type annotations are mandatory on declarations
  help: provide a type annotation for the declaration with ‘: ?type’
 
 error[E015]: the parameter ‘A’ does not have a type annotation
- --> ${TEST_FOLDER}/lowering/toplevel-obligatory-annotations.lushui:4:11
-  |
-4 | data Beta A of
-  |           ^
-  |
+  ┌─ ${TEST_FOLDER}/lowering/toplevel-obligatory-annotations.lushui:4:11
+  │
+4 │ data Beta A of
+  │           ═
+  │
  note: type annotations are mandatory on parameters of declarations
  help: provide a type annotation for the parameter with ‘(A: ?type)’
 
 error[E015]: the declaration ‘Beta’ does not have a type annotation
- --> ${TEST_FOLDER}/lowering/toplevel-obligatory-annotations.lushui:4:12
-  |
-4 | data Beta A of
-  |           ><
-  |
+  ┌─ ${TEST_FOLDER}/lowering/toplevel-obligatory-annotations.lushui:4:12
+  │
+4 │ data Beta A of
+  │           ⟫⟪
+  │
  note: type annotations are mandatory on declarations
  help: provide a type annotation for the declaration with ‘: ?type’
 
 error[E015]: the parameter ‘A’ does not have a type annotation
- --> ${TEST_FOLDER}/lowering/toplevel-obligatory-annotations.lushui:5:10
-  |
-5 |     beta A: Beta A
-  |          ^
-  |
+  ┌─ ${TEST_FOLDER}/lowering/toplevel-obligatory-annotations.lushui:5:10
+  │
+5 │     beta A: Beta A
+  │          ═
+  │
  note: type annotations are mandatory on parameters of declarations
  help: provide a type annotation for the parameter with ‘(A: ?type)’
 
 error[E015]: the declaration ‘number’ does not have a type annotation
- --> ${TEST_FOLDER}/lowering/toplevel-obligatory-annotations.lushui:7:7
-  |
-7 | number = 0
-  |      ><
-  |
+  ┌─ ${TEST_FOLDER}/lowering/toplevel-obligatory-annotations.lushui:7:7
+  │
+7 │ number = 0
+  │      ⟫⟪
+  │
  note: type annotations are mandatory on declarations
  help: provide a type annotation for the declaration with ‘: ?type’
 
 error[E015]: the parameter ‘f’ does not have a type annotation
- --> ${TEST_FOLDER}/lowering/toplevel-obligatory-annotations.lushui:9:7
-  |
-9 | apply f x (y) = f x
-  |       ^
-  |
+  ┌─ ${TEST_FOLDER}/lowering/toplevel-obligatory-annotations.lushui:9:7
+  │
+9 │ apply f x (y) = f x
+  │       ═
+  │
  note: type annotations are mandatory on parameters of declarations
  help: provide a type annotation for the parameter with ‘(f: ?type)’
 
 error[E015]: the parameter ‘x’ does not have a type annotation
- --> ${TEST_FOLDER}/lowering/toplevel-obligatory-annotations.lushui:9:9
-  |
-9 | apply f x (y) = f x
-  |         ^
-  |
+  ┌─ ${TEST_FOLDER}/lowering/toplevel-obligatory-annotations.lushui:9:9
+  │
+9 │ apply f x (y) = f x
+  │         ═
+  │
  note: type annotations are mandatory on parameters of declarations
  help: provide a type annotation for the parameter with ‘(x: ?type)’
 
 error[E015]: the parameter ‘y’ does not have a type annotation
- --> ${TEST_FOLDER}/lowering/toplevel-obligatory-annotations.lushui:9:11
-  |
-9 | apply f x (y) = f x
-  |           ^^^
-  |
+  ┌─ ${TEST_FOLDER}/lowering/toplevel-obligatory-annotations.lushui:9:11
+  │
+9 │ apply f x (y) = f x
+  │           ═══
+  │
  note: type annotations are mandatory on parameters of declarations
  help: provide a type annotation for the parameter with ‘(y: ?type)’
 
 error[E015]: the declaration ‘apply’ does not have a type annotation
- --> ${TEST_FOLDER}/lowering/toplevel-obligatory-annotations.lushui:9:14
-  |
-9 | apply f x (y) = f x
-  |             ><
-  |
+  ┌─ ${TEST_FOLDER}/lowering/toplevel-obligatory-annotations.lushui:9:14
+  │
+9 │ apply f x (y) = f x
+  │             ⟫⟪
+  │
  note: type annotations are mandatory on declarations
  help: provide a type annotation for the declaration with ‘: ?type’
 

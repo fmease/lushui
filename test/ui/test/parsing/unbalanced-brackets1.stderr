@@ -1,30 +1,30 @@
 error[E044]: unbalanced round bracket
- --> ${TEST_FOLDER}/parsing/unbalanced-brackets1.lushui:1:1
-  |
-1 | )) it ]
-  | ^ has no matching opening round bracket
-  |
+  ┌─ ${TEST_FOLDER}/parsing/unbalanced-brackets1.lushui:1:1
+  │
+1 │ )) it ]
+  │ ═ has no matching opening round bracket
+  │
 
 error[E010]: found ‘)’ but expected declaration
- --> ${TEST_FOLDER}/parsing/unbalanced-brackets1.lushui:1:1
-  |
-1 | )) it ]
-  | ^ unexpected token
-  |
+  ┌─ ${TEST_FOLDER}/parsing/unbalanced-brackets1.lushui:1:1
+  │
+1 │ )) it ]
+  │ ═ unexpected token
+  │
 
 error[E044]: unbalanced round bracket
- --> ${TEST_FOLDER}/parsing/unbalanced-brackets1.lushui:1:2
-  |
-1 | )) it ]
-  |  ^ has no matching opening round bracket
-  |
+  ┌─ ${TEST_FOLDER}/parsing/unbalanced-brackets1.lushui:1:2
+  │
+1 │ )) it ]
+  │  ═ has no matching opening round bracket
+  │
 
 error[E044]: unbalanced square bracket
- --> ${TEST_FOLDER}/parsing/unbalanced-brackets1.lushui:1:7
-  |
-1 | )) it ]
-  |       ^ has no matching opening square bracket
-  |
+  ┌─ ${TEST_FOLDER}/parsing/unbalanced-brackets1.lushui:1:7
+  │
+1 │ )) it ]
+  │       ═ has no matching opening square bracket
+  │
 
 error: aborting due to 4 previous errors
 

@@ -1,62 +1,62 @@
 error[E020]: ‘Alpha’ is defined multiple times in this scope
- --> ${TEST_FOLDER}/name-resolution/duplicate-bindings.lushui:3:6
-  |
-3 | data Alpha: Type of
-  |      ^^^^^ conflicting definition
-  |
- --> ${TEST_FOLDER}/name-resolution/duplicate-bindings.lushui:6:1
-  |
-6 | Alpha: Type = Type
-  | ^^^^^ conflicting definition
-  |
+  ┌─ ${TEST_FOLDER}/name-resolution/duplicate-bindings.lushui:3:6
+  │
+3 │ data Alpha: Type of
+  │      ═════ conflicting definition
+  │
+  ├─ ${TEST_FOLDER}/name-resolution/duplicate-bindings.lushui:6:1
+  │
+6 │ Alpha: Type = Type
+  │ ═════ conflicting definition
+  │
 
 error[E020]: ‘beta’ is defined multiple times in this scope
-  --> ${TEST_FOLDER}/name-resolution/duplicate-bindings.lushui:8:1
-   |
- 8 | beta: Nat = 1000
-   | ^^^^ conflicting definition
-   |
-  --> ${TEST_FOLDER}/name-resolution/duplicate-bindings.lushui:17:1
-   |
-17 | beta (x: Nat) (y: Nat): Nat = y
-   | ^^^^ conflicting definition
-   |
+   ┌─ ${TEST_FOLDER}/name-resolution/duplicate-bindings.lushui:8:1
+   │
+ 8 │ beta: Nat = 1000
+   │ ════ conflicting definition
+   │
+   ├─ ${TEST_FOLDER}/name-resolution/duplicate-bindings.lushui:17:1
+   │
+17 │ beta (x: Nat) (y: Nat): Nat = y
+   │ ════ conflicting definition
+   │
 
 error[E020]: ‘pod’ is defined multiple times in this scope
-  --> ${TEST_FOLDER}/name-resolution/duplicate-bindings.lushui:10:8
-   |
-10 | module pod of
-   |        ^^^ conflicting definition
-   |
-  --> ${TEST_FOLDER}/name-resolution/duplicate-bindings.lushui:19:1
-   |
-19 | pod: Nat = beta
-   | ^^^ conflicting definition
-   |
+   ┌─ ${TEST_FOLDER}/name-resolution/duplicate-bindings.lushui:10:8
+   │
+10 │ module pod of
+   │        ═══ conflicting definition
+   │
+   ├─ ${TEST_FOLDER}/name-resolution/duplicate-bindings.lushui:19:1
+   │
+19 │ pod: Nat = beta
+   │ ═══ conflicting definition
+   │
 
 error[E020]: ‘Nat’ is defined multiple times in this scope
-  --> ${TEST_FOLDER}/name-resolution/duplicate-bindings.lushui:11:15
-   |
-11 |     use super.Nat
-   |               ^^^ conflicting definition
-   |
-  --> ${TEST_FOLDER}/name-resolution/duplicate-bindings.lushui:13:10
-   |
-13 |     data Nat: Type of
-   |          ^^^ conflicting definition
-   |
+   ┌─ ${TEST_FOLDER}/name-resolution/duplicate-bindings.lushui:11:15
+   │
+11 │     use super.Nat
+   │               ═══ conflicting definition
+   │
+   ├─ ${TEST_FOLDER}/name-resolution/duplicate-bindings.lushui:13:10
+   │
+13 │     data Nat: Type of
+   │          ═══ conflicting definition
+   │
 
 error[E020]: ‘zero’ is defined multiple times in this scope
-  --> ${TEST_FOLDER}/name-resolution/duplicate-bindings.lushui:24:1
-   |
-24 | zero: Nat = 0
-   | ^^^^ conflicting definition
-   |
-  --> ${TEST_FOLDER}/name-resolution/duplicate-bindings.lushui:26:9
-   |
-26 | use pod.zero
-   |         ^^^^ conflicting definition
-   |
+   ┌─ ${TEST_FOLDER}/name-resolution/duplicate-bindings.lushui:24:1
+   │
+24 │ zero: Nat = 0
+   │ ════ conflicting definition
+   │
+   ├─ ${TEST_FOLDER}/name-resolution/duplicate-bindings.lushui:26:9
+   │
+26 │ use pod.zero
+   │         ════ conflicting definition
+   │
 
 error: aborting due to 5 previous errors
 

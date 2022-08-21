@@ -1,9 +1,9 @@
 error[E041]: the module header has to be the first declaration of the module
- --> ${TEST_FOLDER}/lowering/module-headers/not-the-first-declaration.lushui:4:1
-  |
-4 | module
-  | ^^^^^^
-  |
+  ┌─ ${TEST_FOLDER}/lowering/module-headers/not-the-first-declaration.lushui:4:1
+  │
+4 │ module
+  │ ══════
+  │
 
 error: aborting due to previous error
 

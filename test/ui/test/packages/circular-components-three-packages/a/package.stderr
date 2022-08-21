@@ -1,9 +1,9 @@
 error: the components ‘c’ and ‘a’ are circular
-  --> ${TEST_FOLDER}/packages/circular-components-three-packages/c/package.metadata:13:13
-   |
-13 |             a: { path: "../a" },
-   |             ^
-   |
+   ┌─ ${TEST_FOLDER}/packages/circular-components-three-packages/c/package.metadata:13:13
+   │
+13 │             a: { path: "../a" },
+   │             ═
+   │
 
 error: aborting due to previous error
 

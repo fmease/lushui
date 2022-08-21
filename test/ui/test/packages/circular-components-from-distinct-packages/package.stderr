@@ -1,9 +1,9 @@
 error: the components ‘right’ and ‘left’ are circular
- --> ${TEST_FOLDER}/packages/circular-components-from-distinct-packages/right/package.metadata:9:25
-  |
-9 |         dependencies: { left: { path: ".." } }
-  |                         ^^^^
-  |
+  ┌─ ${TEST_FOLDER}/packages/circular-components-from-distinct-packages/right/package.metadata:9:25
+  │
+9 │         dependencies: { left: { path: ".." } }
+  │                         ════
+  │
 
 error: aborting due to previous error
 

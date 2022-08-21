@@ -1,14 +1,14 @@
 error[E061]: ‘I-Definitely-Do-Not-Exist’ is not an intrinsic type
- --> ${TEST_FOLDER}/unrecognized-intrinsic-type.lushui:6:1
-  |
-6 | @intrinsic
-  | ----------
-  |
- --> ${TEST_FOLDER}/unrecognized-intrinsic-type.lushui:7:6
-  |
-7 | data I-Definitely-Do-Not-Exist: Type
-  |      ^^^^^^^^^^^^^^^^^^^^^^^^^
-  |
+  ┌─ ${TEST_FOLDER}/unrecognized-intrinsic-type.lushui:6:1
+  │
+6 │ @intrinsic
+  │ ──────────
+  │
+  ├─ ${TEST_FOLDER}/unrecognized-intrinsic-type.lushui:7:6
+  │
+7 │ data I-Definitely-Do-Not-Exist: Type
+  │      ═════════════════════════
+  │
 
 error: aborting due to previous error
 

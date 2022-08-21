@@ -1,11 +1,11 @@
 error: use/in-expressions are not supported yet
- --> ${TEST_FOLDER}/lowering/use-in-unsupported.lushui:2:5
-  |
-2 |       use qualified.thing as matter in
-  |  _____^
-3 | |     this-location
-  | |_________________^
-  |
+  ┌─ ${TEST_FOLDER}/lowering/use-in-unsupported.lushui:2:5
+  │
+2 │       use qualified.thing as matter in
+  │ ╔═════╝
+3 │ ║     this-location
+  │ ╚═════════════════╝
+  │
 
 error: aborting due to previous error
 
