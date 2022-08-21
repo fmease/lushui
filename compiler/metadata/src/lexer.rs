@@ -62,7 +62,7 @@ impl<'a> Lexer<'a> {
                     self.take();
                     self.advance();
                     let token = Spanned::new(self.span(), character);
-                    self.errors.push(Error::IllegalToken(token));
+                    self.errors.push(Error::InvalidToken(token));
                 }
             }
         }
@@ -344,7 +344,7 @@ impl fmt::Display for TokenName {
 
 #[derive(Debug)]
 pub enum Error {
-    IllegalToken(Spanned<char>),
+    InvalidToken(Spanned<char>),
     UnterminatedText(Span),
     NumberExceedsSizeLimit(Spanned<ParseIntError>),
 }
@@ -352,9 +352,9 @@ pub enum Error {
 impl From<Error> for Diagnostic {
     fn from(error: Error) -> Self {
         match error {
-            Error::IllegalToken(token) => {
+            Error::InvalidToken(token) => {
                 let message = format!(
-                    "found illegal character U+{:04X} ‘{token}’",
+                    "found invalid character U+{:04X} ‘{token}’",
                     token.bare as u32,
                 );
 

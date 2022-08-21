@@ -28,7 +28,7 @@ D_: Type = D
 ;;; to any ancestor modules and also other extern. Out of order bindings should
 ;;; not confuse the algorithm. Also, even though `topmost.boundary.Intermediate` is
 ;;; not exposed to the root module *directly*, it is indirectly.
-;;; This does not count as a re-export (which would be illegal in this case)
+;;; This does not count as a re-export (which would be invalid in this case)
 ;;; since the private binding is used inside of an expression which is the
 ;;; implementation of `boundary.inner.D`. In a dependently-typed language like
 ;;; this is, this implementation can unfortunately be leaked if that `D` is

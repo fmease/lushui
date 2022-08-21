@@ -394,19 +394,19 @@ fn lex_brackets() {
 }
 
 #[test]
-fn bare_non_ascii_is_illegal() {
+fn bare_non_ascii_is_invalid() {
     assert_lex_eq!(
         "函数",
         vec![Token::new(span(7, 7), EndOfInput),],
         vec![
-            Error::new(span(1, 4), BareError::IllegalToken('\u{51FD}')),
-            Error::new(span(4, 7), BareError::IllegalToken('\u{6570}')),
+            Error::new(span(1, 4), BareError::InvalidlToken('\u{51FD}')),
+            Error::new(span(4, 7), BareError::InvalidlToken('\u{6570}')),
         ],
     );
 }
 
 #[test]
-fn bare_non_ascii_are_illegal_but_non_fatal() {
+fn bare_non_ascii_are_invalid_but_non_fatal() {
     assert_lex_eq!(
         " 函数 function",
         vec![
@@ -414,41 +414,41 @@ fn bare_non_ascii_are_illegal_but_non_fatal() {
             Token::new(span(17, 17), EndOfInput),
         ],
         vec![
-            Error::new(span(2, 5), BareError::IllegalToken('函')),
-            Error::new(span(5, 8), BareError::IllegalToken('数')),
+            Error::new(span(2, 5), BareError::InvalidlToken('函')),
+            Error::new(span(5, 8), BareError::InvalidlToken('数')),
         ]
     );
 }
 
 #[test]
-fn backticks_are_illegal() {
+fn backticks_are_invalid() {
     assert_lex_eq!(
         "`",
         vec![Token::new(span(2, 2), EndOfInput),],
-        vec![Error::new(span(1, 2), BareError::IllegalToken('`')),]
+        vec![Error::new(span(1, 2), BareError::InvalidlToken('`')),]
     );
 }
 
 #[test]
-fn backticks_are_illegal_right_after_number_literal() {
+fn backticks_are_invalid_right_after_number_literal() {
     assert_lex_eq!(
         "1`",
         vec![
             Token::new(span(1, 2), NumberLiteral("1".into())),
             Token::new(span(3, 3), EndOfInput),
         ],
-        vec![Error::new(span(2, 3), BareError::IllegalToken('`')),]
+        vec![Error::new(span(2, 3), BareError::InvalidlToken('`')),]
     );
 }
 
 #[test]
-fn tabs_are_illegal() {
+fn tabs_are_invalid() {
     assert_lex_eq!(
         "\t\t",
         vec![Token::new(span(3, 3), EndOfInput),],
         vec![
-            Error::new(span(1, 2), BareError::IllegalToken('\t')),
-            Error::new(span(2, 3), BareError::IllegalToken('\t')),
+            Error::new(span(1, 2), BareError::InvalidlToken('\t')),
+            Error::new(span(2, 3), BareError::InvalidlToken('\t')),
         ]
     );
 }

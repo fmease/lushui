@@ -608,7 +608,7 @@ impl<'a> Interpreter<'a> {
     // @Task correctly handle
     // * pure vs impure
     // * polymorphism
-    // * illegal neutrals
+    // * (unexpected) neutrals
     // * types (arguments of type `Type`): skip them
     // @Note: we need to convert to be able to convert to ffi::Value
     pub(crate) fn apply_intrinsic_function(

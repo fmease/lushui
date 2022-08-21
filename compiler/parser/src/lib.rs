@@ -1688,7 +1688,7 @@ impl<'a> Parser<'a> {
             value: T,
         }
 
-        let mut illegal_pi = None;
+        let mut invalid_pi = None;
 
         while let Ok(argument) = self
             .parse_or_backtrack(|this| {
@@ -1716,7 +1716,7 @@ impl<'a> Parser<'a> {
                     if TypeId::of::<T>() == TypeId::of::<ast::BareExpression>()
                         && this.current_token().name() == Colon
                     {
-                        illegal_pi = Some(this.current_token().clone());
+                        invalid_pi = Some(this.current_token().clone());
                         this.advance();
                     } else {
                         this.consume(Equals)?;
@@ -1737,7 +1737,7 @@ impl<'a> Parser<'a> {
                 })
             })
         {
-            if let Some(token) = &illegal_pi {
+            if let Some(token) = &invalid_pi {
                 let explicitness = match argument.bare.explicitness {
                     Implicit => "an implicit",
                     Explicit => "a",
@@ -2103,8 +2103,8 @@ impl LexerErrorExt for lexer::Error {
                         INDENTATION.0
                     ),
                 }),
-            IllegalToken(token) => {
-                let message = format!("found illegal character U+{:04X} ‘{token}’", token as u32,);
+            InvalidlToken(token) => {
+                let message = format!("found invalid character U+{:04X} ‘{token}’", token as u32,);
 
                 // @Task code
                 Diagnostic::error()

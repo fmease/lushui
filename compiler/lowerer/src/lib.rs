@@ -523,7 +523,7 @@ impl<'a> Lowerer<'a> {
                                 // is effectively unnamed because `topmost` is unnamed
                                 // @Task the message is even worse (it is misleading!) with `use extern.(self)`
                                 // currently leads to the suggestion to bind `self` to an identifier but
-                                // for `extern` that is illegal, too
+                                // for `extern` that is invalid, too
                                 invalid_unnamed_path_hanger_error(target.hanger.unwrap())
                                     .report(self.session.reporter());
                                 self.health.taint();

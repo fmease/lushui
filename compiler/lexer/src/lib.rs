@@ -117,7 +117,7 @@ impl<'a> Lexer<'a> {
                 character => {
                     self.take();
                     self.advance();
-                    self.error(BareError::IllegalToken(character));
+                    self.error(BareError::InvalidlToken(character));
                 }
             }
         }
@@ -711,7 +711,7 @@ pub type Error = Spanned<BareError>;
 #[derive(PartialEq, Eq, Debug)]
 pub enum BareError {
     InvalidIndentation(Spaces, IndentationError),
-    IllegalToken(char),
+    InvalidlToken(char),
     UnbalancedBracket(Bracket),
     UnterminatedTextLiteral,
 }

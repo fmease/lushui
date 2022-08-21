@@ -47,7 +47,7 @@ pub enum ErrorCode {
     E011,
     /// Definitionless declaration.
     E012,
-    /// Illegal attribute target.
+    /// Invalid attribute target.
     E013,
     /// Mutually exclusive attributes.
     E014,
@@ -83,7 +83,7 @@ pub enum ErrorCode {
     E029,
     /// Missing type annotation for lambda literal parameter or pattern.
     E030,
-    /// Illegal function application.
+    /// Invalid function application.
     E031,
     /// Type mismatch.
     E032,
