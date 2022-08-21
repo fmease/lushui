@@ -77,18 +77,22 @@ impl<'a> Lexer<'a> {
     }
 
     fn lex_comment(&mut self) {
+        if self.options.keep_comments {
+            self.take();
+        }
         self.advance();
 
         while let Some(character) = self.peek() {
-            self.advance();
-
             if character == '\n' {
+                self.advance();
                 break;
             }
 
             if self.options.keep_comments {
                 self.take();
             }
+
+            self.advance();
         }
 
         if self.options.keep_comments {
@@ -107,6 +111,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn lex_text(&mut self) {
+        self.take();
         self.advance();
 
         let mut is_terminated = false;
@@ -296,7 +301,7 @@ impl TokenExt for Token {
     }
 }
 
-#[derive(Clone, Debug, Discriminant)]
+#[derive(Clone, Debug, Discriminant, PartialEq, Eq)]
 #[discriminant(name: TokenName)]
 pub enum BareToken {
     Comment,

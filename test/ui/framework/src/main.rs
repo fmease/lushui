@@ -11,12 +11,11 @@ use colored::Colorize;
 use configuration::{Configuration, Mode, TestTag, Timeout};
 use failure::{FailedTest, Failure};
 use joinery::JoinableIterator;
+use span::SourceMap;
 use std::{
     collections::BTreeSet,
-    default::default,
     fmt, fs,
     io::Write,
-    mem,
     path::{Path, PathBuf},
     process::{Command, ExitCode, Stdio},
     sync::{Arc, LazyLock, Mutex},
@@ -90,12 +89,9 @@ fn try_main() -> Result<(), ()> {
     println!("{}", section_separator());
     println!();
 
-    // @Task find an alternative to the Arcs (we know how many threads we use)
     let test_folder_entries = Arc::new(Mutex::new(
         walkdir::WalkDir::new(path::test_folder()).into_iter(),
     ));
-    let statistics: Arc<Mutex<TestSuiteStatistics>> = default();
-    let failed_tests: Arc<Mutex<Vec<_>>> = default();
     let number_test_threads = arguments.number_test_threads.into();
     let diff_view = arguments.diff_view;
     let arguments = arguments.into();
@@ -106,14 +102,13 @@ fn try_main() -> Result<(), ()> {
     let handles: Vec<_> = (0..number_test_threads)
         .map(|_| {
             let shared_entries = test_folder_entries.clone();
-            let shared_statistics = statistics.clone();
-            let shared_failures = failed_tests.clone();
 
             std::thread::spawn(move || {
                 let chunk_size = number_test_threads;
                 let mut entries = Vec::with_capacity(chunk_size);
                 let mut statistics = TestSuiteStatistics::default();
-                let mut failures = Vec::new();
+                let mut failed_tests = Vec::new();
+                let mut map = SourceMap::default();
 
                 loop {
                     {
@@ -137,44 +132,51 @@ fn try_main() -> Result<(), ()> {
                             &entry.unwrap(),
                             arguments,
                             &mut statistics,
-                            &mut failures,
+                            &mut failed_tests,
+                            &mut map,
                         );
                     }
-
-                    *shared_statistics.lock().unwrap() += &mem::take(&mut statistics);
-                    shared_failures.lock().unwrap().append(&mut failures);
                 }
+
+                (statistics, failed_tests, map)
             })
         })
         .collect();
 
-    handles
+    let thread_local_data: Vec<_> = handles
         .into_iter()
-        .for_each(|handle| handle.join().unwrap());
+        .map(|handle| handle.join().unwrap())
+        .collect();
 
     let duration = suite_time.elapsed();
-
-    let statistics = Arc::try_unwrap(statistics)
-        .unwrap_or_else(|_| unreachable!())
-        .into_inner()
-        .unwrap();
-
-    let failed_tests = Arc::try_unwrap(failed_tests)
-        .unwrap_or_else(|_| unreachable!())
-        .into_inner()
-        .unwrap();
-
+    let mut statistics = TestSuiteStatistics::default();
+    let mut failed_tests = Vec::new();
     let mut stdout = std::io::stdout().lock();
 
-    for failed_test in &failed_tests {
-        failed_test.print(diff_view, &mut stdout).unwrap();
+    for (local_statistics, mut local_failed_tests, map) in thread_local_data {
+        if !local_failed_tests.is_empty() {
+            writeln!(stdout).unwrap();
+            writeln!(stdout, "{}", section_separator()).unwrap();
+            writeln!(stdout).unwrap();
+
+            for failed_test in &local_failed_tests {
+                failed_test.print(diff_view, &map, &mut stdout).unwrap();
+                writeln!(stdout).unwrap();
+            }
+        }
+
+        statistics += &local_statistics;
+        failed_tests.append(&mut local_failed_tests);
     }
 
     if !failed_tests.is_empty() {
-        let mut failed_tests = failed_tests;
-
         let invalid_tests: BTreeSet<_> = failed_tests
-            .drain_filter(|test| matches!(test.failure, Failure::InvalidTest { .. }))
+            .drain_filter(|test| {
+                matches!(
+                    test.failure,
+                    Failure::InvalidTest { .. } | Failure::InvalidConfiguration(_)
+                )
+            })
             .map(|test| test.path)
             .collect();
 
@@ -184,7 +186,6 @@ fn try_main() -> Result<(), ()> {
             .collect();
 
         if !failed_tests.is_empty() {
-            writeln!(stdout).unwrap();
             writeln!(stdout, "{}", section_header("FAILED TESTS")).unwrap();
             writeln!(stdout).unwrap();
 
@@ -259,7 +260,8 @@ fn handle_test_folder_entry(
     entry: &walkdir::DirEntry,
     arguments: SharedArguments,
     statistics: &mut TestSuiteStatistics,
-    failures: &mut Vec<FailedTest>,
+    failed_tests: &mut Vec<FailedTest>,
+    map: &mut SourceMap,
 ) {
     // @Task improve error handling situation (too verbose and repetitive)
 
@@ -273,11 +275,12 @@ fn handle_test_folder_entry(
     // disallow symbolic links for now
     if entry.file_type().is_symlink() {
         print_file_status(path, Status::Invalid, None);
-        failures.push(FailedTest::new(
+        failed_tests.push(FailedTest::new(
             path.to_owned(),
             Failure::InvalidTest {
                 message: "symbolic links are not allowed".into(),
                 note: None,
+                span: None,
             },
         ));
         statistics.invalid += 1;
@@ -301,11 +304,12 @@ fn handle_test_folder_entry(
             && !path.with_extension("metadata").exists()
         {
             print_file_status(path, Status::Invalid, None);
-            failures.push(FailedTest::new(
+            failed_tests.push(FailedTest::new(
                 path.to_owned(),
                 Failure::InvalidTest {
                     message: "the golden file does not have a corresponding test file".into(),
                     note: None,
+                    span: None,
                 },
             ));
             statistics.invalid += 1;
@@ -316,7 +320,7 @@ fn handle_test_folder_entry(
 
     let Ok(type_) = classify_test(path) else {
         print_file_status(path, Status::Invalid, None);
-        failures.push(FailedTest::new(
+        failed_tests.push(FailedTest::new(
             path.to_owned(),
             Failure::InvalidTest {
                 message: "the file extension is not supported".into(),
@@ -325,6 +329,7 @@ fn handle_test_folder_entry(
                     ‘metadata’, ‘lushui’, ‘stderr’ or ‘stdout’"
                         .into(),
                 ),
+                span: None,
             },
         ));
         statistics.invalid += 1;
@@ -342,11 +347,11 @@ fn handle_test_folder_entry(
     }
 
     // parse the test configuration
-    let test_source = fs::read_to_string(entry.path()).unwrap();
-    let configuration = match Configuration::parse(&test_source, type_) {
+    let file = map.load(path::shorten(path).into(), None).unwrap();
+    let configuration = match Configuration::parse(&map[file], type_, map) {
         Ok(configuration) => configuration,
         Err(error) => {
-            failures.push(FailedTest::new(
+            failed_tests.push(FailedTest::new(
                 path.to_owned(),
                 Failure::InvalidConfiguration(error),
             ));
@@ -359,7 +364,7 @@ fn handle_test_folder_entry(
     // skip auxiliary files (after optional `--inspect` validation)
     if let TestTag::Auxiliary { users } = configuration.tag {
         if arguments.inspecting == Inspecting::Yes {
-            let result = validate_auxiliary_file(&users, path, failures);
+            let result = validate_auxiliary_file(&users, path, failed_tests);
 
             if result.is_err() {
                 print_file_status(path, Status::Invalid, None);
@@ -391,7 +396,7 @@ fn handle_test_folder_entry(
     const TIMEOUT_EXIT_STATUS: i32 = 124;
 
     if let Some(TIMEOUT_EXIT_STATUS) = output.status.code() {
-        failures.push(FailedTest::new(
+        failed_tests.push(FailedTest::new(
             path.to_owned(),
             Failure::Timeout {
                 global: arguments.timeout,
@@ -405,7 +410,7 @@ fn handle_test_folder_entry(
     } else {
         match (configuration.tag, output.status.success()) {
             (TestTag::Pass { .. }, false) | (TestTag::Fail { .. }, true) => {
-                failures.push(FailedTest::new(
+                failed_tests.push(FailedTest::new(
                     path.to_owned(),
                     Failure::UnexpectedExitStatus(output.status),
                 ));
@@ -417,28 +422,28 @@ fn handle_test_folder_entry(
     }
 
     let mut gilded = match check_against_golden_file(
-        &entry.path().with_extension("stdout"),
+        &path.with_extension("stdout"),
         output.stdout,
         Stream::Stdout,
         arguments.gilding,
     ) {
         Ok(gilded) => gilded,
         Err(error) => {
-            failures.push(FailedTest::new(path.to_owned(), error));
+            failed_tests.push(FailedTest::new(path.to_owned(), error));
             failed = true;
             false
         }
     };
 
     gilded |= match check_against_golden_file(
-        &entry.path().with_extension("stderr"),
+        &path.with_extension("stderr"),
         output.stderr,
         Stream::Stderr,
         arguments.gilding,
     ) {
         Ok(gilded) => gilded,
         Err(error) => {
-            failures.push(FailedTest::new(path.to_owned(), error));
+            failed_tests.push(FailedTest::new(path.to_owned(), error));
             failed = true;
             false
         }
@@ -546,12 +551,15 @@ fn validate_auxiliary_file(
     path: &Path,
     failures: &mut Vec<FailedTest>,
 ) -> Result<(), ()> {
+    // @Beacon @Task make the list of users compulsively non-empty in
+    //               crate::configuration
     if users.is_empty() {
         failures.push(FailedTest::new(
             path.to_owned(),
             Failure::InvalidTest {
                 message: "the auxiliary file does not declare its users".into(),
                 note: None,
+                span: None,
             },
         ));
         return Err(());
@@ -589,6 +597,8 @@ fn validate_auxiliary_file(
                 )
                 .into(),
                 note: None,
+                // @Task actually point to the undefined user
+                span: None,
             },
         ));
 
