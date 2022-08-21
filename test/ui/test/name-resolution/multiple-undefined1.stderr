@@ -3,28 +3,24 @@ error[E021]: the binding ‘Nothing’ is not defined in module `topmost.alpha`
   │
 3 │ use alpha.Nothing
   │           ═══════
-  │
 
 error[E021]: the binding ‘Air’ is not defined in the root module
   ┌─ ${TEST_FOLDER}/name-resolution/multiple-undefined1.lushui:6:24
   │
 6 │     Thin: Type = super.Air
   │                        ═══
-  │
 
 error[E021]: the binding ‘Air’ is not defined in the root module
   ┌─ ${TEST_FOLDER}/name-resolution/multiple-undefined1.lushui:7:15
   │
 7 │     use super.Air
   │               ═══
-  │
 
 error[E021]: the binding ‘empty’ is not defined in the root module
   ┌─ ${TEST_FOLDER}/name-resolution/multiple-undefined1.lushui:8:17
   │
 8 │     use topmost.empty as full
   │                 ═════
-  │
 
 error[E021]: the binding ‘air’ is not defined in module `topmost.alpha`
    ┌─ ${TEST_FOLDER}/name-resolution/multiple-undefined1.lushui:11:19
@@ -39,14 +35,12 @@ error[E021]: the binding ‘Nothingness’ is not defined in module `topmost.alp
    │
 13 │ use alpha.(Nothingness beta.space)
    │            ═══════════
-   │
 
 error[E029]: binding ‘topmost.alpha.beta’ is private
    ┌─ ${TEST_FOLDER}/name-resolution/multiple-undefined1.lushui:13:24
    │
 13 │ use alpha.(Nothingness beta.space)
    │                        ════
-   │
 
 error: aborting due to 7 previous errors
 

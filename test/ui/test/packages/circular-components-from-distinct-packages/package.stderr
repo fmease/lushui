@@ -3,7 +3,6 @@ error: the components ‘right’ and ‘left’ are circular
   │
 9 │         dependencies: { left: { path: ".." } }
   │                         ════
-  │
 
 error: aborting due to previous error
 

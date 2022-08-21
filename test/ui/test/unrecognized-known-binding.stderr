@@ -8,7 +8,6 @@ error[E063]: ‘I-Am-Definitely-Unknown’ is not a known binding
   │
 4 │ data I-Am-Definitely-Unknown: Type of
   │      ═══════════════════════
-  │
 
 error: aborting due to previous error
 

@@ -3,7 +3,6 @@ error: the components ‘c’ and ‘a’ are circular
    │
 13 │             a: { path: "../a" },
    │             ═
-   │
 
 error: aborting due to previous error
 

@@ -8,7 +8,6 @@ error[E010]: found keyword ‘of’ but expected ‘->’
   │
 1 │ data X (A: Type): (m: M) of
   │                          ══ unexpected token
-  │
 
 error: aborting due to previous error
 

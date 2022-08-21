@@ -3,7 +3,6 @@ error: found ‘,’ but expected ‘:’
   │
 2 │     "    THIS",
   │               ═
-  │
 
 error: aborting due to previous error
 

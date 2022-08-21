@@ -8,7 +8,6 @@ error[E043]: the number literal is not a valid constructor for type ‘Void’
   │
 3 │ numv: Nat = Void.234
   │                  ═══ number literal may not construct that type
-  │
 
 error[E043]: the number literal is not a valid constructor for type ‘Text’
   ┌─ ${TEST_FOLDER}/name-resolution/invalid-literals.lushui:5:14
@@ -20,7 +19,6 @@ error[E043]: the number literal is not a valid constructor for type ‘Text’
   │
 5 │ numt: Text = Text.2001
   │                   ════ number literal may not construct that type
-  │
 
 error: binding ‘local’ is not a data type
   ┌─ ${TEST_FOLDER}/name-resolution/invalid-literals.lushui:8:18
@@ -32,7 +30,6 @@ error: binding ‘local’ is not a data type
   │
 8 │ local-lit: Nat = local.23
   │                        ── literal requires a data type as its namespace
-  │
 
 error[E007]: number literal ‘-1’ does not fit type ‘Nat’
    ┌─ ${TEST_FOLDER}/name-resolution/invalid-literals.lushui:10:29
@@ -68,7 +65,6 @@ error[E043]: the text literal is not a valid constructor for type ‘Nat’
    │
 15 │ tnat: Nat = Nat."0"
    │                 ═══ text literal may not construct that type
-   │
 
 error[E043]: the text literal is not a valid constructor for type ‘Void’
    ┌─ ${TEST_FOLDER}/name-resolution/invalid-literals.lushui:17:15
@@ -80,7 +76,6 @@ error[E043]: the text literal is not a valid constructor for type ‘Void’
    │
 17 │ tvoid: Void = Void."  "
    │                    ════ text literal may not construct that type
-   │
 
 error: binding ‘thing’ is not a data type
    ┌─ ${TEST_FOLDER}/name-resolution/invalid-literals.lushui:19:18
@@ -92,21 +87,18 @@ error: binding ‘thing’ is not a data type
    │
 19 │ mod-lit: Int32 = thing.0
    │                        ─ literal requires a data type as its namespace
-   │
 
 error[E021]: the binding ‘param’ is not defined in this scope
    ┌─ ${TEST_FOLDER}/name-resolution/invalid-literals.lushui:21:40
    │
 21 │ param-pass-lit (param: Int32): Int32 = param.""
    │                                        ═════
-   │
 
 error[E021]: the binding ‘undefined’ is not defined in this scope
    ┌─ ${TEST_FOLDER}/name-resolution/invalid-literals.lushui:23:15
    │
 23 │ undef: Void = undefined."SCARY"
    │               ═════════
-   │
 
 error: aborting due to 11 previous errors
 

@@ -5,7 +5,6 @@ error[E050]: the component ‘program-entry-not-a-function-but-a-module’ does 
   · ╔═╝
 3 │ ║ module main of
   │ ╚══════════════╝
-  │
 
 error: aborting due to previous error
 

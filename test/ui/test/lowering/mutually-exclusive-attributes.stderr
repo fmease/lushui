@@ -8,7 +8,6 @@ error[E014]: attributes ‘intrinsic’ and ‘known’ are mutually exclusive
   │
 3 │ @intrinsic @known
   │            ══════ conflicting attribute
-  │
 
 error: aborting due to previous error
 

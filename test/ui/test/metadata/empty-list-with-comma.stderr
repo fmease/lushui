@@ -3,7 +3,6 @@ error: found ‘,’ but expected value
   │
 1 │ [,]
   │  ═
-  │
 
 error: aborting due to previous error
 

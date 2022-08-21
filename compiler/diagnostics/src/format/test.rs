@@ -44,8 +44,7 @@ error: message
   ┌─ :2:2
   │
 2 │ beta
-  │  ═══
-  │",
+  │  ═══",
     );
 }
 
@@ -66,8 +65,7 @@ error
 1 │   alpha
   │ ╔═╝
 2 │ ║ beta
-  │ ╚══╝
-  │",
+  │ ╚══╝",
     );
 }
 
@@ -91,8 +89,7 @@ error[E000]: explanation
 2 │   beta
   · ╔═══╝
 4 │ ║ delta
-  │ ╚═════╝
-  │",
+  │ ╚═════╝",
     );
 }
 
@@ -121,8 +118,7 @@ warning: this is a sentence
     ┌─ :121:2
     │
 121 │ 这是一个句子
-    │   ══════
-    │",
+    │   ══════",
     );
 }
 
@@ -156,8 +152,7 @@ error[E001]: important
   ├─ :3:4
   │
 3 │ 2ndry
-  │    ──
-  │",
+  │    ──",
     );
 }
 
@@ -184,8 +179,7 @@ internal compiler error: placeholder
    ├─ :12:1
    │
 12 │ secondary
-   │ ─────────
-   │",
+   │ ─────────",
     );
 }
 
@@ -212,8 +206,7 @@ internal debugging message
   ├─ TWO:1:1
   │
 1 │ zyx
-  │ ──
-  │",
+  │ ──",
     );
 }
 
@@ -240,8 +233,7 @@ error: tag
   ├─ identity:1:5
   │
 1 │ sequence
-  │     ────
-  │",
+  │     ────",
     );
 }
 
@@ -284,8 +276,7 @@ error: labels
 5 │   epsilon
   │ ┌─────┘
 6 │ │ zeta
-  │ └─┘ message
-  │",
+  │ └─┘ message",
     );
 }
 
@@ -334,8 +325,7 @@ error: multi-line labels
 6 │ │ zeta
   │ └─┘ message
   │
-  │     bottom
-  │",
+  │     bottom",
     );
 }
 
@@ -384,8 +374,7 @@ error: multi-line labels
 6 │ │ zeta
   │ └─┘ message
   │
-  │     bottom
-  │",
+  │     bottom",
     );
 }
 
@@ -515,8 +504,7 @@ error
   ├─ :1:5
   │
 1 │ gamma
-  │     ═
-  │",
+  │     ═",
     );
 }
 
@@ -535,8 +523,7 @@ internal debugging message: nil
   ┌─ :1:3
   │
 1 │ sample
-  │  ⟫⟪
-  │",
+  │  ⟫⟪",
     );
 }
 
@@ -555,8 +542,7 @@ internal debugging message: nil
   ┌─ :1:1
   │
 1 │  sample
-  │ ⟫⟪
-  │",
+  │ ⟫⟪",
     );
 }
 
@@ -577,8 +563,7 @@ internal debugging message: nil
   ┌─ :1:3
   │
 1 │ sample
-  │  ⟩⟨
-  │",
+  │  ⟩⟨",
     );
 }
 
@@ -597,8 +582,7 @@ error
   ┌─ :1:20
   │
 1 │ This is a sentence.
-  │                   ⟫⟪ EOL
-  │",
+  │                   ⟫⟪ EOL",
     );
 }
 
@@ -617,8 +601,7 @@ error
   ┌─ :1:20
   │
 1 │ This is a sentence.
-  │                   ⟫⟪ EOI
-  │",
+  │                   ⟫⟪ EOI",
     );
 }
 
@@ -639,8 +622,7 @@ error
   ┌─ :1:21
   │
 1 │ This is a sentence.
-  │                   ⟫⟪ EOI
-  │",
+  │                   ⟫⟪ EOI",
     );
 }
 
@@ -665,8 +647,7 @@ warning: weird corner case
   ┌─ :1:1
   │
 1 │ This is a sentence.
-  │ ═══════════════════
-  │",
+  │ ═══════════════════",
     );
 }
 
@@ -689,8 +670,7 @@ internal compiler error
   ┌─ :1:1
   │
 1 │ EVERYTHING
-  │ ══════════
-  │",
+  │ ══════════",
     );
 }
 
@@ -711,8 +691,7 @@ error: this file has to contain something reasonable
   ┌─ empty.txt:1:1
   │
 1 │  
-  │ ⟫⟪
-  │",
+  │ ⟫⟪",
     );
 }
 
@@ -765,8 +744,7 @@ error: this file is not acceptable
   ├─ root.cfg:1:20
   │
 1 │ allow_plain_text = false
-  │                    ═════ because you set this
-  │",
+  │                    ═════ because you set this",
     );
 }
 
@@ -808,8 +786,7 @@ internal compiler error
 1 │   alpha
   │ ╔═╝
 2 │ ║ beta
-  │ ╚════╝
-  │",
+  │ ╚════╝",
     );
 }
 
@@ -831,7 +808,6 @@ internal compiler error
   ┌─ :1:1
   │
 1 │ alpha
-  │ ═════
-  │",
+  │ ═════",
     );
 }

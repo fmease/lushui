@@ -3,7 +3,6 @@ error[E010]: found keyword ‘case’ but expected word
   │
 3 │ lengthy-space-filler (case 0 of
   │                       ════ unexpected token
-  │
 
 error: aborting due to previous error
 

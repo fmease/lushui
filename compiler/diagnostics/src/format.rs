@@ -83,26 +83,24 @@ impl<'a> Formatter<'a> {
 
         if let Some(path) = &self.diagnostic.path {
             let path = path.to_string_lossy();
-            let is_final = highlights.is_empty() && self.diagnostic.subdiagnostics.is_empty();
+            let needs_downward_connection =
+                highlights.is_empty() && self.diagnostic.subdiagnostics.is_empty();
+
+            let connector = if needs_downward_connection {
+                Line::Horizontal
+            } else {
+                Line::DownAndRight
+            }
+            .single();
 
             writeln!(f)?;
             write!(
                 f,
                 "{padding} {}",
-                format!(
-                    "{}{} {path}",
-                    if is_final {
-                        Line::Horizontal
-                    } else {
-                        Line::DownAndRight
-                    }
-                    .single(),
-                    Line::Horizontal.single()
-                )
-                .color(palette::FRAME)
+                format!("{}{} {path}", connector, Line::Horizontal.single()).color(palette::FRAME)
             )?;
 
-            if !is_final {
+            if !needs_downward_connection {
                 writeln!(f)?;
                 write!(f, "{padding} {bar}")?;
             }
@@ -114,23 +112,25 @@ impl<'a> Formatter<'a> {
             return Ok(());
         };
 
-        for (highlight, lines) in highlights.iter().zip(rows_of_lines) {
+        let needs_downward_connection = !self.diagnostic.subdiagnostics.is_empty();
+        for (index, (highlight, lines)) in highlights.iter().zip(rows_of_lines).enumerate() {
             let path = lines.path.map(Path::to_string_lossy).unwrap_or_default();
             let line = lines.first.number;
             let column = lines.first.highlight.start;
+
+            let connector = if needs_upward_connection {
+                Line::VerticalAndRight
+            } else {
+                Line::DownAndRight
+            }
+            .single();
 
             writeln!(f)?;
             write!(
                 f,
                 "{padding} {}",
                 format!(
-                    "{}{} {path}:{line}:{column}",
-                    if needs_upward_connection {
-                        Line::VerticalAndRight
-                    } else {
-                        Line::DownAndRight
-                    }
-                    .single(),
+                    "{connector}{} {path}:{line}:{column}",
                     Line::Horizontal.single()
                 )
                 .color(palette::FRAME)
@@ -142,8 +142,10 @@ impl<'a> Formatter<'a> {
                     .format_multi_line_highlight(highlight, &lines, final_line, &bar, padding, f),
             }?;
 
-            writeln!(f)?;
-            write!(f, "{padding} {bar}")?;
+            if needs_downward_connection || index < highlights.len() - 1 {
+                writeln!(f)?;
+                write!(f, "{padding} {bar}")?;
+            }
 
             if !needs_upward_connection {
                 needs_upward_connection = true;

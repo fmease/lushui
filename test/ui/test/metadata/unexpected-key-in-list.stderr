@@ -3,7 +3,6 @@ error: found ‘:’ but expected ‘,’
   │
 1 │ list: [first: 0, second: 2]
   │             ═
-  │
 
 error: aborting due to previous error
 

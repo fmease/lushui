@@ -19,7 +19,6 @@ error[E021]: the binding ‘ANOTHER-RECORD’ is not defined in this scope
    │
 13 │ r2: ANOTHER-RECORD = am-i-a-record-too
    │     ══════════════
-   │
 
 error[E023]: module ‘am-i-a-record-too’ is used as a value
    ┌─ ${TEST_FOLDER}/name-resolution/modules-second-class.lushui:13:22

@@ -3,7 +3,6 @@ error[E022]: binding ‘Box’ is not a module
   │
 3 │ @(public Box)
   │          ═══
-  │
 
 error: aborting due to previous error
 

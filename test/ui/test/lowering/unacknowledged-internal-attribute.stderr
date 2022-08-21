@@ -3,21 +3,18 @@ error[E038]: the attribute ‘known’ is an internal feature
   │
 1 │ @known
   │ ══════
-  │
 
 error[E038]: the attribute ‘known’ is an internal feature
   ┌─ ${TEST_FOLDER}/lowering/unacknowledged-internal-attribute.lushui:5:9
   │
 5 │ @public @known
   │         ══════
-  │
 
 error[E038]: the attribute ‘intrinsic’ is an internal feature
    ┌─ ${TEST_FOLDER}/lowering/unacknowledged-internal-attribute.lushui:10:1
    │
 10 │ @intrinsic
    │ ══════════
-   │
 
 error: aborting due to 3 previous errors
 

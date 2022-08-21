@@ -8,7 +8,6 @@ error[E006]: multiple ‘doc-attributes’ attributes
   │
 9 │     @doc-attributes
   │     ═══════════════ duplicate or conflicting attribute
-  │
 
 error: aborting due to previous error
 

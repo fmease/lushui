@@ -3,7 +3,6 @@ error[E041]: the module header has to be the first declaration of the module
   │
 4 │ module
   │ ══════
-  │
 
 error: aborting due to previous error
 

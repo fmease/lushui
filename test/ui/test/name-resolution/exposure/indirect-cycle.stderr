@@ -3,7 +3,6 @@ error: exposure reach ‘topmost.component’ is circular
   │
 2 │ @(public component) data Center: Type of
   │          ═════════
-  │
 
 error: aborting due to previous error
 

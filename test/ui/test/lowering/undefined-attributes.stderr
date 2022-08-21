@@ -3,21 +3,18 @@ error[E011]: the attribute ‘one-can-only-dream’ is not defined
   │
 1 │ @one-can-only-dream
   │  ══════════════════
-  │
 
 error[E011]: the attribute ‘eliminate’ is not defined
   ┌─ ${TEST_FOLDER}/lowering/undefined-attributes.lushui:4:9
   │
 4 │     T: @eliminate Type = @(elaborated attempt) 0
   │         ═════════
-  │
 
 error[E011]: the attribute ‘elaborated’ is not defined
   ┌─ ${TEST_FOLDER}/lowering/undefined-attributes.lushui:4:28
   │
 4 │     T: @eliminate Type = @(elaborated attempt) 0
   │                            ══════════
-  │
 
 error: aborting due to 3 previous errors
 

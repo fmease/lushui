@@ -3,21 +3,18 @@ error[E022]: binding ‘Void’ is not a module
   │
 1 │ @(public Void) data Empty: Type of
   │          ════
-  │
 
 error[E021]: the binding ‘xxx’ is not defined in this scope
   ┌─ ${TEST_FOLDER}/name-resolution/exposure/reach-not-a-module.lushui:6:18
   │
 6 │ imposter: Hunk = xxx ;;; Hunk.hunk
   │                  ═══
-  │
 
 error[E022]: binding ‘imposter’ is not a module
   ┌─ ${TEST_FOLDER}/name-resolution/exposure/reach-not-a-module.lushui:8:10
   │
 8 │ @(public imposter) data Void: Type of
   │          ════════
-  │
 
 error: aborting due to 3 previous errors
 

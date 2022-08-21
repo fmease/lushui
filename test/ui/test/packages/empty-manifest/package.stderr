@@ -5,7 +5,6 @@ error[E802]: the record does not contain the entry ‘name’
   │ ╔═╝
 2 │ ║ 
   │ ╚╝
-  │
 
 error[E802]: the record does not contain the entry ‘version’
   ┌─ ${TEST_FOLDER}/packages/empty-manifest/package.metadata:1:1
@@ -14,7 +13,6 @@ error[E802]: the record does not contain the entry ‘version’
   │ ╔═╝
 2 │ ║ 
   │ ╚╝
-  │
 
 error: aborting due to 2 previous errors
 

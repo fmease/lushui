@@ -8,21 +8,18 @@ error[E803]: the entry ‘hey’ is defined multiple times
   │
 4 │ hey: "it's me again",
   │ ═══ redefinition
-  │
 
 error: found ‘,’ but expected record key
   ┌─ ${TEST_FOLDER}/packages/syntactically-invalid-manifests/duplicate-entries/package.metadata:6:9
   │
 6 │ more: { , "
   │         ═
-  │
 
 error: unterminated text
   ┌─ ${TEST_FOLDER}/packages/syntactically-invalid-manifests/duplicate-entries/package.metadata:6:11
   │
 6 │ more: { , "
   │           ═
-  │
 
 error: aborting due to 3 previous errors
 

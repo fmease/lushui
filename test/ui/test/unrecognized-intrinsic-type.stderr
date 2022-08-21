@@ -8,7 +8,6 @@ error[E061]: ‘I-Definitely-Do-Not-Exist’ is not an intrinsic type
   │
 7 │ data I-Definitely-Do-Not-Exist: Type
   │      ═════════════════════════
-  │
 
 error: aborting due to previous error
 

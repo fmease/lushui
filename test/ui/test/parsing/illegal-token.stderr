@@ -3,21 +3,18 @@ error: found illegal character U+95F4 ‘间’
   │
 1 │ data System 间: 时
   │             ══ unexpected token
-  │
 
 error: found illegal character U+65F6 ‘时’
   ┌─ ${TEST_FOLDER}/parsing/illegal-token.lushui:1:16
   │
 1 │ data System 间: 时
   │                 ══ unexpected token
-  │
 
 error[E010]: found line break but expected expression
   ┌─ ${TEST_FOLDER}/parsing/illegal-token.lushui:1:17
   │
 1 │ data System 间: 时
   │                  ⟫⟪ unexpected token
-  │
 
 error: aborting due to 3 previous errors
 

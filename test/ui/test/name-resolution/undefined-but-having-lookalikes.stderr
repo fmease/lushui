@@ -11,21 +11,18 @@ error[E021]: the binding ‘Pathway’ is not defined in this scope
    │
 10 │ P: Type = Pathway
    │           ═══════
-   │
 
 error[E021]: the binding ‘kore’ is not defined in the root module
    ┌─ ${TEST_FOLDER}/name-resolution/undefined-but-having-lookalikes.lushui:13:14
    │
 13 │     a: super.kore.nat.Nat = tree-sinner ;;; @Bug "core" should be suggested for "kore"
    │              ════
-   │
 
 error[E021]: the binding ‘tree-sinner’ is not defined in this scope
    ┌─ ${TEST_FOLDER}/name-resolution/undefined-but-having-lookalikes.lushui:13:29
    │
 13 │     a: super.kore.nat.Nat = tree-sinner ;;; @Bug "core" should be suggested for "kore"
    │                             ═══════════
-   │
 
 error[E021]: the binding ‘bet’ is not defined in this scope
    ┌─ ${TEST_FOLDER}/name-resolution/undefined-but-having-lookalikes.lushui:17:57
@@ -40,7 +37,6 @@ error[E021]: the binding ‘identiti’ is not defined in module `extern.core`
    │
 20 │     core.identiti gamha_blocker
    │          ════════
-   │
 
 error[E021]: the binding ‘gamha_blocker’ is not defined in this scope
    ┌─ ${TEST_FOLDER}/name-resolution/undefined-but-having-lookalikes.lushui:20:19

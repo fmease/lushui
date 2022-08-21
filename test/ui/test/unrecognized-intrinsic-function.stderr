@@ -8,7 +8,6 @@ error[E061]: ‘i-definitely-do-not-exist’ is not an intrinsic function
    │
 11 │ i-definitely-do-not-exist: I-Do-Exist
    │ ═════════════════════════
-   │
 
 error: aborting due to previous error
 

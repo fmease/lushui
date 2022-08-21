@@ -3,7 +3,6 @@ error: found identifier but expected end of input
   │
 1 │ this is not good
   │      ══
-  │
 
 error: aborting due to previous error
 

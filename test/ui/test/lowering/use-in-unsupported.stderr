@@ -5,7 +5,6 @@ error: use/in-expressions are not supported yet
   │ ╔═════╝
 3 │ ║     this-location
   │ ╚═════════════════╝
-  │
 
 error: aborting due to previous error
 

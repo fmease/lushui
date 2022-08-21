@@ -3,14 +3,12 @@ error[E044]: unbalanced round bracket
   │
 1 │ data X: (
   │         ═ has no matching closing round bracket
-  │
 
 error[E010]: found line break but expected expression
   ┌─ ${TEST_FOLDER}/parsing/unexpected-line-break.lushui:1:10
   │
 1 │ data X: (
   │         ⟫⟪ unexpected token
-  │
 
 error: aborting due to 2 previous errors
 
