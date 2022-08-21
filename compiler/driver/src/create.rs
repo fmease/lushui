@@ -5,7 +5,7 @@ use error::Result;
 use package::MANIFEST_FILE_NAME;
 use std::{fs, io, path::PathBuf};
 use token::Word;
-use utilities::{FormatWithPathExt, FILE_EXTENSION};
+use utilities::{FormatError, FILE_EXTENSION};
 
 const SOURCE_FOLDER_NAME: &str = "source";
 const LIBRARY_FILE_STEM: &str = "library";
@@ -19,7 +19,11 @@ pub(crate) fn create_package(
     if let Err(error) = create(name.clone(), options) {
         return Err(Diagnostic::error()
             .message(format!("could not create package ‘{name}’"))
-            .note(error.inner.format(error.path.as_deref()))
+            .with(|it| match &error.path {
+                Some(path) => it.path(path.clone()),
+                None => it,
+            })
+            .note(error.inner.format())
             .report(reporter));
     }
 

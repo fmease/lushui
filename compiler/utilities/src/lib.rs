@@ -226,22 +226,14 @@ impl AsAutoColoredChangeset for Changeset {
     }
 }
 
-pub trait FormatWithPathExt {
-    fn format(self, path: Option<&Path>) -> String;
+pub trait FormatError {
+    fn format(self) -> String;
 }
 
-impl FormatWithPathExt for std::io::Error {
-    fn format(self, path: Option<&Path>) -> String {
-        displayed(|f| {
-            // @Task significantly improve the output
-
-            if let Some(path) = path {
-                write!(f, "‘{}’: ", path.to_string_lossy())?;
-            }
-
-            write!(f, "{self}")
-        })
-        .to_string()
+impl FormatError for std::io::Error {
+    fn format(self) -> String {
+        // @Task custom output
+        self.to_string()
     }
 }
 

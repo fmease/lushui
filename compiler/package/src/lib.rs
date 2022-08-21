@@ -21,7 +21,7 @@ use std::{
 };
 use token::Word;
 use utilities::{
-    cycle::find_cycles_by_key, pluralize, ComponentIndex, Conjunction, FormatWithPathExt, HashMap,
+    cycle::find_cycles_by_key, pluralize, ComponentIndex, Conjunction, FormatError, HashMap,
     ListingExt, QuoteExt, FILE_EXTENSION,
 };
 
@@ -50,7 +50,8 @@ pub fn resolve_package(
             // @Task better message e.g. mention manifest
             return Err(Diagnostic::error()
                 .message("could not load the package")
-                .note(error.format(Some(path)))
+                .path(path.into())
+                .note(error.format())
                 .report(&reporter));
         }
     };
@@ -75,7 +76,8 @@ pub fn resolve_file(
             // @Task better message
             return Err(Diagnostic::error()
                 .message("could not load the file")
-                .note(error.format(Some(path)))
+                .path(path.into())
+                .note(error.format())
                 .report(&reporter));
         }
     };
@@ -136,7 +138,8 @@ impl BuildQueue {
                 return Err(Diagnostic::error()
                     // @Question code?
                     .message("could not load the package")
-                    .note(error.format(Some(&manifest_path)))
+                    .path(manifest_path)
+                    .note(error.format())
                     .report(&self.reporter));
             }
         };
@@ -299,7 +302,8 @@ impl BuildQueue {
                     return Err(Diagnostic::error()
                         // @Question code?
                         .message("could not load the package ‘core’")
-                        .note(error.format(Some(&core_manifest_path)))
+                        .path(core_manifest_path)
+                        .note(error.format())
                         .report(&self.reporter));
                 }
             };
@@ -535,11 +539,12 @@ impl BuildQueue {
                     .message(format!(
                         "could not load the dependency ‘{component_exonym}’",
                     ))
-                    .note(error.format(Some(&manifest_path)))
+                    .path(manifest_path)
                     .primary_span(match &declaration.bare.path {
                         Some(path) => path.span,
                         None => component_exonym.span,
                     })
+                    .note(error.format())
                     .report(&self.reporter)
                     .into());
             }

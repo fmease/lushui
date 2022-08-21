@@ -26,7 +26,7 @@ use std::{
         Arc, RwLock,
     },
 };
-use utilities::{displayed, FormatWithPathExt};
+use utilities::{displayed, FormatError};
 
 mod cli;
 mod create;
@@ -107,7 +107,7 @@ fn execute_command(
                             // @Task improve message
                             return Err(Diagnostic::error()
                                 .message("could not read the current folder")
-                                .note(error.format(None))
+                                .note(error.format())
                                 .report(&reporter));
                         }
                     };
@@ -289,8 +289,9 @@ fn build_component(
             // @Task improve message, add label
             Diagnostic::error()
                 .message(message)
+                .path(path.bare.into())
                 .primary_span(path)
-                .note(error.format(Some(path.bare)))
+                .note(error.format())
                 .report(session.reporter())
         })?;
 
@@ -482,7 +483,7 @@ fn build_component(
                     // I have no idea.
                     return Err(Diagnostic::error()
                         .message("could not open the generated documentation")
-                        .note(error.format(None))
+                        .note(error.format())
                         .report(session.reporter()));
                 }
             }
@@ -502,7 +503,8 @@ fn check_metadata_file(path: &Path, map: &Arc<RwLock<SourceMap>>, reporter: &Rep
         .map_err(|error| {
             Diagnostic::error()
                 .message("could not load the file")
-                .note(error.format(Some(path)))
+                .path(path.into())
+                .note(error.format())
                 .report(reporter)
         })?;
 
