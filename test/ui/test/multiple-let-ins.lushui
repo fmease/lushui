@@ -5,10 +5,8 @@ use extern.core.nat.(Nat + *)
 main: Nat =
     let alpha: Nat = 12 in
     let beta: Nat = 100233 in
-    ;;; @Bug this should also work but our current way of handling indentation an dedentation
-    ;;; is not flexible enough, it sucks!
-    ;;; let gamma: Nat =
-    ;;;     * alpha (+ beta 1) in
+    let gamma: Nat =
+        * alpha (+ beta 1) in
     let gamma: Nat =
         * alpha (+ beta 1)
     in
