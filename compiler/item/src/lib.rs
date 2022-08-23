@@ -6,7 +6,7 @@ use span::{Span, Spanning};
 use std::default::default;
 
 /// Something with a source location and attributes.
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Item<Bare, Attributes> {
     pub bare: Bare,
     pub span: Span,

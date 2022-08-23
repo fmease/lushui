@@ -1,0 +1,4 @@
+use topmost.text.Text
+
+@public @intrinsic
+panic: (A: Type) -> (message: Text) -> A

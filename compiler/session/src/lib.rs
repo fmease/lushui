@@ -353,6 +353,7 @@ impl InterfaceableBindingExt for interfaceable::Type {
         let intrinsic = |binding| session.look_up_intrinsic_type(binding, None);
         let known = |binding| session.look_up_known_binding(binding);
         match self {
+            Self::Void => known(Void),
             Self::Unit => known(Unit),
             Self::Bool => known(Bool),
             Self::Nat => intrinsic(Nat.into()),
@@ -403,9 +404,9 @@ impl InterfaceableBindingExt for interfaceable::Value {
                 known(binding, UnitUnit) => Self::Unit,
                 known(binding, BoolFalse) => Self::Bool(false),
                 known(binding, BoolTrue) => Self::Bool(true),
+                session.known_bindings().find(|&(_, binder)| &binding.0 == binder).is_some() => Self::Opaque(()),
                 else => return None,
             },
-
             Application(application0) => match &application0.callee.bare {
                 Binding(binding) if known(binding, OptionNone) => Self::Option {
                     value: None,
@@ -471,6 +472,7 @@ impl InterfaceableBindingExt for interfaceable::Value {
                 }
                 .into(),
             ),
+            Self::Opaque(()) => unreachable!(),
         })
     }
 }

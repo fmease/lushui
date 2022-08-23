@@ -1,6 +1,8 @@
 /// A known binding.
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]
 pub enum Binding {
+    /// The type `Void`.
+    Void,
     /// The type `Unit`.
     Unit,
     /// The value `Unit.unit`.
@@ -23,6 +25,7 @@ impl Binding {
     #[must_use]
     pub fn parse(namespace: Option<&str>, binder: &str) -> Option<Self> {
         Some(match (namespace, binder) {
+            (None, "Void") => Self::Void,
             (None, "Unit") => Self::Unit,
             (Some("Unit"), "unit") => Self::UnitUnit,
             (None, "Bool") => Self::Bool,
@@ -37,6 +40,7 @@ impl Binding {
 
     pub const fn path(self) -> &'static str {
         match self {
+            Self::Void => "Void",
             Self::Unit => "Unit",
             Self::UnitUnit => "Unit.unit",
             Self::Bool => "Bool",

@@ -4,6 +4,7 @@ use utilities::{Int, Nat};
 
 /// An “interfaceable” type (i.e. an intrinsic or known type).
 pub enum Type {
+    Void,
     Unit,
     Bool,
     Nat,
@@ -35,6 +36,7 @@ pub enum Value {
         index: usize,
         arguments: Vec<Value>,
     },
+    Opaque(()),
 }
 
 /// Rust types that can be mapped to interfaceable lushui types.
@@ -75,6 +77,16 @@ simple_value_correspondence! {
     Int => Int,
     i32 => Int32,
     i64 => Int64,
+}
+
+impl IntoValue for ! {
+    fn into_type() -> Type {
+        Type::Void
+    }
+
+    fn into_value(self) -> Value {
+        self
+    }
 }
 
 impl IntoValue for () {
