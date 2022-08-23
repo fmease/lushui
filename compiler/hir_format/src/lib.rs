@@ -243,6 +243,8 @@ fn write_lower_expression(
             }
             write!(f, ")")
         }
+        // @Temporary, @Task just write it out as an application of `panic`
+        Panic(panic) => write!(f, "?(panic {:?})", panic.message),
         Substituted(substituted) => {
             write!(f, "?(substituted ",)?;
             substituted.substitution.write(context, f)?;

@@ -118,7 +118,10 @@ pub enum BareExpression {
     Substituted(Box<Substituted>),
     IntrinsicApplication(Box<IntrinsicApplication>),
     Projection(Box<Projection>),
+    // @Task rename to Effect
     IO(Box<IO>),
+    // @Task make this an effect
+    Panic(Box<Panic>),
     Error,
 }
 
@@ -246,6 +249,18 @@ pub struct IO {
 impl From<IO> for BareExpression {
     fn from(io: IO) -> Self {
         Self::IO(Box::new(io))
+    }
+}
+
+#[derive(Clone, Debug)]
+// @Temporary
+pub struct Panic {
+    pub message: String,
+}
+
+impl From<Panic> for BareExpression {
+    fn from(panic: Panic) -> Self {
+        Self::Panic(Box::new(panic))
     }
 }
 

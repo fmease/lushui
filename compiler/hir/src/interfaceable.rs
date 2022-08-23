@@ -32,9 +32,14 @@ pub enum Value {
         type_: Type,
         value: Option<Box<Value>>,
     },
+    // @Task rename to Effect
     IO {
         index: usize,
         arguments: Vec<Value>,
+    },
+    // @Task make this an effect
+    Panic {
+        message: String,
     },
     Opaque(()),
 }

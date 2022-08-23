@@ -472,6 +472,9 @@ impl InterfaceableBindingExt for interfaceable::Value {
                 }
                 .into(),
             ),
+            Self::Panic { message } => {
+                Expression::new(default(), default(), hir::Panic { message }.into())
+            }
             Self::Opaque(()) => unreachable!(),
         })
     }

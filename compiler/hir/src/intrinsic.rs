@@ -165,7 +165,7 @@ pub fn functions() -> HashMap<Function, FunctionValue> {
     );
     intrinsics.insert(
         Panic,
-        pure!(|_type: Opaque, message: Text| panic!("{message}")),
+        pure!(|_type: Opaque, message: Text| Value::Panic { message }),
     );
 
     intrinsics

@@ -93,7 +93,7 @@ impl<'a> Interpreter<'a> {
             // @Task verify
             (Projection(_), _) => expression,
             // @Temporary
-            (IO(_), _) => expression,
+            (IO(_), _) | (Panic(_), _) => expression,
             (Application(application), substitution) => Expression::new(
                 expression.attributes,
                 expression.span,
@@ -415,6 +415,9 @@ impl<'a> Interpreter<'a> {
                 }
             }
             Type | Number(_) | Text(_) | IO(_) => expression,
+            // @Task smh add a backtrace here!
+            // @Task make sure that ?(panic _) is evaluated *eagerly* not lazily!
+            Panic(_) => expression,
             Projection(_) => todo!(),
             PiType(pi) => match context.form {
                 Form::Normal => {
@@ -616,34 +619,25 @@ impl<'a> Interpreter<'a> {
         binder: Identifier,
         arguments: Vec<Expression>,
     ) -> Result<Option<Expression>> {
-        eprintln!("apply_intrinsic_function binder={binder} args=[{arguments:?}]");
-
         match self.look_up(binder.declaration_index().unwrap()).kind {
             hir::EntityKind::IntrinsicFunction {
                 arity, function, ..
             } => Ok(if arguments.len() == arity {
-                eprintln!("  look_up -> [entity] intrinsic function");
-
                 let mut value_arguments = Vec::new();
 
                 // @Task tidy up with iterator combinators
                 for argument in arguments {
-                    dbg!(&argument);
-
                     if let Some(argument) =
                         interfaceable::Value::from_expression(&argument, self.session)
                     {
-                        eprintln!("interfaceable argument found, pushing ...");
                         value_arguments.push(argument);
                     } else {
-                        eprintln!("non-interfaceable argument found, aborting ...");
                         return Ok(None);
                     }
                 }
 
                 Some(function(value_arguments).into_expression(self.session)?)
             } else {
-                eprintln!("  look_up -> None");
                 None
             }),
             _ => unreachable!(),

@@ -294,6 +294,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
             }
             Substituted(_) => todo!(),
             IO(_) => todo!(),
+            Panic(_) => todo!(),
             Error => todo!(),
         }
     }
@@ -341,6 +342,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
             IntrinsicApplication(_) => todo!(),
             Projection(_) => todo!(),
             IO(_) => todo!(),
+            Panic(_) => todo!(),
             // @Question how should we handle that?
             Error => todo!(),
         };
@@ -407,6 +409,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
             IntrinsicApplication(_) => todo!(),
             Projection(_) => todo!(),
             IO(_) => todo!(),
+            Panic(_) => todo!(),
             Error => todo!(),
         }
     }
@@ -451,6 +454,7 @@ impl ExpressionExt for hir::Expression {
             Substituted(_) => todo!(),
             Projection(_) => todo!(),
             IO(_) => todo!(),
+            Panic(_) => todo!(),
             Error => todo!(),
         }
     }
