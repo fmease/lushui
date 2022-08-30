@@ -190,9 +190,7 @@ fn try_main() -> Result<(), ()> {
             writeln!(stdout).unwrap();
 
             for failed_test in failed_tests {
-                let path = path::shorten(&failed_test);
-                let path = path.to_string_lossy();
-                writeln!(stdout, "  * {}", path).unwrap();
+                writeln!(stdout, "  * {}", path::shorten(&failed_test).display()).unwrap();
             }
         }
 
@@ -202,9 +200,7 @@ fn try_main() -> Result<(), ()> {
             writeln!(stdout).unwrap();
 
             for invalid_test in invalid_tests {
-                let path = path::shorten(&invalid_test);
-                let path = path.to_string_lossy();
-                writeln!(stdout, "  * {}", path).unwrap();
+                writeln!(stdout, "  * {}", path::shorten(&invalid_test).display()).unwrap();
             }
         }
     }
@@ -470,7 +466,7 @@ pub(crate) fn print_file_status(path: &Path, status: Status, duration: Option<Du
     write!(
         stdout,
         "  {:<padding$} {}",
-        path::shorten(path).to_string_lossy(),
+        path::shorten(path).display(),
         status
     )
     .unwrap();

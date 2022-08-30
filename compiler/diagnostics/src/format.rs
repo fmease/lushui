@@ -82,7 +82,6 @@ impl<'a> Formatter<'a> {
         let mut needs_upward_connection = false;
 
         if let Some(path) = &self.diagnostic.path {
-            let path = path.to_string_lossy();
             let needs_downward_connection =
                 highlights.is_empty() && self.diagnostic.subdiagnostics.is_empty();
 
@@ -97,7 +96,13 @@ impl<'a> Formatter<'a> {
             write!(
                 f,
                 "{padding} {}",
-                format!("{}{} {path}", connector, Line::Horizontal.single()).color(palette::FRAME)
+                format!(
+                    "{}{} {}",
+                    connector,
+                    Line::Horizontal.single(),
+                    path.display()
+                )
+                .color(palette::FRAME),
             )?;
 
             if !needs_downward_connection {

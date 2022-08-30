@@ -88,7 +88,7 @@ fn execute_command(
                         return Err(Diagnostic::error()
                             .message(format!(
                                 "the path ‘{}’ does not refer to a folder",
-                                path.to_string_lossy()
+                                path.display()
                             ))
                             .help(
                                 "consider running ‘lushui file <SUBCOMMAND> <PATH> [OPTIONS]’ \
@@ -135,7 +135,7 @@ fn execute_command(
                 return Err(Diagnostic::error()
                     .message(format!(
                         "the path ‘{}’ does not refer to a file",
-                        options.path.to_string_lossy()
+                        options.path.display()
                     ))
                     .help(
                         "consider running ‘lushui <SUBCOMMAND> <PATH> [OPTIONS]’ \
@@ -233,14 +233,14 @@ fn build_component(
             BuildMode::Document { .. } => "Documenting",
         };
         let label = label.green().bold();
-        let path = &component.path().bare.to_string_lossy();
         println!(
-            "   {label} {} ({path})",
+            "   {label} {} ({})",
             if session.in_goal_package(component.index()) {
                 format!("{}", component.name())
             } else {
                 component.name().to_string()
-            }
+            },
+            component.path().bare.display()
         );
     }
 
