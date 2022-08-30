@@ -39,7 +39,7 @@ pub(crate) trait SerializeExt {
 impl SerializeExt for Result<TokenStream2, Error> {
     fn serialize(self) -> TokenStream1 {
         self.map_err(Error::into_compile_error)
-            .into_ok_or_err()
+            .unwrap_or_else(std::convert::identity)
             .into()
     }
 }

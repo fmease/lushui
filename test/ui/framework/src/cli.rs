@@ -89,7 +89,7 @@ pub(crate) fn arguments() -> Result<Arguments, ()> {
 
                 Diagnostic::error()
                     .message("could not load the test file")
-                    .note(format!("‘{}’: {error}", path.to_string_lossy()))
+                    .note(format!("‘{}’: {error}", path.display()))
                     .report(&Reporter::stderr());
             }
         }

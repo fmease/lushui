@@ -1,4 +1,4 @@
-#![feature(result_into_ok_or_err, let_else)]
+#![feature(let_else)]
 
 use utility::{SerializeExt, TokenStream1};
 

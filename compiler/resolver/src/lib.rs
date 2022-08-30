@@ -8,7 +8,7 @@
 //! respectively.
 // @Task improve docs above!
 // @Task get rid of "register" terminology
-#![feature(default_free_fn, let_else)]
+#![feature(default_free_fn, let_chains, let_else)]
 
 use colored::Colorize;
 use diagnostics::{reporter::ErasedReportedError, Diagnostic, ErrorCode, LintCode};

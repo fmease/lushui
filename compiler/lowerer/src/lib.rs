@@ -21,14 +21,7 @@
 //! To be implemented:
 //!
 //! * apply attribute groups
-#![feature(
-    decl_macro,
-    default_free_fn,
-    slice_take,
-    label_break_value,
-    let_else,
-    min_specialization
-)]
+#![feature(decl_macro, default_free_fn, slice_take, let_else, min_specialization)]
 
 // @Task ungate named arguments but validate them in the resolver (and/or typer)
 
