@@ -1,7 +1,7 @@
 ;; The canonical empty type and related functions.
 module
 
-@public
+@public @known
 data Void: Type of
 
 ;;; @public

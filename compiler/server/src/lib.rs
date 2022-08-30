@@ -474,6 +474,7 @@ impl FindBinding for hir::Expression {
             IntrinsicApplication(_) => None, // @Task
             Projection(_) => None,           // @Task
             IO(_) => None,                   // @Task
+            Panic(_) => None,                // @Task
             Error => None,                   // @Task
         }
     }

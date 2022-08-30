@@ -768,6 +768,8 @@ expected type ‘_ -> _’
             IO(_) => self
                 .session
                 .look_up_intrinsic_type(intrinsic::Type::IO, Some(expression.span))?,
+            // @Task this should be of any type, it is should be a (flexible) inference variable
+            Panic(_) => todo!(),
             Error => expression,
         })
     }

@@ -93,7 +93,7 @@ impl<'a> Interpreter<'a> {
             // @Task verify
             (Projection(_), _) => expression,
             // @Temporary
-            (IO(_), _) => expression,
+            (IO(_), _) | (Panic(_), _) => expression,
             (Application(application), substitution) => Expression::new(
                 expression.attributes,
                 expression.span,
@@ -415,6 +415,9 @@ impl<'a> Interpreter<'a> {
                 }
             }
             Type | Number(_) | Text(_) | IO(_) => expression,
+            // @Task smh add a backtrace here!
+            // @Task make sure that ?(panic _) is evaluated *eagerly* not lazily!
+            Panic(_) => expression,
             Projection(_) => todo!(),
             PiType(pi) => match context.form {
                 Form::Normal => {

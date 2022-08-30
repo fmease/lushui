@@ -21,6 +21,7 @@ module
 @public module tuple
 @public module vector
 @public module ordering
+@public module panic
 
 @doc-reserved-identifiers
 module reserved

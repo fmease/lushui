@@ -1,5 +1,5 @@
 //! The high-level intermediate representation.
-#![feature(decl_macro, default_free_fn)]
+#![feature(decl_macro, default_free_fn, never_type, never_type_fallback)]
 
 use ast::Explicitness;
 pub use entity::{Entity, EntityKind};
@@ -104,7 +104,7 @@ impl From<Use> for BareDeclaration {
 
 pub type Expression = Item<BareExpression>;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum BareExpression {
     PiType(Box<PiType>),
     Application(Box<Application<Expression>>),
@@ -118,7 +118,10 @@ pub enum BareExpression {
     Substituted(Box<Substituted>),
     IntrinsicApplication(Box<IntrinsicApplication>),
     Projection(Box<Projection>),
+    // @Task rename to Effect
     IO(Box<IO>),
+    // @Task make this an effect
+    Panic(Box<Panic>),
     Error,
 }
 
@@ -128,7 +131,7 @@ impl PossiblyErroneous for BareExpression {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct PiType {
     pub explicitness: Explicitness,
     pub laziness: Option<Span>,
@@ -173,7 +176,7 @@ impl From<Binding> for BareExpression {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Lambda {
     pub parameter: Identifier,
     pub parameter_type_annotation: Option<Expression>,
@@ -189,7 +192,7 @@ impl From<Lambda> for BareExpression {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct CaseAnalysis {
     pub scrutinee: Expression,
     pub cases: Vec<Case>,
@@ -201,7 +204,7 @@ impl From<CaseAnalysis> for BareExpression {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Substituted {
     pub substitution: Substitution,
     pub expression: Expression,
@@ -213,13 +216,13 @@ impl From<Substituted> for BareExpression {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Substitution {
     Shift(usize),
     Use(Box<Substitution>, Expression),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct IntrinsicApplication {
     pub callee: Identifier,
     pub arguments: Vec<Expression>,
@@ -231,12 +234,12 @@ impl From<IntrinsicApplication> for BareExpression {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Projection {
     // @Task
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct IO {
     pub index: usize, // @Task IOIndex
     pub arguments: Vec<Expression>,
@@ -249,7 +252,19 @@ impl From<IO> for BareExpression {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
+// @Temporary
+pub struct Panic {
+    pub message: String,
+}
+
+impl From<Panic> for BareExpression {
+    fn from(panic: Panic) -> Self {
+        Self::Panic(Box::new(panic))
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct Case {
     pub pattern: Pattern,
     pub body: Expression,
@@ -257,7 +272,7 @@ pub struct Case {
 
 pub type Pattern = Item<BarePattern>;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[allow(clippy::box_collection)]
 pub enum BarePattern {
     Number(Box<Number>),
@@ -298,7 +313,7 @@ impl From<Binding> for BarePattern {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Binder(pub Identifier);
 
 impl From<Binder> for BarePattern {
@@ -313,17 +328,17 @@ impl From<Application<Pattern>> for BarePattern {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Binding(pub Identifier);
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Application<T> {
     pub callee: T,
     pub explicitness: Explicitness,
     pub argument: T,
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Number {
     Nat(Nat),
     Nat32(u32),
@@ -376,7 +391,7 @@ impl fmt::Display for Number {
     }
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Text {
     Text(String),
 }

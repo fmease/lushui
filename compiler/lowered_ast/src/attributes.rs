@@ -238,7 +238,7 @@ impl Targets {
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Debug)]
 pub struct Attributes(pub Vec<Attribute>);
 
 impl Attributes {
@@ -290,7 +290,7 @@ impl PossiblyErroneous for Attributes {
 
 pub type Attribute = Spanned<BareAttribute>;
 
-#[derive(Clone, PartialEq, Eq, Hash, Discriminant)]
+#[derive(Clone, PartialEq, Eq, Hash, Discriminant, Debug)]
 #[discriminant(name: AttributeName)]
 pub enum BareAttribute {
     /// Hide the constructors of a (public) data type.
@@ -754,7 +754,7 @@ data_queries! {
     Public: Public = BareAttribute::Public(reach) => reach,
 }
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 
 pub struct Deprecated {
     pub reason: Option<Atom>,
@@ -763,18 +763,18 @@ pub struct Deprecated {
     pub replacement: Option<Atom>,
 }
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct Public {
     pub reach: Option<ast::Path>,
 }
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct Unstable {
     pub feature: Feature,
     pub reason: String,
 }
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum Lint {}
 
 impl fmt::Display for Lint {
@@ -786,7 +786,7 @@ impl fmt::Display for Lint {
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum Version {}
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum Condition {}
 
 impl fmt::Display for Condition {
@@ -795,7 +795,7 @@ impl fmt::Display for Condition {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum Feature {}
 
 impl fmt::Display for Feature {

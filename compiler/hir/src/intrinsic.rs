@@ -105,6 +105,7 @@ pub enum Function {
     Concat,
     AddNat32,
     Print,
+    Panic,
 }
 
 impl fmt::Display for Function {
@@ -162,11 +163,16 @@ pub fn functions() -> HashMap<Function, FunctionValue> {
             arguments: vec![Value::Text(message)],
         }),
     );
+    intrinsics.insert(
+        Panic,
+        pure!(|_type: Opaque, message: Text| Value::Panic { message }),
+    );
 
     intrinsics
 }
 
 macro pure(|$( $var:ident: $variant:ident ),*| $body:expr ) {
+    #[allow(unreachable_code)]
     FunctionValue {
         arity: count!($( $var )*),
         function: |arguments| {

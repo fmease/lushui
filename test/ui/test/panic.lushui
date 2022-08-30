@@ -1,0 +1,32 @@
+use extern.core.(
+    void.Void
+    unit.Unit
+    bool.if
+    nat.(Nat self)
+    text.concat
+    panic.panic
+    )
+
+main: Unit =
+    indirection0 10
+
+indirection0 (number: Nat): Unit =
+    indirection1 (nat.+ number 8)
+
+indirection1 (number: Nat): Unit =
+    complain-about Unit number
+
+;;; main: Unit =
+;;;     check 35
+
+;;; check (number: Nat): Unit =
+;;;     if Unit (nat.>= number 5)
+;;;         (complain-about Unit number)
+;;;         Unit.unit
+
+complain-about (A: Type) (number: Nat): A =
+    panic A (concat
+        "the given number ‘"
+        (concat
+            (nat.display number)
+            "’ is bad in some way"))
