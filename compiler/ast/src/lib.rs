@@ -489,7 +489,7 @@ impl Path {
                 return Err(Diagnostic::error()
                     .code(ErrorCode::E026)
                     .message(format!("path ‘{}’ not allowed in this position", hanger))
-                    .primary_span(&hanger)
+                    .primary_span(hanger)
                     .help("consider moving this path to a separate use-declaration"));
             }
         }

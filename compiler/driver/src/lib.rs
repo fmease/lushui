@@ -475,6 +475,7 @@ fn build_component(
             }
 
             if options.open {
+                // @Task smh open in background and immediately disown the child process afterwards
                 if let Err(error) = open::that(&index_page_path) {
                     // Not sure if this should be a user error or an internal compiler error.
                     // There is no way of knowing the cause of the I/O error.

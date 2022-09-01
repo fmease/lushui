@@ -1,7 +1,7 @@
-use derivation::Discriminant;
-use error::{PossiblyErroneous, Result};
+use derivation::{Discriminant, Elements, FromStr, Str};
+use error::PossiblyErroneous;
 use span::{Span, Spanned, Spanning};
-use std::{fmt, str::FromStr};
+use std::fmt;
 use utilities::{condition, obtain, Atom};
 
 /// Something attributes can be ascribed to.
@@ -291,7 +291,13 @@ impl PossiblyErroneous for Attributes {
 pub type Attribute = Spanned<BareAttribute>;
 
 #[derive(Clone, PartialEq, Eq, Hash, Discriminant)]
-#[discriminant(name: AttributeName)]
+#[discriminant(
+    name:
+        #[derive(Elements, Str, FromStr)]
+        #[format(dash_case)]
+        #[str(to_str)]
+        AttributeName
+)]
 pub enum BareAttribute {
     /// Hide the constructors of a (public) data type.
     Abstract,
@@ -302,9 +308,7 @@ pub enum BareAttribute {
     /// ```text
     /// allow <0:lint:Path>
     /// ```
-    Allow {
-        lint: Lint,
-    },
+    Allow { lint: Lint },
     /// Deny a [lint](Lint).
     ///
     /// # Form
@@ -312,9 +316,7 @@ pub enum BareAttribute {
     /// ```text
     /// deny <0:lint:Path>
     /// ```
-    Deny {
-        lint: Lint,
-    },
+    Deny { lint: Lint },
     /// Deprecate a binding providing a reason.
     ///
     /// … and optionally a [version](Version) marking the start of the deprecation,
@@ -340,17 +342,7 @@ pub enum BareAttribute {
     /// ```text
     /// doc <0:content:Text-Literal>
     /// ```
-    Doc {
-        content: Atom,
-    },
-    DocAttribute {
-        name: Atom, // @Task make this an ast::Identifier/ast::Path
-    },
-    DocAttributes,
-    DocReservedIdentifier {
-        name: Atom, // @Task make this an ast::Identifier
-    },
-    DocReservedIdentifiers,
+    Doc { content: Atom },
     /// Forbid a [lint](Lint).
     ///
     /// # Form
@@ -358,9 +350,7 @@ pub enum BareAttribute {
     /// ```text
     /// forbid <0:lint:Path>
     /// ```
-    Forbid {
-        lint: Lint,
-    },
+    Forbid { lint: Lint },
     /// Make the inclusion of the attribute target dependent on a [condition](Condition).
     ///
     /// Aka conditional compilation.
@@ -371,9 +361,7 @@ pub enum BareAttribute {
     /// if <0:condition:Condition>
     /// ```
     #[allow(dead_code)]
-    If {
-        condition: Condition,
-    },
+    If { condition: Condition },
     /// Identify a binding as an intrinsic.
     Intrinsic,
     /// Exclude the attribute target from further processing.
@@ -394,9 +382,7 @@ pub enum BareAttribute {
     /// ```text
     /// location <0:path:Text-Literal>
     /// ```
-    Location {
-        path: Atom,
-    },
+    Location { path: Atom },
     /// Mark a data type binding to be likely expanded in the number of constructors.
     Moving,
     /// Make the binding part of the public API or at least visible in modules higher up.
@@ -417,9 +403,7 @@ pub enum BareAttribute {
     /// recursion-limit <0:depth:Number-Literal>
     /// ```
     // @Task define allowed range
-    RecursionLimit {
-        depth: u32,
-    },
+    RecursionLimit { depth: u32 },
     /// Force an expression to be evaluated at compile-time.
     Static,
     /// Output statistics about a declaration.
@@ -444,9 +428,7 @@ pub enum BareAttribute {
     /// ```text
     /// warn <0:lint:Path>
     /// ```
-    Warn {
-        lint: Lint,
-    },
+    Warn { lint: Lint },
 }
 
 impl BareAttribute {
@@ -461,9 +443,7 @@ impl BareAttribute {
             }
             Intrinsic => Targets::FUNCTION_DECLARATION | Targets::DATA_DECLARATION,
             Include => Targets::TEXT_LITERAL,
-            Known | Moving | Abstract | DocAttribute { .. } | DocReservedIdentifier { .. } => {
-                Targets::DATA_DECLARATION
-            }
+            Known | Moving | Abstract => Targets::DATA_DECLARATION,
             // @Task for constructors, smh add extra diagnostic note saying they are public automatically
             // @Update with `@transparent` implemented, suggest `@transparent` on the data decl
             Public { .. } => {
@@ -471,7 +451,7 @@ impl BareAttribute {
                     - Targets::CONSTRUCTOR_DECLARATION
                     - Targets::MODULE_HEADER_DECLARATION
             }
-            RecursionLimit { .. } | DocAttributes | DocReservedIdentifiers => {
+            RecursionLimit { .. } => {
                 Targets::MODULE_DECLARATION | Targets::MODULE_HEADER_DECLARATION
             }
             Location { .. } => Targets::OUT_OF_LINE_MODULE_DECLARATION,
@@ -502,16 +482,7 @@ impl BareAttribute {
     }
 
     pub const fn is_internal(&self) -> bool {
-        matches!(
-            self,
-            Self::Intrinsic
-                | Self::Known
-                | Self::DocAttribute { .. }
-                | Self::DocAttributes
-                | Self::DocReservedIdentifier { .. }
-                | Self::DocReservedIdentifiers
-                | Self::Statistics
-        )
+        self.name().is_internal()
     }
 
     pub const fn can_be_applied_multiple_times(&self) -> bool {
@@ -534,8 +505,6 @@ impl fmt::Display for BareAttribute {
 
         match self {
             Self::Abstract
-            | Self::DocAttributes
-            | Self::DocReservedIdentifiers
             | Self::Intrinsic
             | Self::Ignore
             | Self::Include
@@ -576,10 +545,6 @@ impl fmt::Display for BareAttribute {
                 }
             }
             Self::Doc { content } => write!(f, "({name} {content:?})"),
-            Self::DocAttribute { name: identifier } => write!(f, "({name} {identifier:?})"),
-            Self::DocReservedIdentifier { name: identifier } => {
-                write!(f, "({name} {identifier:?})")
-            }
             Self::If { condition } => write!(f, "({name} {condition})"),
             Self::Location { path } => write!(f, "({name} {path})"),
             Self::Public(public) => match &public.reach {
@@ -595,85 +560,8 @@ impl fmt::Display for BareAttribute {
 }
 
 impl AttributeName {
-    // @Task derive this with
-    // #[discriminant(
-    //     name:
-    //         #[derive(Display, FromStr)]
-    //         #[format(dash_case)]
-    //         AttributeName
-    // )]
-    // on `AttributeKind`
-    pub const fn to_str(self) -> &'static str {
-        match self {
-            Self::Abstract => "abstract",
-            Self::Allow => "allow",
-            Self::Deny => "deny",
-            Self::Deprecated => "deprecated",
-            Self::Doc => "doc",
-            Self::DocAttribute => "doc-attribute",
-            Self::DocAttributes => "doc-attributes",
-            Self::DocReservedIdentifier => "doc-reserved-identifier",
-            Self::DocReservedIdentifiers => "doc-reserved-identifiers",
-            Self::Forbid => "forbid",
-            Self::If => "if",
-            Self::Intrinsic => "intrinsic",
-            Self::Ignore => "ignore",
-            Self::Include => "include",
-            Self::Known => "known",
-            Self::Location => "location",
-            Self::Moving => "moving",
-            Self::Public => "public",
-            Self::RecursionLimit => "recursion-limit",
-            Self::Static => "static",
-            Self::Statistics => "statistics",
-            Self::Test => "test",
-            Self::Unsafe => "unsafe",
-            Self::Unstable => "unstable",
-            Self::Warn => "warn",
-        }
-    }
-}
-
-// @Task derive this with
-// #[discriminant(
-//     name:
-//         #[derive(Display, FromStr)]
-//         #[format(dash_case)]
-//         AttributeName
-// )]
-// on `AttributeKind`
-impl FromStr for AttributeName {
-    type Err = ();
-
-    fn from_str(input: &str) -> Result<Self, Self::Err> {
-        Ok(match input {
-            "abstract" => Self::Abstract,
-            "allow" => Self::Allow,
-            "deny" => Self::Deny,
-            "deprecated" => Self::Deprecated,
-            "doc" => Self::Doc,
-            "doc-attribute" => Self::DocAttribute,
-            "doc-attributes" => Self::DocAttributes,
-            "doc-reserved-identifier" => Self::DocReservedIdentifier,
-            "doc-reserved-identifiers" => Self::DocReservedIdentifiers,
-            "forbid" => Self::Forbid,
-            "intrinsic" => Self::Intrinsic,
-            "if" => Self::If,
-            "ignore" => Self::Ignore,
-            "include" => Self::Include,
-            "known" => Self::Known,
-            "location" => Self::Location,
-            "moving" => Self::Moving,
-            "public" => Self::Public,
-            "recursion-limit" => Self::RecursionLimit,
-            "static" => Self::Static,
-            "statistics" => Self::Statistics,
-            "test" => Self::Test,
-            "unsafe" => Self::Unsafe,
-            "unstable" => Self::Unstable,
-            "warn" => Self::Warn,
-            _ => return Err(()),
-        })
+    pub const fn is_internal(self) -> bool {
+        matches!(self, Self::Intrinsic | Self::Known | Self::Statistics)
     }
 }
 
@@ -748,8 +636,6 @@ macro data_queries($( $name:ident: $Output:ty = $pat:pat => $expr:expr ),+ $(,)?
 data_queries! {
     Deprecated: Deprecated = BareAttribute::Deprecated(deprecated) => deprecated,
     Doc: str = BareAttribute::Doc { content } => content,
-    DocAttribute: str = BareAttribute::DocAttribute { name } => name,
-    DocReservedIdentifier: str = BareAttribute::DocReservedIdentifier { name } => name,
     Location: str = BareAttribute::Location { path } => path,
     Public: Public = BareAttribute::Public(reach) => reach,
 }

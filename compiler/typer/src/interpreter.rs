@@ -50,246 +50,6 @@ impl<'a> Interpreter<'a> {
         Self { component, session }
     }
 
-    pub(crate) fn substitute_expression(
-        &self,
-        expression: Expression,
-        substitution: hir::Substitution,
-    ) -> Expression {
-        use hir::{BareExpression::*, Substitution::*};
-
-        #[allow(clippy::match_same_arms)] // @Temporary
-        match (&expression.bare, substitution) {
-            (Binding(binding), Shift(amount)) => hir::Expression::new(
-                expression.attributes,
-                expression.span,
-                hir::Binding(binding.0.clone().shift(amount)).into(),
-            ),
-            // @Beacon @Question @Bug
-            (Binding(binding), Use(substitution, expression)) => {
-                if binding.0.is_innermost() {
-                    self.substitute_expression(expression, Shift(0))
-                } else {
-                    {
-                        self.substitute_expression(
-                            hir::Expression::new(
-                                expression.attributes,
-                                expression.span,
-                                hir::Binding(binding.0.clone().unshift()).into(),
-                            ),
-                            *substitution,
-                        )
-                    }
-                }
-            }
-            // @Beacon @Question @Bug
-            (Substituted(substituted0), substituted1) => {
-                let expression = self.substitute_expression(
-                    substituted0.expression.clone(),
-                    substituted0.substitution.clone(),
-                );
-                self.substitute_expression(expression, substituted1)
-            }
-            (Type | Number(_) | Text(_), _) => expression,
-            // @Task verify
-            (Projection(_), _) => expression,
-            // @Temporary
-            (IO(_), _) => expression,
-            (Application(application), substitution) => Expression::new(
-                expression.attributes,
-                expression.span,
-                hir::Application {
-                    callee: Expression::new(
-                        default(),
-                        default(),
-                        hir::Substituted {
-                            expression: application.callee.clone(),
-                            substitution: substitution.clone(),
-                        }
-                        .into(),
-                    ),
-                    argument: Expression::new(
-                        default(),
-                        default(),
-                        hir::Substituted {
-                            expression: application.argument.clone(),
-                            substitution,
-                        }
-                        .into(),
-                    ),
-                    explicitness: application.explicitness,
-                }
-                .into(),
-            ),
-            (PiType(pi), substitution) => {
-                let domain = Expression::new(
-                    default(),
-                    default(),
-                    hir::Substituted {
-                        expression: pi.domain.clone(),
-                        substitution: substitution.clone(),
-                    }
-                    .into(),
-                );
-
-                let codomain = Expression::new(
-                    default(),
-                    default(),
-                    hir::Substituted {
-                        expression: pi.codomain.clone(),
-                        substitution: match &pi.parameter {
-                            Some(parameter) => {
-                                let binder = parameter.as_innermost();
-
-                                // @Question what about the attributes of the binder?
-                                Use(
-                                    Box::new(Shift(1).compose(substitution)),
-                                    binder.into_expression(),
-                                )
-                            }
-                            None => substitution,
-                        },
-                    }
-                    .into(),
-                );
-
-                Expression::new(
-                    expression.attributes,
-                    expression.span,
-                    hir::PiType {
-                        explicitness: pi.explicitness,
-                        laziness: pi.laziness,
-                        parameter: pi.parameter.clone(),
-                        domain,
-                        codomain,
-                    }
-                    .into(),
-                )
-            }
-            (Lambda(lambda), substitution) => {
-                let parameter_type_annotation =
-                    lambda.parameter_type_annotation.clone().map(|type_| {
-                        Expression::new(
-                            default(),
-                            default(),
-                            hir::Substituted {
-                                expression: type_,
-                                substitution: substitution.clone(),
-                            }
-                            .into(),
-                        )
-                    });
-
-                let body_type_annotation = lambda.body_type_annotation.clone().map(|type_| {
-                    Expression::new(
-                        default(),
-                        default(),
-                        hir::Substituted {
-                            expression: type_,
-                            substitution: {
-                                let binder = lambda.parameter.as_innermost();
-                                // @Question what about the attributes of the binder?
-                                Use(
-                                    Box::new(Shift(1).compose(substitution.clone())),
-                                    binder.into_expression(),
-                                )
-                            },
-                        }
-                        .into(),
-                    )
-                });
-
-                let body = Expression::new(
-                    default(),
-                    default(),
-                    hir::Substituted {
-                        expression: lambda.body.clone(),
-                        substitution: {
-                            let binder = lambda.parameter.as_innermost();
-
-                            // @Question what about the attributes of the binder?
-                            Use(
-                                Box::new(Shift(1).compose(substitution)),
-                                binder.into_expression(),
-                            )
-                        },
-                    }
-                    .into(),
-                );
-
-                Expression::new(
-                    expression.attributes,
-                    expression.span,
-                    hir::Lambda {
-                        parameter: lambda.parameter.clone(),
-                        parameter_type_annotation,
-                        body_type_annotation,
-                        body,
-                        explicitness: lambda.explicitness,
-                        laziness: lambda.laziness,
-                    }
-                    .into(),
-                )
-            }
-            (CaseAnalysis(analysis), substitution) => Expression::new(
-                expression.attributes,
-                expression.span,
-                hir::CaseAnalysis {
-                    cases: analysis
-                        .cases
-                        .iter()
-                        .map(|case| hir::Case {
-                            pattern: case.pattern.clone(),
-                            body: Expression::new(
-                                default(),
-                                default(),
-                                hir::Substituted {
-                                    expression: case.body.clone(),
-                                    substitution: substitution.clone(),
-                                }
-                                .into(),
-                            ),
-                        })
-                        .collect(),
-                    scrutinee: Expression::new(
-                        default(),
-                        default(),
-                        hir::Substituted {
-                            expression: analysis.scrutinee.clone(),
-                            substitution,
-                        }
-                        .into(),
-                    ),
-                }
-                .into(),
-            ),
-            (UseIn, _) => todo!("substitute use/in"),
-            (IntrinsicApplication(application), substitution) => Expression::new(
-                expression.attributes,
-                expression.span,
-                hir::IntrinsicApplication {
-                    callee: application.callee.clone(),
-                    arguments: application
-                        .arguments
-                        .iter()
-                        .map(|argument| {
-                            Expression::new(
-                                argument.attributes.clone(),
-                                argument.span,
-                                hir::Substituted {
-                                    expression: argument.clone(),
-                                    substitution: substitution.clone(),
-                                }
-                                .into(),
-                            )
-                        })
-                        .collect(),
-                }
-                .into(),
-            ),
-            (Error, _) => PossiblyErroneous::error(),
-        }
-    }
-
     /// Try to evaluate an expression.
     ///
     /// This is beta-reduction I think.
@@ -482,10 +242,10 @@ impl<'a> Interpreter<'a> {
                 Form::WeakHeadNormal => expression,
             },
             Substituted(substituted) => {
-                let expression = self.substitute_expression(
-                    substituted.expression.clone(),
-                    substituted.substitution.clone(),
-                );
+                let expression = substituted
+                    .expression
+                    .clone()
+                    .substitute(substituted.substitution.clone());
                 self.evaluate_expression(expression, context)?
             }
             UseIn => todo!("evaluate use/in"),
@@ -677,8 +437,7 @@ impl<'a> Interpreter<'a> {
                             &scope.extend_with_parameter(pi0.domain.clone()),
                         )?,
                         (Some(_), None) => {
-                            let codomain1 =
-                                self.substitute_expression(pi1.codomain.clone(), Shift(1));
+                            let codomain1 = pi1.codomain.clone().substitute(Shift(1));
                             self.equals(
                                 &codomain1,
                                 &pi0.codomain,
@@ -686,8 +445,7 @@ impl<'a> Interpreter<'a> {
                             )?
                         }
                         (None, Some(_)) => {
-                            let codomain0 =
-                                self.substitute_expression(pi0.codomain.clone(), Shift(1));
+                            let codomain0 = pi0.codomain.clone().substitute(Shift(1));
                             self.equals(
                                 &pi1.codomain,
                                 &codomain0,
@@ -787,12 +545,247 @@ impl<'a> Interpreter<'a> {
     }
 }
 
-trait ComposeExt {
+pub(crate) trait Substitute {
+    fn substitute(self, substitution: hir::Substitution) -> Self;
+}
+
+impl Substitute for Expression {
+    fn substitute(self, substitution: hir::Substitution) -> Self {
+        use hir::{BareExpression::*, Substitution::*};
+
+        #[allow(clippy::match_same_arms)] // @Temporary
+        match (&self.bare, substitution) {
+            (Binding(binding), Shift(amount)) => hir::Expression::new(
+                self.attributes,
+                self.span,
+                hir::Binding(binding.0.clone().shift(amount)).into(),
+            ),
+            // @Beacon @Question @Bug
+            (Binding(binding), Use(substitution, expression)) => {
+                if binding.0.is_innermost() {
+                    expression.substitute(Shift(0))
+                } else {
+                    hir::Expression::new(
+                        expression.attributes,
+                        expression.span,
+                        hir::Binding(binding.0.clone().unshift()).into(),
+                    )
+                    .substitute(*substitution)
+                }
+            }
+            // @Beacon @Question @Bug
+            (Substituted(substituted0), substituted1) => substituted0
+                .expression
+                .clone()
+                .substitute(substituted0.substitution.clone())
+                .substitute(substituted1),
+            (Type | Number(_) | Text(_), _) => self,
+            // @Task verify
+            (Projection(_), _) => self,
+            // @Temporary
+            (IO(_), _) => self,
+            (Application(application), substitution) => Expression::new(
+                self.attributes,
+                self.span,
+                hir::Application {
+                    callee: Expression::new(
+                        default(),
+                        default(),
+                        hir::Substituted {
+                            expression: application.callee.clone(),
+                            substitution: substitution.clone(),
+                        }
+                        .into(),
+                    ),
+                    argument: Expression::new(
+                        default(),
+                        default(),
+                        hir::Substituted {
+                            expression: application.argument.clone(),
+                            substitution,
+                        }
+                        .into(),
+                    ),
+                    explicitness: application.explicitness,
+                }
+                .into(),
+            ),
+            (PiType(pi), substitution) => {
+                let domain = Expression::new(
+                    default(),
+                    default(),
+                    hir::Substituted {
+                        expression: pi.domain.clone(),
+                        substitution: substitution.clone(),
+                    }
+                    .into(),
+                );
+
+                let codomain = Expression::new(
+                    default(),
+                    default(),
+                    hir::Substituted {
+                        expression: pi.codomain.clone(),
+                        substitution: match &pi.parameter {
+                            Some(parameter) => {
+                                let binder = parameter.as_innermost();
+
+                                // @Question what about the attributes of the binder?
+                                Use(
+                                    Box::new(Shift(1).compose(substitution)),
+                                    binder.into_expression(),
+                                )
+                            }
+                            None => substitution,
+                        },
+                    }
+                    .into(),
+                );
+
+                Expression::new(
+                    self.attributes,
+                    self.span,
+                    hir::PiType {
+                        explicitness: pi.explicitness,
+                        laziness: pi.laziness,
+                        parameter: pi.parameter.clone(),
+                        domain,
+                        codomain,
+                    }
+                    .into(),
+                )
+            }
+            (Lambda(lambda), substitution) => {
+                let parameter_type_annotation =
+                    lambda.parameter_type_annotation.clone().map(|type_| {
+                        Expression::new(
+                            default(),
+                            default(),
+                            hir::Substituted {
+                                expression: type_,
+                                substitution: substitution.clone(),
+                            }
+                            .into(),
+                        )
+                    });
+
+                let body_type_annotation = lambda.body_type_annotation.clone().map(|type_| {
+                    Expression::new(
+                        default(),
+                        default(),
+                        hir::Substituted {
+                            expression: type_,
+                            substitution: {
+                                let binder = lambda.parameter.as_innermost();
+                                // @Question what about the attributes of the binder?
+                                Use(
+                                    Box::new(Shift(1).compose(substitution.clone())),
+                                    binder.into_expression(),
+                                )
+                            },
+                        }
+                        .into(),
+                    )
+                });
+
+                let body = Expression::new(
+                    default(),
+                    default(),
+                    hir::Substituted {
+                        expression: lambda.body.clone(),
+                        substitution: {
+                            let binder = lambda.parameter.as_innermost();
+
+                            // @Question what about the attributes of the binder?
+                            Use(
+                                Box::new(Shift(1).compose(substitution)),
+                                binder.into_expression(),
+                            )
+                        },
+                    }
+                    .into(),
+                );
+
+                Expression::new(
+                    self.attributes,
+                    self.span,
+                    hir::Lambda {
+                        parameter: lambda.parameter.clone(),
+                        parameter_type_annotation,
+                        body_type_annotation,
+                        body,
+                        explicitness: lambda.explicitness,
+                        laziness: lambda.laziness,
+                    }
+                    .into(),
+                )
+            }
+            (CaseAnalysis(analysis), substitution) => Expression::new(
+                self.attributes,
+                self.span,
+                hir::CaseAnalysis {
+                    cases: analysis
+                        .cases
+                        .iter()
+                        .map(|case| hir::Case {
+                            pattern: case.pattern.clone(),
+                            body: Expression::new(
+                                default(),
+                                default(),
+                                hir::Substituted {
+                                    expression: case.body.clone(),
+                                    substitution: substitution.clone(),
+                                }
+                                .into(),
+                            ),
+                        })
+                        .collect(),
+                    scrutinee: Expression::new(
+                        default(),
+                        default(),
+                        hir::Substituted {
+                            expression: analysis.scrutinee.clone(),
+                            substitution,
+                        }
+                        .into(),
+                    ),
+                }
+                .into(),
+            ),
+            (UseIn, _) => todo!("substitute use/in"),
+            (IntrinsicApplication(application), substitution) => Expression::new(
+                self.attributes,
+                self.span,
+                hir::IntrinsicApplication {
+                    callee: application.callee.clone(),
+                    arguments: application
+                        .arguments
+                        .iter()
+                        .map(|argument| {
+                            Expression::new(
+                                argument.attributes.clone(),
+                                argument.span,
+                                hir::Substituted {
+                                    expression: argument.clone(),
+                                    substitution: substitution.clone(),
+                                }
+                                .into(),
+                            )
+                        })
+                        .collect(),
+                }
+                .into(),
+            ),
+            (Error, _) => PossiblyErroneous::error(),
+        }
+    }
+}
+
+trait Compose {
     fn compose(self, other: Self) -> Self;
 }
 
-// @Note needs an extension trait
-impl ComposeExt for hir::Substitution {
+impl Compose for hir::Substitution {
     fn compose(self, other: Self) -> Self {
         use hir::Substitution::*;
 

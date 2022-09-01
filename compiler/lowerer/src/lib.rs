@@ -974,19 +974,6 @@ impl<'a> Lowerer<'a> {
 
             check_mutual_exclusivity(Intrinsic.or(Known), &attributes, self.session.reporter())
                 .stain(&mut self.health);
-            check_mutual_exclusivity(
-                DocAttributes.or(DocReservedIdentifiers),
-                &attributes,
-                self.session.reporter(),
-            )
-            .stain(&mut self.health);
-            check_mutual_exclusivity(
-                DocAttribute.or(DocReservedIdentifier),
-                &attributes,
-                self.session.reporter(),
-            )
-            .stain(&mut self.health);
-
             check_mutual_exclusivity(Moving.or(Abstract), &attributes, self.session.reporter())
                 .stain(&mut self.health);
         }
@@ -1315,18 +1302,6 @@ impl BareAttributeExt for lowered_ast::BareAttribute {
                         default()
                     },
                 },
-                DocAttribute => Self::DocAttribute {
-                    name: argument(arguments, attribute.span, session.reporter())?
-                        .text_literal(None, session.reporter())?
-                        .clone(),
-                },
-                DocAttributes => Self::DocAttributes,
-                DocReservedIdentifier => Self::DocReservedIdentifier {
-                    name: argument(arguments, attribute.span, session.reporter())?
-                        .text_literal(None, session.reporter())?
-                        .clone(),
-                },
-                DocReservedIdentifiers => Self::DocReservedIdentifiers,
                 Intrinsic => Self::Intrinsic,
                 If => {
                     return Err(AttributeParsingError::Erased(
@@ -1612,7 +1587,7 @@ fn invalid_unnamed_path_hanger_error(hanger: ast::Hanger) -> Diagnostic {
     Diagnostic::error()
         .code(ErrorCode::E025)
         .message(format!("path ‘{hanger}’ is not bound to an identifier"))
-        .primary_span(&hanger)
+        .primary_span(hanger)
         .note("a use-declaration has to introduce at least one new binder")
         .help("bind the path to a name with ‘as’")
 }

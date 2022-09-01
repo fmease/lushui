@@ -1,8 +1,11 @@
+;;; TEST ignore
 ;;; TEST compiler-args --no-core -Z internals
 
 ;;; we are using `@doc-attributes` right now since it's allowed on both modules and module headers, it's
 ;;; not "coexistable" (old terminology) and it's implemented.
 ;;; @Task use `@recursion-limit` (or anything non-internal) instead once it's implemented.
+;;; @Task un-ignore once we have proper attributes or test attributes we can use here in place of
+;;; @doc-attributes which has been removed
 
 @doc-attributes
 module attrs of

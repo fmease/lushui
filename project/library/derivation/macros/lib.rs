@@ -14,16 +14,16 @@ mod utility;
 /// Derive a fieldless counterpart to the given enum together with a mapping.
 ///
 /// One additionally has to specify the name of the fieldless type `TYPE` and
-/// the name of the mapping `MAPPING` via the helper attribute `#[discriminant(MAPPING: TYPE)]`.
-/// Currently, this macro unconditionally adds `#[derive(Clone, Copy, PartialEq, Eq, Debug)]`
-/// to the fieldless type. The mapping is defined as an inherent associated function on
-/// the original type.
+/// the name of the mapping `MAPPING` (an inherent associated function on the original type)
+/// via the helper attribute `#[discriminant(MAPPING: ATTRIBUTES TYPE)]`.
+/// `ATTRIBUTES` is a (possibly empty) list of attributes applied to the fieldless type.
+/// Note that `#[derive(Clone, Copy, PartialEq, Eq)]` are already automatically added.
 ///
 /// # Examples
 ///
 /// ```ignore
 /// #[derive(Discriminant)]
-/// #[discriminant(name: TokenName)]
+/// #[discriminant(name: #[derive(Debug)] TokenName)]
 /// pub(crate) enum Token {
 ///     Comment,
 ///     Identifier { source: String, raw: bool },
@@ -48,7 +48,8 @@ mod utility;
 ///     }
 /// }
 ///
-/// #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+/// #[derive(Clone, Copy, PartialEq, Eq)]
+/// #[derive(Debug)]
 /// pub(crate) enum TokenName {
 ///     Comment,
 ///     Identifier,
