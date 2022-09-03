@@ -1,16 +1,16 @@
 error[E032]: type mismatch
-  ┌─ ${TEST_FOLDER}/packages/erroneous-library/library.lushui:8:8
-  │
-8 │ Clash: Type = Set.type U
-  │        ──── expected due to this
-  │
-  ├─ ${TEST_FOLDER}/packages/erroneous-library/library.lushui:8:15
-  │
-8 │ Clash: Type = Set.type U
-  │               ══════════ has the wrong type
-  │
- note: expected type ‘Type’
-        but got type ‘topmost.Set’
+   ┌─ ${TEST_FOLDER}/packages/erroneous-library/library.lushui:10:8
+   │
+10 │ Clash: Type = Set.type U
+   │        ──── expected due to this
+   │
+   ├─ ${TEST_FOLDER}/packages/erroneous-library/library.lushui:10:15
+   │
+10 │ Clash: Type = Set.type U
+   │               ══════════ has the wrong type
+   │
+  note: expected type ‘extern.core.type.Type’
+         but got type ‘topmost.Set’
 
 error: aborting due to previous error
 

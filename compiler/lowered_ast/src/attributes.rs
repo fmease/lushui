@@ -65,7 +65,6 @@ impl Target for ast::Expression {
         match self.bare {
             PiTypeLiteral(_) => "a pi type literal",
             Application(_) => "an application",
-            TypeLiteral => "a type literal",
             NumberLiteral(_) => "a number literal expression",
             TextLiteral(_) => "a text literal expression",
             TypedHole(_) => "a typed hole",
@@ -87,7 +86,6 @@ impl Target for ast::Expression {
         match self.bare {
             PiTypeLiteral(_) => Targets::PI_TYPE_LITERAL_EXPRESSION,
             Application(_) => Targets::APPLICATION_EXPRESSION,
-            TypeLiteral => Targets::TYPE_LITERAL_EXPRESSION,
             NumberLiteral(_) => Targets::NUMBER_LITERAL_EXPRESSION,
             TextLiteral(_) => Targets::TEXT_LITERAL_EXPRESSION,
             TypedHole(_) => Targets::TYPED_HOLE_EXPRESSION,

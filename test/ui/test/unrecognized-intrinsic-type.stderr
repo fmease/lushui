@@ -6,7 +6,7 @@ error[E061]: ‘I-Definitely-Do-Not-Exist’ is not an intrinsic type
   │
   ├─ ${TEST_FOLDER}/unrecognized-intrinsic-type.lushui:7:6
   │
-7 │ data I-Definitely-Do-Not-Exist: Type
+7 │ data I-Definitely-Do-Not-Exist: extern.core.type.Type
   │      ═════════════════════════
 
 error: aborting due to previous error

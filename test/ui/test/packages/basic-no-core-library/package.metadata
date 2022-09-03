@@ -1,4 +1,5 @@
 # TEST pass check
+# TEST compiler-args -Z internals
 
 name: basic-no-core,
 version: "11.0.11",

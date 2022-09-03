@@ -1,2 +1,2 @@
 use Alpha as Beta
-@(public Beta) Alpha: Type = Type
+@(public Beta) Alpha: extern.core.type.Type = extern.core.type.Type

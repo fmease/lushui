@@ -1,6 +1,8 @@
 ;; The canonical unit type and related functions.
 module
 
+use topmost.type.Type
+
 @public @known
 data Unit: Type of
     unit: Unit

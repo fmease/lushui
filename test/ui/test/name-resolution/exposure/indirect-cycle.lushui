@@ -1,3 +1,3 @@
 @(public topmost) use Center as C
-@(public component) data Center: Type of
+@(public component) data Center: extern.core.type.Type of
 use topmost as component

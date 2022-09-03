@@ -1,6 +1,8 @@
 ;; The UTF-8-encoded text type and text manipulation functions.
 module
 
+use topmost.type.Type
+
 @public @intrinsic
 data Text: Type
 

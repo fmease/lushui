@@ -1,5 +1,7 @@
 ;; Natural numbers (unsigned integers) with 32-bit precision and related functions.
 module
 
+use topmost.type.Type
+
 @public @intrinsic
 data Nat32: Type

@@ -1,6 +1,9 @@
 ;;; TEST pass check
 ;;; TEST compiler-args -Z internals --no-core
 
+@intrinsic
+data Type: Type
+
 @known
 data Unit: Type of
     unit: Unit

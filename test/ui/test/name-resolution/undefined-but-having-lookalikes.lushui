@@ -1,7 +1,7 @@
 ;;; @Task test more branches
 
 use extern.core
-use core.nat.Nat
+use core.(type.Type nat.Nat)
 
 a: Nat = tree-sinner
 

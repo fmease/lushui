@@ -1,6 +1,8 @@
 ;; Error handling with the Result type.
 module
 
+use topmost.type.Type
+
 @public
 data Result (A: Type) (Error: Type): Type of
     failure (A: Type) (Error: Type): Error -> Result A Error

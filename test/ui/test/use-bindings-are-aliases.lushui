@@ -1,6 +1,10 @@
 ;;; TEST pass check
 
-use extern.core.(nat.(Nat (Nat as N)) list.List)
+use extern.core.(
+    type.Type
+    nat.(Nat (Nat as N))
+    list.List
+    )
 
 data Source: Type of
     source: N -> Source
@@ -30,7 +34,7 @@ module nonlinear of
 
     use Orig as Deriv
 
-    data Orig: Type of
+    data Orig: topmost.Type of
         orig: Orig
 
 ;;; [Description]

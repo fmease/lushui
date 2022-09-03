@@ -1,23 +1,24 @@
 ;;; TEST pass check
 
+use extern.core.type.Type
 use boundary.(Thing (Th as TH) inner)
 
 module boundary of
     @public
-    data Thing: Type of
+    data Thing: topmost.Type of
 
     @public
     use Thing as Th
 
     @public
-    T: Type = Th
+    T: topmost.Type = Th
 
-    Intermediate: Type = Type
+    Intermediate: topmost.Type = topmost.Type
 
     @public
     module inner of
         @public
-        D: Type = super.Intermediate
+        D: topmost.Type = super.Intermediate
 
 use boundary.(T Th inner.D)
 

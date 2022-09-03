@@ -355,9 +355,6 @@ impl Format for super::BareExpression {
         match self {
             Self::PiTypeLiteral(pi) => pi.format(f, indentation),
             Self::Application(application) => application.format(f, indentation),
-            Self::TypeLiteral => FormatStruct::new(f, indentation)
-                .name("Type-Literal")
-                .finish(),
             Self::NumberLiteral(number) => number.format(f, indentation),
             Self::TextLiteral(text) => text.format(f, indentation),
             Self::TypedHole(hole) => hole.format(f, indentation),

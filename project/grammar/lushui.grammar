@@ -95,7 +95,6 @@ Expression-Argument ::=
 Lower-Expression ::= Attribute* Bare-Lower-Expression
 Bare-Lower-Expression ::= Lowest-Expression ("::" Identifier)*
 Lowest-Expression ::=
-    | "Type"
     | #Number-Literal
     | #Text-Literal
     | Typed-Hole

@@ -13,3 +13,6 @@ concat:
     Text ->
     Text ->
     Text
+
+@intrinsic
+data Type: Type

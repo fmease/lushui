@@ -1,3 +1,5 @@
+use extern.core.type.Type
+
 what: on earth = this bogus line
 
 data Xoo (A: Non-Existent): Departed of
@@ -5,7 +7,7 @@ data Xoo (A: Non-Existent): Departed of
     x11: Lost-All-Along
 
 module realm of
-    Nothing: Type = Void
+    Nothing: topmost.Type = Void
 
 data Thing: Type of
     thing: Thing

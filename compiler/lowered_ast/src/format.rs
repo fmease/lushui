@@ -262,7 +262,6 @@ fn format_lower_expression(
     }
 
     match &expression.bare {
-        TypeLiteral => write!(f, "{Type}", Type = "Type".blue()),
         NumberLiteral(number) => write!(f, "{number}"),
         TextLiteral(text) => write!(f, "{text}"),
         Path(path) => write!(f, "{path}"),

@@ -1,5 +1,5 @@
 //! The definition of the textual representation of the [HIR](hir).
-#![feature(default_free_fn, associated_type_defaults, generic_associated_types)]
+#![feature(default_free_fn, associated_type_defaults)]
 
 use colored::Colorize;
 use joinery::JoinableIterator;
@@ -228,7 +228,6 @@ fn write_lower_expression(
     }
 
     match &expression.bare {
-        Type => write!(f, "Type"),
         Number(literal) => write!(f, "{literal}"),
         Text(literal) => write!(f, "{literal}"),
         Binding(binding) => write!(f, "{}", component.binder_to_path(&binding.0, session)),

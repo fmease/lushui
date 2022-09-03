@@ -440,7 +440,6 @@ impl FindBinding for hir::Expression {
                     None
                 }
             }
-            Type => None,      // @Task
             Number(_) => None, // @Task
             Text(_) => None,   // @Task
             Binding(binding) => {

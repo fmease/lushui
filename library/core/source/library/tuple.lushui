@@ -3,6 +3,7 @@ module
 
 ;;; @Question tuple backed by List or by Vector in core (or both implementations)?
 
+use topmost.type.Type
 use topmost.list.(List self)
 
 ;;; @Note backed by List

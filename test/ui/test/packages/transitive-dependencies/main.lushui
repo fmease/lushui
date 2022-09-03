@@ -1,6 +1,6 @@
 ;;; TEST auxiliary packages/transitive-dependencies
 
-use extern.core.(duple.Duple nat.(Nat ==) bool.Bool)
+use extern.core.(type.Type duple.Duple nat.(Nat ==) bool.Bool)
 use extern.alpha.(bet g-one jamma)
 use extern.gamma.((G as The-G) g1 gam)
 

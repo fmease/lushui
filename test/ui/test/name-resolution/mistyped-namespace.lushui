@@ -1,4 +1,4 @@
-use extern.core.list.List
+use extern.core.(type.Type list.List)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -7,14 +7,14 @@ use true-treasures-of-life.Friendship
 module the-true-treasures-of-life of
 
     @public
-    data Friendship: Type of
+    data Friendship: topmost.Type of
 
 true-treasures-of-life: List Type = List.empty Type
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 module shared-spaces of
-    @public data One: Type of
+    @public data One: topmost.Type of
 
 shared-spades: List Type = List.empty Type
 

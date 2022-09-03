@@ -1,6 +1,7 @@
 ;; Natural numbers and related functions.
 module
 
+use topmost.type.Type
 use topmost.(option.Option bool.Bool text.Text)
 
 @public @intrinsic

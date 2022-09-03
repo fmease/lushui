@@ -238,10 +238,7 @@ impl<'a> Typer<'a> {
                     interpreter::Context::new(&FunctionScope::Module),
                 )?;
 
-                self.assert_constructor_is_instance_of_type(
-                    type_.clone(),
-                    Expression::new(default(), default(), hir::BareExpression::Type),
-                )?;
+                self.assert_constructor_is_instance_of_type(type_.clone(), self.session.type_())?;
 
                 self.carry_out_registration(BindingRegistration {
                     attributes: registration.attributes,
@@ -466,14 +463,17 @@ expected type ‘{}’
         expression: Expression,
         scope: &FunctionScope<'_>,
     ) -> Result<Expression, Error> {
-        use hir::{BareExpression::*, Substitution::*};
+        use hir::{intrinsic::Type, BareExpression::*, Substitution::*};
 
         Ok(match expression.bare {
+            // @Task explanation why we need to special-case Type here!
+            Binding(binding) if self.session.is_intrinsic_type(Type::Type, &binding.0) => {
+                self.session.type_()
+            }
             Binding(binding) => self
                 .interpreter()
                 .look_up_type(&binding.0, scope)
                 .ok_or(OutOfOrderBinding)?,
-            Type => Expression::new(default(), default(), hir::BareExpression::Type),
             Number(number) => self
                 .session
                 .look_up_intrinsic_type(number.type_().into(), Some(expression.span))?,
@@ -495,7 +495,7 @@ expected type ‘{}’
                     self.it_is_a_type(literal.codomain.clone(), scope)?;
                 }
 
-                Expression::new(default(), default(), hir::BareExpression::Type)
+                self.session.type_()
             }
             Lambda(lambda) => {
                 let parameter_type: Expression = lambda
@@ -801,21 +801,13 @@ but got type ‘{}’",
     /// Assert that an expression is of type `Type`.
     fn it_is_a_type(&self, expression: Expression, scope: &FunctionScope<'_>) -> Result<(), Error> {
         let type_ = self.infer_type_of_expression(expression, scope)?;
-        self.it_is_actual(
-            Expression::new(default(), default(), hir::BareExpression::Type),
-            type_,
-            scope,
-        )
+        self.it_is_actual(self.session.type_(), type_, scope)
     }
 
     fn is_a_type(&self, expression: Expression, scope: &FunctionScope<'_>) -> Result<bool, Error> {
         let type_ = self.infer_type_of_expression(expression, scope)?;
-        self.is_actual(
-            Expression::new(default(), default(), hir::BareExpression::Type),
-            type_,
-            scope,
-        )
-        .map_err(Into::into)
+        self.is_actual(self.session.type_(), type_, scope)
+            .map_err(Into::into)
     }
 
     /// Assert that two expression are equal under evaluation/normalization.

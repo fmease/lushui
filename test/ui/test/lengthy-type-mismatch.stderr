@@ -1,18 +1,18 @@
 error[E032]: type mismatch
-   ┌─ ${DISTRIBUTED_LIBRARIES_FOLDER}/core/source/library/tuple.lushui:13:41
+   ┌─ ${DISTRIBUTED_LIBRARIES_FOLDER}/core/source/library/tuple.lushui:14:41
    │
-13 │     cons (A: Type) (L: List Type): A -> Tuple L -> Tuple (list.cons Type A L)
+14 │     cons (A: Type) (L: List Type): A -> Tuple L -> Tuple (list.cons Type A L)
    │                                         ─────── expected due to this
    │
-   ├─ ${TEST_FOLDER}/lengthy-type-mismatch.lushui:13:39
+   ├─ ${TEST_FOLDER}/lengthy-type-mismatch.lushui:20:39
    │
-13 │               (identity Unit Unit.unit) (Tuple.cons
+20 │               (identity Unit Unit.unit) (Tuple.cons
    · ╔═══════════════════════════════════════╝
-15 │ ║                     Tuple.empty))
+22 │ ║                     Tuple.empty))
    │ ╚════════════════════════════════╝ has the wrong type
    │
-  note: expected type ‘extern.core.tuple.Tuple (extern.core.list.List.cons Type Type (extern.core.list.List.empty Type))’
-         but got type ‘extern.core.tuple.Tuple (extern.core.list.List.cons Type extern.core.int.Int (extern.core.list.List.empty Type))’
+  note: expected type ‘extern.core.tuple.Tuple (extern.core.list.List.cons extern.core.type.Type extern.core.type.Type (extern.core.list.List.empty extern.core.type.Type))’
+         but got type ‘extern.core.tuple.Tuple (extern.core.list.List.cons extern.core.type.Type extern.core.int.Int (extern.core.list.List.empty extern.core.type.Type))’
 
 error: aborting due to previous error
 

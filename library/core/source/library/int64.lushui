@@ -1,5 +1,7 @@
 ;; (Signed) integers with 64-bit precision and related functions.
 module
 
+use topmost.type.Type
+
 @public @intrinsic
 data Int64: Type

@@ -10,4 +10,4 @@
 @intrinsic
 i-definitely-do-not-exist: I-Do-Exist
 
-data I-Do-Exist: Type of
+data I-Do-Exist: extern.core.type.Type of

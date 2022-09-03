@@ -591,11 +591,6 @@ impl<'a> Lowerer<'a> {
                     .into(),
                 )
             }
-            TypeLiteral => lowered_ast::Expression::new(
-                attributes,
-                expression.span,
-                lowered_ast::BareExpression::TypeLiteral,
-            ),
             // @Task avoid re-boxing!
             NumberLiteral(number) => {
                 lowered_ast::Expression::new(attributes, expression.span, (*number).into())

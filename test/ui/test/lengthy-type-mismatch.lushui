@@ -1,4 +1,11 @@
-use extern.core.(tuple.Tuple list.List int.Int unit.Unit function.identity)
+use extern.core.(
+    type.Type
+    tuple.Tuple
+    list.List
+    int.Int
+    unit.Unit
+    function.identity
+    )
 
 it: Tuple (
     List.cons Type Int

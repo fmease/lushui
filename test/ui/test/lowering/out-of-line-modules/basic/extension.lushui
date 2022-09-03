@@ -1,5 +1,8 @@
 ;;; TEST auxiliary lowering/out-of-line-modules/basic
 
+@intrinsic
+data Type: Type
+
 @public
 data Definition: Type of
 

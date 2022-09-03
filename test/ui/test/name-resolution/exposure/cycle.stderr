@@ -1,13 +1,13 @@
 error: exposure reach ‘topmost.Beta’ is circular
   ┌─ ${TEST_FOLDER}/name-resolution/exposure/cycle.lushui:2:10
   │
-2 │ @(public Beta) Alpha: Type = Type
+2 │ @(public Beta) Alpha: extern.core.type.Type = extern.core.type.Type
   │          ════
 
 error[E037]: exposure can only be restricted to ancestor modules
   ┌─ ${TEST_FOLDER}/name-resolution/exposure/cycle.lushui:2:10
   │
-2 │ @(public Beta) Alpha: Type = Type
+2 │ @(public Beta) Alpha: extern.core.type.Type = extern.core.type.Type
   │          ════
 
 error: aborting due to 2 previous errors

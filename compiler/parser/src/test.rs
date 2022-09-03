@@ -309,11 +309,7 @@ fn pi_type_literal_application_implicit_argument_domain() {
                         .into(),
                     ),
                 },
-                codomain: Expression::new(
-                    Attributes::new(),
-                    span(11, 15),
-                    ast::BareExpression::TypeLiteral,
-                ),
+                codomain: identifier("Type", span(11, 15)).into(),
             }
             .into(),
         )),
@@ -344,11 +340,7 @@ fn pi_type_literal_application_implicit_named_argument_domain() {
                         .into(),
                     ),
                 },
-                codomain: Expression::new(
-                    Attributes::new(),
-                    span(17, 21),
-                    ast::BareExpression::TypeLiteral,
-                ),
+                codomain: identifier("Type", span(17, 21)).into(),
             }
             .into(),
         )),
@@ -375,11 +367,7 @@ fn application_pi_type_literal_implicit_domain() {
                             binder: Some(identifier("n", span(12, 13))),
                             expression: identifier("Int", span(15, 18)).into(),
                         },
-                        codomain: Expression::new(
-                            Attributes::new(),
-                            span(23, 27),
-                            ast::BareExpression::TypeLiteral,
-                        ),
+                        codomain: identifier("Type", span(23, 27)).into(),
                     }
                     .into(),
                 ),
@@ -556,7 +544,7 @@ fn outer_and_inner_attributes() {
                 ),
             ],
             span(15, 28),
-            ast::BareExpression::TypeLiteral,
+            Path::from(identifier("Type", span(15, 28))).into(),
         )),
     );
 }

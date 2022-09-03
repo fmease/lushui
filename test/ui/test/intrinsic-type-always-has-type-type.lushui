@@ -1,0 +1,14 @@
+;;; TEST ignore
+;;; TEST compiler-args --no-core -Z internals
+
+@intrinsic
+data Type: Type -> Type ;;; @Bug disallow this
+
+;;; [Description]
+;;; Check that it is impossible for any no-core user to set the type of
+;;; Type to anything other than Type.
+;;;
+;;; Despite Type being defined via a data declaration that declares the
+;;; type of the intrinsic, the type of Type is still hardcoded inside of
+;;; the compiler to be Type to simplify the implementation and to prevent
+;;; the chance of introducing unsoundness.

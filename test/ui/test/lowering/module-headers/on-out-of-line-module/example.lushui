@@ -3,5 +3,5 @@
 ;; Top-level documentation
 module
 
-data Content: Type of
+data Content: extern.core.type.Type of
 

@@ -1,5 +1,7 @@
 ;;; TEST pass check
 
+use extern.core.type.Type
+
 @deprecated
 data Foo: Type of
 

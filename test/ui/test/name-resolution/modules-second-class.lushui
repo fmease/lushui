@@ -1,4 +1,4 @@
-RECORD: Type = Type
+RECORD: extern.core.type.Type = extern.core.type.Type
 
 r0: RECORD = am-i-a-record
 

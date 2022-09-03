@@ -1,6 +1,7 @@
 ;; Homogeneous lists with a fixed length and related functions.
 module
 
+use topmost.type.Type
 use topmost.nat.(Nat +)
 
 @public

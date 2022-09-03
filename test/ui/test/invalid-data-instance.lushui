@@ -1,3 +1,5 @@
+use extern.core.type.Type
+
 data Int: Type of
 
 data X: Type of

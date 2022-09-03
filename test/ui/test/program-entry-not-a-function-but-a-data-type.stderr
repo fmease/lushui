@@ -3,8 +3,8 @@ error[E050]: the component ‘program-entry-not-a-function-but-a-data-type’ do
   │
 1 │   ;;; TEST compiler-args --component-type=executable
   · ╔═╝
-3 │ ║ data main: Type of
-  │ ╚══════════════════╝
+3 │ ║ data main: extern.core.type.Type of
+  │ ╚═══════════════════════════════════╝
 
 error: aborting due to previous error
 

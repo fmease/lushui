@@ -1,6 +1,7 @@
 ;; The Lushui standard library.
 module
 
+@public module type
 @public module void
 @public module unit
 @public module bool

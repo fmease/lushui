@@ -189,6 +189,14 @@ impl BuildSession {
         self.intrinsic_types.get(&intrinsic)
     }
 
+    pub fn type_(&self) -> hir::Expression {
+        // @Task don't unwrap!
+        self.intrinsic_type(hir::intrinsic::Type::Type)
+            .cloned()
+            .unwrap()
+            .into_expression()
+    }
+
     // @Beacon @Task support paths!
     pub fn define_intrinsic_type(&mut self, binder: Identifier, attribute: Span) -> Result {
         let Ok(intrinsic) = binder.as_str().parse::<intrinsic::Type>() else {
@@ -236,6 +244,11 @@ impl BuildSession {
             arity: function.arity,
             function: function.function,
         })
+    }
+
+    pub fn is_intrinsic_type(&self, intrinsic: intrinsic::Type, binder: &hir::Identifier) -> bool {
+        self.intrinsic_type(intrinsic)
+            .map_or(false, |intrinsic| intrinsic == binder)
     }
 
     pub fn look_up_intrinsic_type(

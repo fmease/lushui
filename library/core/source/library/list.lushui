@@ -1,6 +1,8 @@
 ;; Homogeneous list types and related functions.
 module
 
+use topmost.type.Type
+
 @public
 data List (A: Type): Type of
     empty (A: Type): List A
