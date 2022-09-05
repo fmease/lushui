@@ -3,7 +3,7 @@ use quote::quote;
 use syn::{
     parse::{Nothing, Parse, ParseStream},
     token::Paren,
-    Error, Fields, Ident, Token,
+    Attribute, Error, Fields, Ident, Token,
 };
 
 // @Task allow configuring derives and visibility of the discriminant type
@@ -18,8 +18,9 @@ pub(crate) fn derive(input: TokenStream1) -> Result<TokenStream2, Error> {
     let type_ = input.ident;
 
     let DiscriminantAttribute {
-        discriminant_type,
-        discriminant_method,
+        type_: discriminant_type,
+        attributes: discriminant_attributes,
+        method: discriminant_method,
     } = HelperAttribute::obtain(&type_, &input.attrs)?;
 
     let discriminants = input.variants.iter().map(|variant| &variant.ident);
@@ -38,7 +39,8 @@ pub(crate) fn derive(input: TokenStream1) -> Result<TokenStream2, Error> {
     let (impl_generics, type_generics, where_clause) = input.generics.split_for_impl();
 
     Ok(quote! {
-        #[derive(Clone, Copy, PartialEq, Eq, Debug)] // @Task make this customizable
+        #[derive(Clone, Copy, PartialEq, Eq)]
+        #( #discriminant_attributes )*
         // @Task add const params to the discr type
         #visibility enum #discriminant_type {
             #( #discriminants ),*
@@ -55,8 +57,9 @@ pub(crate) fn derive(input: TokenStream1) -> Result<TokenStream2, Error> {
 }
 
 struct DiscriminantAttribute {
-    discriminant_method: Ident,
-    discriminant_type: Ident,
+    method: Ident,
+    attributes: Vec<Attribute>,
+    type_: Ident,
 }
 
 impl HelperAttribute for DiscriminantAttribute {
@@ -69,13 +72,15 @@ impl Parse for DiscriminantAttribute {
         let _: Paren = syn::parenthesized!(content in input);
         let method = content.parse()?;
         let _: Token![:] = content.parse()?;
+        let attributes = Attribute::parse_outer(&content)?;
         let type_ = content.parse()?;
         let _: Nothing = content.parse()?;
         let _: Nothing = input.parse()?;
 
         Ok(Self {
-            discriminant_method: method,
-            discriminant_type: type_,
+            method,
+            attributes,
+            type_,
         })
     }
 }

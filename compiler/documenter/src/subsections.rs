@@ -5,23 +5,48 @@ use super::{
     text_processor::TextProcessor,
     Options, LOREM_IPSUM,
 };
+use derivation::Elements;
 use lowered_ast::{attributes::Query as _, AttributeName};
-use std::{borrow::Cow, default::default};
+use std::borrow::Cow;
 use unicode_segmentation::UnicodeSegmentation;
 
 #[derive(Default)]
-pub(super) struct Subsections<'a> {
-    // re_exports: (),
-    pub(super) modules: Modules<'a>,
-    pub(super) types: Types<'a>,
-    pub(super) functions: Functions<'a>,
-    pub(super) attributes: Attributes<'a>,
-    pub(super) keywords: Keywords<'a>,
-    pub(super) reserved_punctuation: ReservedPunctuation<'a>,
+pub(crate) struct Subsections<'a> {
+    // pub(crate) uses: Uses<'a>, // @Task
+    pub(crate) modules: Modules<'a>,
+    pub(crate) types: Types<'a>,
+    pub(crate) functions: Functions<'a>,
+    pub(crate) attributes: Attributes,
+    pub(crate) keywords: Keywords<'a>,
+    pub(crate) reserved_punctuation: ReservedPunctuation<'a>,
 }
 
 impl<'a> Subsections<'a> {
-    pub(super) fn render_table_of_contents(&self, parent: &mut Element<'a>) {
+    pub(crate) fn reserved_identifiers() -> Self {
+        let mut subsections = Self::default();
+
+        subsections.keywords.0.extend(
+            crate::KEYWORDS
+                .into_iter()
+                .map(|keyword| Keyword { name: keyword }),
+        );
+
+        subsections.reserved_punctuation.0.extend(
+            crate::RESERVED_PUNCTUATION
+                .into_iter()
+                .map(|punctuation| SingleReservedPunctuation { name: punctuation }),
+        );
+
+        subsections
+    }
+
+    pub(crate) fn attributes() -> Self {
+        let mut subsections = Self::default();
+        subsections.attributes.0.extend(AttributeName::elements());
+        subsections
+    }
+
+    pub(crate) fn render_table_of_contents(&self, parent: &mut Element<'a>) {
         self.modules.render_table_of_contents(parent);
         self.types.render_table_of_contents(parent);
         self.functions.render_table_of_contents(parent);
@@ -34,7 +59,7 @@ impl<'a> Subsections<'a> {
         self,
         url_prefix: &str,
         parent: &mut Element<'a>,
-        text_processor: &mut TextProcessor<'_>,
+        text_processor: &TextProcessor<'_>,
         options: &Options,
     ) {
         self.modules.render(parent, options);
@@ -42,16 +67,13 @@ impl<'a> Subsections<'a> {
             .render(url_prefix, parent, text_processor, options);
         self.functions
             .render(url_prefix, parent, text_processor, options);
-        self.attributes
-            .render(url_prefix, parent, text_processor, options);
-        self.keywords
-            .render(url_prefix, parent, text_processor, options);
-        self.reserved_punctuation
-            .render(url_prefix, parent, text_processor, options);
+        self.attributes.render(parent);
+        self.keywords.render(parent);
+        self.reserved_punctuation.render(parent);
     }
 }
 
-pub(super) trait Subsection<'a> {
+pub(crate) trait Subsection<'a> {
     const ID: &'static str;
     const TITLE: &'static str;
 
@@ -91,13 +113,13 @@ pub(super) trait Subsection<'a> {
     }
 }
 
-pub(super) trait Subsubsection<'a> {
+pub(crate) trait Subsubsection<'a> {
     fn id(&self) -> String;
     fn title(&self) -> &'a str;
 }
 
 #[derive(Default)]
-pub(super) struct Modules<'a>(pub(super) Vec<Module<'a>>);
+pub(crate) struct Modules<'a>(pub(crate) Vec<Module<'a>>);
 
 impl<'a> Subsection<'a> for Modules<'a> {
     const ID: &'static str = "modules";
@@ -174,9 +196,9 @@ impl<'a> Modules<'a> {
     }
 }
 
-pub(super) struct Module<'a> {
-    pub(super) attributes: &'a lowered_ast::attributes::Attributes,
-    pub(super) binder: &'a str,
+pub(crate) struct Module<'a> {
+    pub(crate) attributes: &'a lowered_ast::attributes::Attributes,
+    pub(crate) binder: &'a str,
 }
 
 impl<'a> Subsubsection<'a> for Module<'a> {
@@ -190,7 +212,7 @@ impl<'a> Subsubsection<'a> for Module<'a> {
 }
 
 #[derive(Default)]
-pub(super) struct Types<'a>(pub(super) Vec<Type<'a>>);
+pub(crate) struct Types<'a>(pub(crate) Vec<Type<'a>>);
 
 impl<'a> Subsection<'a> for Types<'a> {
     const ID: &'static str = "types";
@@ -208,7 +230,7 @@ impl<'a> Types<'a> {
         self,
         url_prefix: &str,
         parent: &mut Element<'a>,
-        text_processor: &mut TextProcessor<'_>,
+        text_processor: &TextProcessor<'_>,
         options: &Options,
     ) {
         if self.0.is_empty() {
@@ -238,12 +260,7 @@ impl<'a> Types<'a> {
                 .child(": ")
                 .child(Node::verbatim(type_.type_));
 
-            if !type_
-                .attributes
-                .contains(AttributeName::DocAttribute.or(AttributeName::DocReservedIdentifier))
-            {
-                subheading.add_child(source_link());
-            }
+            subheading.add_child(source_link());
 
             section.add_child(subheading);
 
@@ -308,12 +325,12 @@ impl<'a> Types<'a> {
     }
 }
 
-pub(super) struct Type<'a> {
-    pub(super) attributes: &'a lowered_ast::attributes::Attributes,
-    pub(super) binder: &'a str,
+pub(crate) struct Type<'a> {
+    pub(crate) attributes: &'a lowered_ast::attributes::Attributes,
+    pub(crate) binder: &'a str,
     // @Question store a hir::Expression?
-    pub(super) type_: String,
-    pub(super) constructors: Vec<Constructor<'a>>,
+    pub(crate) type_: String,
+    pub(crate) constructors: Vec<Constructor<'a>>,
 }
 
 impl<'a> Subsubsection<'a> for Type<'a> {
@@ -326,15 +343,15 @@ impl<'a> Subsubsection<'a> for Type<'a> {
     }
 }
 
-pub(super) struct Constructor<'a> {
-    pub(super) attributes: &'a lowered_ast::attributes::Attributes,
-    pub(super) binder: &'a str,
+pub(crate) struct Constructor<'a> {
+    pub(crate) attributes: &'a lowered_ast::attributes::Attributes,
+    pub(crate) binder: &'a str,
     // @Question store a hir::Expression?
-    pub(super) type_: String,
+    pub(crate) type_: String,
 }
 
 #[derive(Default)]
-pub(super) struct Functions<'a>(pub(super) Vec<Function<'a>>);
+pub(crate) struct Functions<'a>(pub(crate) Vec<Function<'a>>);
 
 impl<'a> Subsection<'a> for Functions<'a> {
     const ID: &'static str = "functions";
@@ -352,7 +369,7 @@ impl<'a> Functions<'a> {
         self,
         url_prefix: &str,
         parent: &mut Element<'a>,
-        text_processor: &mut TextProcessor<'_>,
+        text_processor: &TextProcessor<'_>,
         options: &Options,
     ) {
         if self.0.is_empty() {
@@ -398,11 +415,11 @@ impl<'a> Functions<'a> {
     }
 }
 
-pub(super) struct Function<'a> {
-    pub(super) attributes: &'a lowered_ast::attributes::Attributes,
-    pub(super) binder: &'a str,
+pub(crate) struct Function<'a> {
+    pub(crate) attributes: &'a lowered_ast::attributes::Attributes,
+    pub(crate) binder: &'a str,
     // @Question store a hir::Expression?
-    pub(super) type_: String,
+    pub(crate) type_: String,
 }
 
 impl<'a> Subsubsection<'a> for Function<'a> {
@@ -416,7 +433,7 @@ impl<'a> Subsubsection<'a> for Function<'a> {
 }
 
 #[derive(Default)]
-pub(super) struct Keywords<'a>(pub(super) Vec<Keyword<'a>>);
+pub(crate) struct Keywords<'a>(pub(crate) Vec<Keyword<'a>>);
 
 impl<'a> Subsection<'a> for Keywords<'a> {
     const ID: &'static str = "keywords";
@@ -430,13 +447,7 @@ impl<'a> Subsection<'a> for Keywords<'a> {
 }
 
 impl<'a> Keywords<'a> {
-    fn render(
-        self,
-        url_prefix: &str,
-        parent: &mut Element<'a>,
-        text_processor: &mut TextProcessor<'_>,
-        options: &Options,
-    ) {
+    fn render(self, parent: &mut Element<'a>) {
         if self.0.is_empty() {
             return;
         }
@@ -459,21 +470,15 @@ impl<'a> Keywords<'a> {
                     ),
             );
 
-            render_declaration_attributes(
-                &default(),
-                url_prefix,
-                &mut section,
-                text_processor,
-                options,
-            );
+            // @Task include the documentation of each reserved punctuation here at compile-time
         }
 
         parent.add_child(section);
     }
 }
 
-pub(super) struct Keyword<'a> {
-    pub(super) name: &'a str,
+pub(crate) struct Keyword<'a> {
+    pub(crate) name: &'a str,
 }
 
 impl<'a> Subsubsection<'a> for Keyword<'a> {
@@ -487,7 +492,7 @@ impl<'a> Subsubsection<'a> for Keyword<'a> {
 }
 
 #[derive(Default)]
-pub(super) struct ReservedPunctuation<'a>(pub(super) Vec<SingleReservedPunctuation<'a>>);
+pub(crate) struct ReservedPunctuation<'a>(pub(crate) Vec<SingleReservedPunctuation<'a>>);
 
 impl<'a> Subsection<'a> for ReservedPunctuation<'a> {
     const ID: &'static str = "punctuation";
@@ -501,13 +506,7 @@ impl<'a> Subsection<'a> for ReservedPunctuation<'a> {
 }
 
 impl<'a> ReservedPunctuation<'a> {
-    fn render(
-        self,
-        url_prefix: &str,
-        parent: &mut Element<'a>,
-        text_processor: &mut TextProcessor<'_>,
-        options: &Options,
-    ) {
+    fn render(self, parent: &mut Element<'a>) {
         if self.0.is_empty() {
             return;
         }
@@ -530,21 +529,15 @@ impl<'a> ReservedPunctuation<'a> {
                     ),
             );
 
-            render_declaration_attributes(
-                &default(),
-                url_prefix,
-                &mut section,
-                text_processor,
-                options,
-            );
+            // @Task include the documentation of each reserved punctuation here at compile-time
         }
 
         parent.add_child(section);
     }
 }
 
-pub(super) struct SingleReservedPunctuation<'a> {
-    pub(super) name: &'a str,
+pub(crate) struct SingleReservedPunctuation<'a> {
+    pub(crate) name: &'a str,
 }
 
 impl<'a> Subsubsection<'a> for SingleReservedPunctuation<'a> {
@@ -558,27 +551,21 @@ impl<'a> Subsubsection<'a> for SingleReservedPunctuation<'a> {
 }
 
 #[derive(Default)]
-pub(super) struct Attributes<'a>(pub(super) Vec<Attribute<'a>>);
+pub(crate) struct Attributes(pub(crate) Vec<AttributeName>);
 
-impl<'a> Subsection<'a> for Attributes<'a> {
+impl<'a> Subsection<'a> for Attributes {
     const ID: &'static str = "attributes";
     const TITLE: &'static str = "Attributes";
 
-    type Subsubsection = Attribute<'a>;
+    type Subsubsection = AttributeName;
 
     fn subsections(&self) -> &[Self::Subsubsection] {
         &self.0
     }
 }
 
-impl<'a> Attributes<'a> {
-    pub(super) fn render(
-        self,
-        url_prefix: &str,
-        parent: &mut Element<'a>,
-        text_processor: &mut TextProcessor<'_>,
-        options: &Options,
-    ) {
+impl Attributes {
+    pub(crate) fn render(self, parent: &mut Element<'_>) {
         if self.0.is_empty() {
             return;
         }
@@ -597,34 +584,30 @@ impl<'a> Attributes<'a> {
                         Element::new("a")
                             .class("binder")
                             .attribute("href", format!("#{id}"))
-                            .child(attribute.name),
+                            .child(attribute.to_str()),
                     ),
             );
 
-            render_declaration_attributes(
-                &default(),
-                url_prefix,
-                &mut section,
-                text_processor,
-                options,
-            );
+            if attribute.is_internal() {
+                let mut labels = Element::new("div").class("labels");
+                labels.add_child(Element::new("div").class("internal").child("internal"));
+                section.add_child(labels);
+            }
+
+            // @Task include the documentation of each attribute here at compile-time
         }
 
         parent.add_child(section);
     }
 }
 
-pub(super) struct Attribute<'a> {
-    pub(super) name: &'a str,
-}
-
-impl<'a> Subsubsection<'a> for Attribute<'a> {
+impl<'a> Subsubsection<'a> for AttributeName {
     fn id(&self) -> String {
-        format!("attribute.{}", urlencoding::encode(self.name))
+        format!("attribute.{}", urlencoding::encode(self.to_str()))
     }
 
     fn title(&self) -> &'a str {
-        self.name
+        self.to_str()
     }
 }
 

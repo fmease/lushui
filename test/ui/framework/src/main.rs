@@ -67,6 +67,7 @@ fn try_main() -> Result<(), ()> {
         .args(["+nightly", "--color=always", "build", "--manifest-path"])
         .arg(path::compiler_manifest())
         .args(match arguments.compiler_build_mode {
+            #[allow(clippy::needless_borrow)] // false positive, maybe #9111
             CompilerBuildMode::Debug => &[],
             CompilerBuildMode::Release => &["--release"][..],
         })

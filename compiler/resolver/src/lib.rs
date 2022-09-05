@@ -492,7 +492,7 @@ impl<'a> ResolverMut<'a> {
                         .reobtain_resolved_identifier::<target::Module>(&submodule.binder, module)
                         .local(self.component)
                         .unwrap(),
-                    None => self.component.local_root(),
+                    None => self.component.root_local(),
                 };
 
                 let declarations = submodule

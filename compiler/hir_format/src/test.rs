@@ -41,7 +41,7 @@ trait ComponentExt {
 
 impl ComponentExt for Component {
     fn add(&mut self, name: &str, kind: EntityKind) -> Identifier {
-        self.add_below(name, kind, self.local_root())
+        self.add_below(name, kind, self.root_local())
     }
 
     fn add_below(

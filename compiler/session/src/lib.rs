@@ -627,12 +627,12 @@ impl Component {
 
     /// The root module / the component root.
     pub fn root(&self) -> DeclarationIndex {
-        self.local_root().global(self)
+        self.root_local().global(self)
     }
 
     /// The root module / the component root as a local index.
     #[allow(clippy::unused_self)] // leads to a more legible API
-    pub fn local_root(&self) -> LocalDeclarationIndex {
+    pub fn root_local(&self) -> LocalDeclarationIndex {
         LocalDeclarationIndex::new(0)
     }
 }

@@ -4,6 +4,7 @@ use error::Result;
 use resolver::resolve_path;
 use session::{BuildSession, Component};
 use std::{
+    cell::RefCell,
     default::default,
     fs::{self, File},
     io::{BufWriter, Error, ErrorKind, Read, Write},
@@ -20,7 +21,7 @@ use utilities::HashSet;
 
 pub(super) enum TextProcessor<'env> {
     None,
-    AsciiDoctor(Box<Asciidoctor<'env>>),
+    AsciiDoctor(Box<RefCell<Asciidoctor<'env>>>),
 }
 
 impl<'scope> TextProcessor<'scope> {
@@ -31,34 +32,37 @@ impl<'scope> TextProcessor<'scope> {
         session: &'a BuildSession,
         scope: &'scope Scope<'a>,
     ) -> Result<Self, Error> {
-        Ok(if options.asciidoc {
-            Self::AsciiDoctor(Box::new(Asciidoctor::new(
-                folder, component, session, scope,
-            )?))
+        if options.asciidoc {
+            let doctor = Asciidoctor::new(folder, component, session, scope)?;
+            Ok(Self::AsciiDoctor(Box::new(RefCell::new(doctor))))
         } else {
-            Self::None
-        })
+            Ok(Self::None)
+        }
     }
 
     pub(super) fn process(
-        &mut self,
+        &self,
         description: String,
         url_prefix: String,
     ) -> Result<Node<'static>, Error> {
         match self {
             Self::None => Ok(description.into()),
-            Self::AsciiDoctor(asciidoctor) => asciidoctor.process(description, url_prefix),
+            Self::AsciiDoctor(asciidoctor) => {
+                asciidoctor.borrow_mut().process(description, url_prefix)
+            }
         }
     }
 
     pub(super) fn destruct(self) -> Result<(), Error> {
         match self {
             TextProcessor::None => Ok(()),
-            TextProcessor::AsciiDoctor(asciidoctor) => asciidoctor.destruct(),
+            TextProcessor::AsciiDoctor(asciidoctor) => asciidoctor.into_inner().destruct(),
         }
     }
 }
 
+// @Note this architecture of continuously creating and destroying a new Asciidoctor instance
+//       is *unfathomably* slow
 pub(super) struct Asciidoctor<'scope> {
     watcher: ScopedJoinHandle<'scope, ()>,
     process: Command,
@@ -97,7 +101,7 @@ impl<'scope> Asciidoctor<'scope> {
         process.arg(&output_path);
         process.arg("--require");
         process.arg(&extensions_path);
-        process.args(&["--embedded", "--safe"]);
+        process.args(["--embedded", "--safe"]);
 
         let input_file = File::create(&input_path)?;
         let output_file = File::options()
@@ -167,7 +171,7 @@ impl<'scope> Asciidoctor<'scope> {
         while should_watch.load(Ordering::Acquire) {
             std::thread::sleep(Duration::from_millis(200));
 
-            let request_log = std::fs::read_to_string(&request_log_path).unwrap();
+            let request_log = std::fs::read_to_string(request_log_path).unwrap();
 
             if request_log.len() != last_log_size {
                 last_log_size = request_log.len();
@@ -184,7 +188,7 @@ impl<'scope> Asciidoctor<'scope> {
                     let mut response_file = BufWriter::new(
                         File::options()
                             .append(true)
-                            .open(&response_log_path)
+                            .open(response_log_path)
                             .unwrap(),
                     );
 

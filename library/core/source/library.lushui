@@ -1,4 +1,4 @@
-;; The Lushui standard library. 
+;; The Lushui standard library.
 module
 
 @public module void
@@ -21,9 +21,3 @@ module
 @public module tuple
 @public module vector
 @public module ordering
-
-@doc-reserved-identifiers
-module reserved
-
-@doc-attributes
-module attributes

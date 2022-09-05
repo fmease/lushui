@@ -400,7 +400,7 @@ impl<'a> Typer<'a> {
                 .code(ErrorCode::E032)
                 // @Task put back some more information into the message: use `_`s to shorten the type
                 .message("type mismatch")
-                .labeled_primary_span(&actual_value, "has the wrong type")
+                .labeled_primary_span(actual_value, "has the wrong type")
                 .with(|error| match expectation_cause {
                     Some(cause) => error.labeled_secondary_span(cause, "expected due to this"),
                     None => error,
@@ -612,10 +612,10 @@ expected type ‘_ -> _’
                 }
             }
             Substituted(substituted) => {
-                let expression = self.interpreter().substitute_expression(
-                    substituted.expression.clone(),
-                    substituted.substitution.clone(),
-                );
+                let expression = substituted
+                    .expression
+                    .clone()
+                    .substitute(substituted.substitution.clone());
                 self.infer_type_of_expression(expression, scope)?
             }
             UseIn => todo!("1stP infer type of use/in"),
@@ -856,6 +856,7 @@ but got type ‘{}’",
     // @Question @Bug returns are type that might depend on parameters which we don't supply!!
     // gets R in A -> B -> C -> R plus an environment b.c. R could depend on outer stuff
     // @Note this function assumes that the expression has already been normalized!
+    #[allow(clippy::only_used_in_recursion)] // @Temporary
     fn result_type(&self, expression: Expression, scope: &FunctionScope<'_>) -> Expression {
         use hir::BareExpression::*;
 
@@ -961,6 +962,8 @@ enum Error {
 }
 
 use Error::*;
+
+use crate::interpreter::Substitute;
 
 impl From<ErasedReportedError> for Error {
     fn from(error: ErasedReportedError) -> Self {

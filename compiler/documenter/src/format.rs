@@ -173,7 +173,7 @@ impl<'a> Formatter<'a> {
                 Element::new("a")
                     .attribute(
                         "href",
-                        format!("{}reserved.html#word.Type", self.url_prefix),
+                        format!("{}identifiers.html#word.Type", self.url_prefix),
                     )
                     .child("Type")
                     .render(&mut self.output);
