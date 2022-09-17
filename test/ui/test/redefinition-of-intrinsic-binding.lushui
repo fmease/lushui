@@ -1,9 +1,12 @@
 ;;; TEST compiler-args --no-core -Z internals
 
 @intrinsic
+data Type: Type
+
+@intrinsic
 data Text: Type
 
 module disambiguator of
     @intrinsic
-    data Text: Type
+    data Text: topmost.Type
 

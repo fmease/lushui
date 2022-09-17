@@ -1,7 +1,7 @@
 ;;; TEST compiler-args -Z internals
 
 @known
-data I-Am-Definitely-Unknown: Type of
+data I-Am-Definitely-Unknown: extern.core.type.Type of
 
 ;;; ;;; not supported yet 
 ;;; @known

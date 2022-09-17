@@ -1,5 +1,7 @@
 ;;; TEST pass check
 
+use extern.core.type.Type
+
 module inner of
     use innermore.innermost as m
 
@@ -11,17 +13,17 @@ module inner of
         @(public super)
         module innermost of
             @(public topmost.inner)
-            X: Type = X
+            X: topmost.Type = X
 
             @(public topmost.n)
-            Th: Type = Type
+            Th: topmost.Type = topmost.Type
 
-        TH: Type = innermost.Th ;;; @Beacon @Bug lexing/parsing: this is placed in the same line as `innermore`, `Z`!
+        TH: topmost.Type = innermost.Th ;;; @Beacon @Bug lexing/parsing: this is placed in the same line as `innermore`, `Z`!
 
-    Z: Type = m.X
+    Z: topmost.Type = m.X
 
 use inner.innermore as n
 use self as component
 
 module offside of
-    @(public topmost.inner.remote) data Ping: Type of
+    @(public topmost.inner.remote) data Ping: topmost.Type of

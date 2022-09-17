@@ -127,8 +127,6 @@ pub enum BareToken {
     Super,
     /// For paths relative to the root module / the component root.
     Topmost,
-    /// For type literals.
-    Type,
     /// For use-declarations and use-bindings.
     ///
     /// The latter being use/in-expressions and statements.
@@ -213,7 +211,6 @@ impl fmt::Display for TokenName {
             Self_ => keyword!(self),
             Super => keyword!(super),
             Topmost => keyword!(topmost),
-            Type => keyword!(Type),
             Use => keyword!(use),
             EndOfInput => "end of input",
         })

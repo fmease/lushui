@@ -185,7 +185,6 @@ pub enum BareExpression {
     Application(Box<Application<Expression>>),
     Field(Box<Field>),
     Path(Box<Path>),
-    TypeLiteral,
     NumberLiteral(Box<NumberLiteral>),
     TextLiteral(Box<TextLiteral>),
     TypedHole(Box<TypedHole>),

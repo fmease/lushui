@@ -1,6 +1,8 @@
 ;; Integers and related functions.
 module
 
+use topmost.type.Type
+
 @public @intrinsic
 data Int: Type
 

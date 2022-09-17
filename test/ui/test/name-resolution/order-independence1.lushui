@@ -1,5 +1,7 @@
 ;;; TEST pass check
 
+use extern.core.type.Type
+
 Ty: Type = Type
 
 data Beta: m0.T of
@@ -18,4 +20,4 @@ Gamma-Alias: Ty = Gamma
 
 module m0 of
     @public
-    T: super.Ty = Type
+    T: super.Ty = topmost.Type

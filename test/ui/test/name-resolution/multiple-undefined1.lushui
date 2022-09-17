@@ -3,7 +3,7 @@
 use alpha.Nothing
 
 module alpha of
-    Thin: Type = super.Air
+    Thin: extern.core.type.Type = super.Air
     use super.Air
     use topmost.empty as full
 

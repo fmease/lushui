@@ -169,15 +169,6 @@ impl<'a> Formatter<'a> {
         }
 
         match &expression.bare {
-            Type => {
-                Element::new("a")
-                    .attribute(
-                        "href",
-                        format!("{}identifiers.html#word.Type", self.url_prefix),
-                    )
-                    .child("Type")
-                    .render(&mut self.output);
-            }
             Number(literal) => self.write(&literal.to_string()),
             Text(literal) => self.write(&literal.to_string()),
             Binding(binding) => self.format_binder(&binding.0),

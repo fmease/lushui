@@ -1,4 +1,7 @@
-use extern.core.bool.(false true Bool)
+use extern.core.(
+    type.Type
+    bool.(false true Bool)
+    )
 
 is-nat32-or-nat64 (A: Type -> Type): Bool =
     case A of

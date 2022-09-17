@@ -5,10 +5,10 @@ error[E021]: the binding ‘Nothing’ is not defined in module `topmost.alpha`
   │           ═══════
 
 error[E021]: the binding ‘Air’ is not defined in the root module
-  ┌─ ${TEST_FOLDER}/name-resolution/multiple-undefined1.lushui:6:24
+  ┌─ ${TEST_FOLDER}/name-resolution/multiple-undefined1.lushui:6:41
   │
-6 │     Thin: Type = super.Air
-  │                        ═══
+6 │     Thin: extern.core.type.Type = super.Air
+  │                                         ═══
 
 error[E021]: the binding ‘Air’ is not defined in the root module
   ┌─ ${TEST_FOLDER}/name-resolution/multiple-undefined1.lushui:7:15

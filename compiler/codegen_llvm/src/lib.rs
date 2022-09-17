@@ -164,7 +164,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
                     Some(expression) => {
                         use ExpressionClassification::*;
 
-                        let mut classification = expression.classify();
+                        let mut classification = expression.classify(self.session);
                         if is_program_entry && let Constant = classification {
                             classification = Thunk;
                         }
@@ -278,9 +278,9 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
     fn compile_constant_expression(&self, expression: &hir::Expression) -> BasicValueEnum<'ctx> {
         use hir::BareExpression::*;
 
+        // @Task return a unit-struct value for any types
         match &expression.bare {
-            // @Task return a unit struct value
-            PiType(_) | Type => todo!(),
+            PiType(_) => todo!(),
             Number(number) => self.compile_number(number).into(),
             Text(_) => todo!(),
             Binding(_) => todo!(),
@@ -299,10 +299,10 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
     }
 
     fn compile_expression_into_basic_block(&self, expression: &hir::Expression) {
-        use hir::BareExpression::*;
+        use hir::{intrinsic::Type, BareExpression::*};
 
         match &expression.bare {
-            PiType(_) | Type => {
+            PiType(_) => {
                 self.builder.build_return(None);
             }
             Application(_) => todo!(),
@@ -311,6 +311,9 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
                     .build_return(Some(&self.compile_number(number)));
             }
             Text(_) => todo!(),
+            Binding(binding) if self.session.is_intrinsic_type(Type::Type, &binding.0) => {
+                self.builder.build_return(None);
+            }
             Binding(binding) => {
                 use hir::Index::*;
 
@@ -368,7 +371,6 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
         match &type_.bare {
             PiType(_) => todo!(),
             Application(_) => todo!(),
-            Type => todo!(),
             Number(_) => todo!(),
             Text(_) => todo!(),
             Binding(binding) => {
@@ -388,6 +390,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
                             .0;
 
                         match type_ {
+                            Type => todo!(),
                             Numeric(Nat) => todo!(),
                             Numeric(Int) => todo!(),
                             Numeric(Nat32 | Int32) => self.context.i32_type(),
@@ -428,21 +431,22 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
 }
 
 trait ExpressionExt {
-    fn classify(&self) -> ExpressionClassification<'_>;
+    fn classify(&self, session: &BuildSession) -> ExpressionClassification<'_>;
 }
 
 impl ExpressionExt for hir::Expression {
-    fn classify(&self) -> ExpressionClassification<'_> {
-        use hir::BareExpression::*;
+    fn classify(&self, session: &BuildSession) -> ExpressionClassification<'_> {
+        use hir::{intrinsic::Type, BareExpression::*};
         use ExpressionClassification::*;
 
         match &self.bare {
-            PiType(pi) => match (pi.domain.classify(), pi.codomain.classify()) {
+            PiType(pi) => match (pi.domain.classify(session), pi.codomain.classify(session)) {
                 (Constant, Constant) => Constant,
                 _ => Thunk,
             },
             Application(_) | IntrinsicApplication(_) => Thunk,
-            Type | Number(_) | Text(_) => Constant,
+            Number(_) | Text(_) => Constant,
+            Binding(binding) if session.is_intrinsic_type(Type::Type, &binding.0) => Constant,
             // @Note we could make this more nuanced (prefering Constant if possible)
             Binding(_) => Thunk,
             Lambda(lambda) => Function(lambda),

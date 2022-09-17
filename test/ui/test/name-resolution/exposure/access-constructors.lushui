@@ -1,5 +1,6 @@
 ;;; TEST pass check
 
+use extern.core.type.Type
 use Bool.((false as f) (true as t))
 
 data Bool: Type of
@@ -12,7 +13,7 @@ data Switch: Type of
     off: topmost.Switch
 
 module grotto of
-    @public data Color: Type of
+    @public data Color: topmost.Type of
         white: Color
         black: Color
 

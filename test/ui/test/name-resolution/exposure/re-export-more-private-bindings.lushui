@@ -1,3 +1,5 @@
+use extern.core.type.Type
+
 @public
 use Thing as Piece
 
@@ -7,14 +9,14 @@ data Thing: Type of
 
 module alpha of
     module beta of
-        data Linchpin: Type of
+        data Linchpin: topmost.Type of
 
         module gamma of
             @(public topmost)
             use super.Linchpin as L
 
             @(public super)
-            data Mock: Type of
+            data Mock: topmost.Type of
 
             @(public topmost.alpha)
             use Mock as //>

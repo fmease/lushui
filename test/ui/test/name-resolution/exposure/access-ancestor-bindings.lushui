@@ -1,5 +1,7 @@
 ;;; TEST pass check
 
+use extern.core.type.Type
+
 Alpha: Type = Alpha
 
 module realm of

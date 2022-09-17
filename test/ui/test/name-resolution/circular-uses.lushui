@@ -14,7 +14,7 @@ module fake-my-dude of
 
     use Omega as omega0
 
-    Omega: Type = Type
+    Omega: extern.core.type.Type = extern.core.type.Type
 
 ;;; [Description]
 ;;; Circular / cyclic / mutually recursive use-bindings should

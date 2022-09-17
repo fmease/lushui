@@ -1,5 +1,4 @@
 ;;; TEST pass check
 
 @public
-module example 
-
+module example

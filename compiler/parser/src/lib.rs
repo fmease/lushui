@@ -1039,7 +1039,6 @@ impl<'a> Parser<'a> {
     /// Lower-Expression ::= Attribute* Bare-Lower-Expression
     /// Bare-Lower-Expression ::= Lowest-Expression ("::" Identifier)*
     /// Lowest-Expression ::=
-    ///     | "Type"
     ///     | #Number-Literal
     ///     | #Text-Literal
     ///     | Typed-Hole
@@ -1058,11 +1057,6 @@ impl<'a> Parser<'a> {
 
         let mut span = self.current_token().span;
         let mut expression = match self.current_token().name() {
-            Type => {
-                self.advance();
-
-                Expression::new(default(), span, ast::BareExpression::TypeLiteral)
-            }
             NumberLiteral => {
                 let token = self.current_token().clone();
                 self.advance();

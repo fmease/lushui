@@ -35,6 +35,9 @@ data Int32: Type
 
 data Void: Type of
 
+@intrinsic
+data Type: Type
+
 ;;; [Note]
 ;;; Putting the data type declarations below their usage site is intentional: We want to ensure that known and intrinsic bindings
 ;;; work out of order.

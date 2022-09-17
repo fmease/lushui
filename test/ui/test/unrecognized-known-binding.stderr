@@ -6,7 +6,7 @@ error[E063]: ‘I-Am-Definitely-Unknown’ is not a known binding
   │
   ├─ ${TEST_FOLDER}/unrecognized-known-binding.lushui:4:6
   │
-4 │ data I-Am-Definitely-Unknown: Type of
+4 │ data I-Am-Definitely-Unknown: extern.core.type.Type of
   │      ═══════════════════════
 
 error: aborting due to previous error

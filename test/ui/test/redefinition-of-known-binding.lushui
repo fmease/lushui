@@ -1,5 +1,8 @@
 ;;; TEST compiler-args --no-core -Z internals
 
+@public @intrinsic
+data Type: Type
+
 @public @known
 data Unit: Type of
     unit: Unit
@@ -7,5 +10,5 @@ data Unit: Type of
 module disambiguator of
 
     @public @known
-    data Unit: Type of
+    data Unit: topmost.Type of
         unit: Unit

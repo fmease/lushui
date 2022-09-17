@@ -202,12 +202,11 @@ fn weird_dashed_identifiers() {
 #[test]
 fn keywords_and_lookalikes() {
     assert_lex_eq!(
-        "self   Type Type_ Type-Type in _",
+        "       self self_ self-self in _",
         vec![
-            Token::new(span(1, 5), Self_),
-            Token::new(span(8, 12), Type),
-            Token::new(span(13, 18), Word("Type_".into())),
-            Token::new(span(19, 28), Word("Type-Type".into())),
+            Token::new(span(8, 12), Self_),
+            Token::new(span(13, 18), Word("self_".into())),
+            Token::new(span(19, 28), Word("self-self".into())),
             Token::new(span(29, 31), In),
             Token::new(span(32, 33), Underscore),
             Token::new(span(33, 33), EndOfInput),

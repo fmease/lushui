@@ -751,11 +751,6 @@ impl<'a> Resolver<'a> {
                     .into(),
                 ));
             }
-            TypeLiteral => hir::Expression::new(
-                expression.attributes,
-                expression.span,
-                hir::BareExpression::Type,
-            ),
             NumberLiteral(number) => self.resolve_number_literal(
                 hir::Item::new(expression.attributes, expression.span, *number),
                 scope,

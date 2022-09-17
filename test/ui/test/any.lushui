@@ -1,9 +1,11 @@
 ;;; TEST pass check
 
 use extern.core.(
+    type.Type
     list.(List empty cons)
     bool.(Bool false true)
-    unit.(Unit unit))
+    unit.(Unit unit)
+    )
 
 data Any: Type of
     any: (A: Type) -> A -> Any

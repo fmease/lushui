@@ -4,5 +4,5 @@
 ;;; but we moved the registration of intrinsic types from the typer to the resolver
 
 @intrinsic
-data I-Definitely-Do-Not-Exist: Type
+data I-Definitely-Do-Not-Exist: extern.core.type.Type
 

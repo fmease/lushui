@@ -108,7 +108,6 @@ pub type Expression = Item<BareExpression>;
 pub enum BareExpression {
     PiType(Box<PiType>),
     Application(Box<Application<Expression>>),
-    Type,
     Number(Box<Number>),
     Text(Box<Text>),
     Binding(Box<Binding>),

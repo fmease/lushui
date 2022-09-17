@@ -3,6 +3,9 @@
 ;;; @Bug unfortunately, this is a runtime error right now
 
 @intrinsic
+data Type: Type
+
+@intrinsic
 data Nat: Type
 
 @intrinsic

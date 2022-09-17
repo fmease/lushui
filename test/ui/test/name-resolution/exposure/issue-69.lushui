@@ -1,4 +1,7 @@
-;;; TEST compiler-args --no-core
+;;; TEST compiler-args --no-core -Z internals
+
+@intrinsic
+data Type: Type
 
 @(public Box)
 data Box: Type of

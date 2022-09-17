@@ -1,4 +1,6 @@
 module separation of
+    use extern.core.type.Type
+
     data Private: Type of
         private: Private
     
@@ -13,11 +15,11 @@ module separation of
     @(public topmost)
     module further-separation of
         @(public super)
-        data Hidden: Type of
+        data Hidden: super.Type of
             hidden: Hidden
         
         @(public topmost) @abstract
-        data Abstract: Type of
+        data Abstract: super.Type of
             hidden: Abstract
 
 use separation.Private.private as p0

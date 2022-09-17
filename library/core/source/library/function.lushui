@@ -1,6 +1,8 @@
 ;; Simple combinators working on and with functions.
 module
 
+use topmost.type.Type
+
 @public
 identity (A: Type) (a: A): A = a
 

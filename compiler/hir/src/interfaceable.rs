@@ -2,6 +2,7 @@
 
 use utilities::{Int, Nat};
 
+// @Beacon @Task make this an enum { Intrinsic(_), Known(_) } to DRY
 /// An “interfaceable” type (i.e. an intrinsic or known type).
 pub enum Type {
     Unit,

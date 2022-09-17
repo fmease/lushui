@@ -58,10 +58,13 @@ impl<'a> Interpreter<'a> {
         expression: Expression,
         context: Context<'_>,
     ) -> Result<Expression> {
-        use hir::{BareExpression::*, Substitution::*};
+        use hir::{intrinsic::Type, BareExpression::*, Substitution::*};
 
         // @Bug we currently don't support zero-arity intrinsic functions
         Ok(match expression.clone().bare {
+            Binding(binding) if self.session.is_intrinsic_type(Type::Type, &binding.0) => {
+                expression
+            }
             Binding(binding) => {
                 match self.look_up_value(&binding.0) {
                     // @Question is this normalization necessary? I mean, yes, we got a new scope,
@@ -174,7 +177,7 @@ impl<'a> Interpreter<'a> {
                     _ => unreachable!(),
                 }
             }
-            Type | Number(_) | Text(_) | IO(_) => expression,
+            Number(_) | Text(_) | IO(_) => expression,
             Projection(_) => todo!(),
             PiType(pi) => match context.form {
                 Form::Normal => {
@@ -424,7 +427,6 @@ impl<'a> Interpreter<'a> {
                 self.equals(&application0.callee, &application1.callee, scope)?
                     && self.equals(&application0.argument, &application1.argument, scope)?
             }
-            (Type, Type) => true,
             (Number(number0), Number(number1)) => number0 == number1,
             (Text(text0), Text(text1)) => text0 == text1,
             // @Question what about explicitness?
@@ -579,7 +581,7 @@ impl Substitute for Expression {
                 .clone()
                 .substitute(substituted0.substitution.clone())
                 .substitute(substituted1),
-            (Type | Number(_) | Text(_), _) => self,
+            (Number(_) | Text(_), _) => self,
             // @Task verify
             (Projection(_), _) => self,
             // @Temporary

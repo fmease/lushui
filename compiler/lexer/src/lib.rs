@@ -684,7 +684,6 @@ fn parse_keyword(source: &str) -> Option<BareToken> {
         "of" => Of,
         "self" => Self_,
         "super" => Super,
-        "Type" => Type,
         "use" => Use,
         _ => return None,
     })

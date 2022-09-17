@@ -1,23 +1,23 @@
 error[E039]: the known binding ‘Unit’ is defined multiple times
-   ┌─ ${TEST_FOLDER}/redefinition-of-known-binding.lushui:4:6
+   ┌─ ${TEST_FOLDER}/redefinition-of-known-binding.lushui:7:6
    │
- 4 │ data Unit: Type of
+ 7 │ data Unit: Type of
    │      ──── previous definition
    │
-   ├─ ${TEST_FOLDER}/redefinition-of-known-binding.lushui:10:10
+   ├─ ${TEST_FOLDER}/redefinition-of-known-binding.lushui:13:10
    │
-10 │     data Unit: Type of
+13 │     data Unit: topmost.Type of
    │          ════ redefinition
 
 error[E039]: the known binding ‘Unit.unit’ is defined multiple times
-   ┌─ ${TEST_FOLDER}/redefinition-of-known-binding.lushui:5:5
+   ┌─ ${TEST_FOLDER}/redefinition-of-known-binding.lushui:8:5
    │
- 5 │     unit: Unit
+ 8 │     unit: Unit
    │     ──── previous definition
    │
-   ├─ ${TEST_FOLDER}/redefinition-of-known-binding.lushui:11:9
+   ├─ ${TEST_FOLDER}/redefinition-of-known-binding.lushui:14:9
    │
-11 │         unit: Unit
+14 │         unit: Unit
    │         ════ redefinition
 
 error: aborting due to 2 previous errors

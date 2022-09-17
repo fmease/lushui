@@ -1,6 +1,8 @@
 ;; Canonical non-dependent sum types and related functions.
 module
 
+use topmost.type.Type
+
 ;;; @Task better name for this type, module and constructors!
 
 @public

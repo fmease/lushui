@@ -7,6 +7,8 @@
 ;;; it goes from 4 to 3 errors putting `module core` between the `take` and `t`
 ;;; declaration: the type error in `take 44` is not shown in this case
 
+use extern.core.type.Type
+
 data X: Type of
     x: X
 

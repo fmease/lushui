@@ -1,5 +1,7 @@
 ;;; TEST auxiliary packages/erroneous-library
 
+use extern.core.type.Type
+
 data Set: Type of
     type: Type -> Set
 

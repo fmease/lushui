@@ -1,3 +1,5 @@
+use extern.core.type.Type
+
 @(public Void) data Empty: Type of
 
 data Hunk: Type of

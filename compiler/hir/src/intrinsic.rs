@@ -6,6 +6,7 @@ use utilities::HashMap;
 /// An intrinsic type.
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]
 pub enum Type {
+    Type,
     Numeric(NumericType),
     Text,
     IO,
@@ -18,6 +19,7 @@ impl FromStr for Type {
         use NumericType::*;
 
         Ok(match input {
+            "Type" => Self::Type,
             "Nat" => Nat.into(),
             "Nat32" => Nat32.into(),
             "Nat64" => Nat64.into(),
@@ -34,6 +36,7 @@ impl FromStr for Type {
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::Type => write!(f, "Type"),
             Self::Numeric(type_) => write!(f, "{type_}"),
             Self::Text => write!(f, "Text"),
             Self::IO => write!(f, "IO"),

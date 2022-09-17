@@ -1,6 +1,8 @@
 ;; Canonical 3-tuple types (heterogeneous lists of size three) and related functions.
 module
 
+use topmost.type.Type
+
 @public
 data Triple (A: Type) (B: Type) (C: Type): Type of
     triple (A: Type) (B: Type) (C: Type): A -> B -> C -> Triple A B C

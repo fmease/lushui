@@ -85,10 +85,6 @@
                     "name": "keyword.control.lushui"
                 },
                 {
-                    "match": "(?<![\\w\\-])Type(?![\\w\\-])",
-                    "name": "storage.type.lushui"
-                },
-                {
                     "match": "[\\.:+~=<>*^!?|/\\\\&#%$@]|(?<!\\w)-(?![a-z-A-Z_])",
                     "name": "keyword.operator.lushui"
                 }

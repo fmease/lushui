@@ -92,7 +92,6 @@ pub type Expression = Item<BareExpression>;
 
 #[derive(Clone)]
 pub enum BareExpression {
-    TypeLiteral,
     Path(Box<Path>),
     NumberLiteral(Box<NumberLiteral>),
     TextLiteral(Box<TextLiteral>),

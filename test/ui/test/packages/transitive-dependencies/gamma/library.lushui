@@ -2,6 +2,7 @@
 
 @public use extern.core.nat.Nat as N
 use extern.core.nat.+
+use extern.core.type.Type
 
 @public
 data G: Type of

@@ -1,3 +1,5 @@
+use extern.core.type.Type
+
 use S.structure as s
 
 use outer.((south.Structure as S) (north.Structure as N))
@@ -5,15 +7,15 @@ use outer.south
 
 module outer of
 
-    It: Type = north.Structure
+    It: topmost.Type = north.Structure
 
     @public
     module north of
-        data Structure: Type of
+        data Structure: topmost.Type of
             structure: Structure
 
     module south of
-        data Structure: Type of
+        data Structure: topmost.Type of
 
 
 Struct: Type = outer.south
