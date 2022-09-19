@@ -79,7 +79,8 @@ npm run compile
 ----
 
 Then, copy or symlink the folder to `~/.vscode/extensions/`.
-The compiler currently needs to be added to the `$PATH` as `lushui` for the language server to work.
+The compiler currently needs to be built with feature `lsp` and added to the `$PATH` as `lushui-nightly`
+for the language server to work.
 
 For Lushui Metadata support, copy or symlink the folder `./project/editor/vscode/fmease.lushui-metadata-syntax-0.0.1`
 to `~/.vscode/extensions/`.

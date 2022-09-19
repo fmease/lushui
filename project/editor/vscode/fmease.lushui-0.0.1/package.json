@@ -10,7 +10,7 @@
     "activationEvents": [
         "onLanguage:lushui"
     ],
-    "main": "build/client/src/extension.js",
+    "main": "build/extension.js",
     "contributes": {
         "languages": [
             {

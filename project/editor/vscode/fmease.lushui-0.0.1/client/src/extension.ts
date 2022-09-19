@@ -22,7 +22,7 @@ export function deactivate(): Thenable<void> | undefined {
 function createLanguageClient(): LanguageClient {
     const serverOptions: ServerOptions = {
         // @Task make this path customizable
-        command: 'lushui',
+        command: 'lushui-nightly',
         args: ['serve'],
         options: {
             env: {
