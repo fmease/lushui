@@ -2,21 +2,18 @@ use crate::span::ToLocationExt;
 use diagnostics::{Code, Highlight, LintCode, Role, Severity, UnboxedUntaggedDiagnostic};
 use span::SourceMap;
 use std::{collections::BTreeSet, default::default};
-use tower_lsp::lsp_types::{
-    self, DiagnosticRelatedInformation, DiagnosticSeverity, DiagnosticTag, MessageType,
-    NumberOrString, OneOf, Range,
-};
+use tower_lsp::lsp_types as lsp;
 
 const DIAGNOSTIC_SOURCE: &str = "source";
 
-pub(crate) type LspMessage = (MessageType, String);
+pub(crate) type LspMessage = (lsp::MessageType, String);
 
 pub(crate) trait DiagnosticExt {
-    fn into_lsp_type(self, map: &SourceMap) -> OneOf<lsp_types::Diagnostic, LspMessage>;
+    fn into_lsp_type(self, map: &SourceMap) -> lsp::OneOf<lsp::Diagnostic, LspMessage>;
 }
 
 impl DiagnosticExt for UnboxedUntaggedDiagnostic {
-    fn into_lsp_type(self, map: &SourceMap) -> OneOf<lsp_types::Diagnostic, LspMessage> {
+    fn into_lsp_type(self, map: &SourceMap) -> lsp::OneOf<lsp::Diagnostic, LspMessage> {
         // @Task explain the " "-hack
         let message = self.message.unwrap_or_else(|| " ".into()).into();
 
@@ -24,10 +21,10 @@ impl DiagnosticExt for UnboxedUntaggedDiagnostic {
             Some((range, related_information)) => {
                 let tags = self.code.and_then(|code| {
                     (code == Code::Lint(LintCode::Deprecated))
-                        .then(|| vec![DiagnosticTag::DEPRECATED])
+                        .then(|| vec![lsp::DiagnosticTag::DEPRECATED])
                 });
 
-                OneOf::Left(lsp_types::Diagnostic {
+                lsp::OneOf::Left(lsp::Diagnostic {
                     range,
                     severity: Some(IntoLspType::into(self.severity)),
                     code: self.code.map(IntoLspType::into),
@@ -38,7 +35,7 @@ impl DiagnosticExt for UnboxedUntaggedDiagnostic {
                     ..default()
                 })
             }
-            None => OneOf::Right((IntoLspType::into(self.severity), message)),
+            None => lsp::OneOf::Right((IntoLspType::into(self.severity), message)),
         }
     }
 }
@@ -46,7 +43,7 @@ impl DiagnosticExt for UnboxedUntaggedDiagnostic {
 fn convert_highlights(
     highlights: BTreeSet<Highlight>,
     map: &SourceMap,
-) -> Option<(Range, Vec<DiagnosticRelatedInformation>)> {
+) -> Option<(lsp::Range, Vec<lsp::DiagnosticRelatedInformation>)> {
     let mut range = None;
     let mut related_information = Vec::new();
 
@@ -56,7 +53,7 @@ fn convert_highlights(
             // @Beacon @Bug we are ignoring the file assoc w/ the span!!!
             range = Some(highlight.span.to_location(map).range);
         } else {
-            related_information.push(DiagnosticRelatedInformation {
+            related_information.push(lsp::DiagnosticRelatedInformation {
                 location: highlight.span.to_location(map),
                 // @Task explain " "-hack
                 message: highlight.label.unwrap_or_else(|| " ".into()).into(),
@@ -71,28 +68,28 @@ trait IntoLspType<Output> {
     fn into(self) -> Output;
 }
 
-impl IntoLspType<DiagnosticSeverity> for Severity {
-    fn into(self) -> DiagnosticSeverity {
+impl IntoLspType<lsp::DiagnosticSeverity> for Severity {
+    fn into(self) -> lsp::DiagnosticSeverity {
         match self {
-            Self::Bug | Self::Error => DiagnosticSeverity::ERROR,
-            Self::Warning => DiagnosticSeverity::WARNING,
-            Self::Debug => DiagnosticSeverity::INFORMATION,
+            Self::Bug | Self::Error => lsp::DiagnosticSeverity::ERROR,
+            Self::Warning => lsp::DiagnosticSeverity::WARNING,
+            Self::Debug => lsp::DiagnosticSeverity::INFORMATION,
         }
     }
 }
 
-impl IntoLspType<MessageType> for Severity {
-    fn into(self) -> MessageType {
+impl IntoLspType<lsp::MessageType> for Severity {
+    fn into(self) -> lsp::MessageType {
         match self {
-            Self::Bug | Self::Error => MessageType::ERROR,
-            Self::Warning => MessageType::WARNING,
-            Self::Debug => MessageType::INFO,
+            Self::Bug | Self::Error => lsp::MessageType::ERROR,
+            Self::Warning => lsp::MessageType::WARNING,
+            Self::Debug => lsp::MessageType::INFO,
         }
     }
 }
 
-impl IntoLspType<NumberOrString> for Code {
-    fn into(self) -> NumberOrString {
-        NumberOrString::String(self.to_string())
+impl IntoLspType<lsp::NumberOrString> for Code {
+    fn into(self) -> lsp::NumberOrString {
+        lsp::NumberOrString::String(self.to_string())
     }
 }

@@ -16,16 +16,7 @@ use std::{
     path::Path,
     sync::{Arc, RwLock},
 };
-use tower_lsp::{
-    jsonrpc,
-    lsp_types::{
-        DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-        GotoDefinitionParams, GotoDefinitionResponse, InitializeParams, InitializeResult,
-        InitializedParams, MessageType, OneOf, ServerCapabilities, ServerInfo,
-        TextDocumentSyncKind, TextDocumentSyncOptions, Url,
-    },
-    Client,
-};
+use tower_lsp::{jsonrpc, lsp_types as lsp, Client};
 use utilities::{ComponentIndex, FormatError, HashMap};
 
 mod diagnostics;
@@ -46,7 +37,7 @@ pub async fn serve(map: Arc<RwLock<SourceMap>>) {
 struct Server {
     map: Arc<RwLock<SourceMap>>,
     // @Beacon @Task remove this, we don't need this!! we have a frckin SourceMap here!!!
-    documents: RwLock<HashMap<Url, Arc<String>>>,
+    documents: RwLock<HashMap<lsp::Url, Arc<String>>>,
     client: Client,
 }
 
@@ -69,15 +60,8 @@ impl Server {
         *self.map.write().unwrap() = default();
     }
 
-    async fn validate_file(&self, uri: Url, version: i32, content: Arc<String>) {
-        let scheme = uri.scheme();
-        if scheme != "file" {
-            self.client
-                .log_message(
-                    MessageType::ERROR,
-                    format!("Unsupported URI scheme ‘{scheme}’"),
-                )
-                .await;
+    async fn validate_file(&self, uri: lsp::Url, version: i32, content: Arc<String>) {
+        if self.validate_uri(&uri).await.is_err() {
             return;
         }
 
@@ -99,14 +83,16 @@ impl Server {
         self.report(diagnostics, uri, version).await;
     }
 
-    async fn report(&self, diagnostics: BTreeSet<UntaggedDiagnostic>, uri: Url, version: i32) {
+    async fn report(&self, diagnostics: BTreeSet<UntaggedDiagnostic>, uri: lsp::Url, version: i32) {
         let mut lsp_diagnostics = Vec::new();
 
         for diagnostic in diagnostics {
             let diagnostic = diagnostic.into_lsp_type(&self.map.read().unwrap());
             match diagnostic {
-                OneOf::Left(diagnostic) => lsp_diagnostics.push(diagnostic),
-                OneOf::Right((type_, message)) => self.client.show_message(type_, message).await,
+                lsp::OneOf::Left(diagnostic) => lsp_diagnostics.push(diagnostic),
+                lsp::OneOf::Right((type_, message)) => {
+                    self.client.show_message(type_, message).await
+                }
             }
         }
 
@@ -115,26 +101,42 @@ impl Server {
             .publish_diagnostics(uri, lsp_diagnostics, Some(version))
             .await;
     }
+
+    async fn validate_uri(&self, uri: &lsp::Url) -> Result<(), ()> {
+        let scheme = uri.scheme();
+
+        if scheme != "file" {
+            self.client
+                .show_message(
+                    lsp::MessageType::ERROR,
+                    format!("unsupported URI scheme ‘{scheme}’"),
+                )
+                .await;
+            return Err(());
+        }
+
+        Ok(())
+    }
 }
 
 // @Task replace the async tower_lsp library with a sync server. async is not worth it
 #[tower_lsp::async_trait]
 impl tower_lsp::LanguageServer for Server {
-    async fn initialize(&self, _: InitializeParams) -> jsonrpc::Result<InitializeResult> {
-        Ok(InitializeResult {
-            capabilities: ServerCapabilities {
+    async fn initialize(&self, _: lsp::InitializeParams) -> jsonrpc::Result<lsp::InitializeResult> {
+        Ok(lsp::InitializeResult {
+            capabilities: lsp::ServerCapabilities {
                 text_document_sync: Some(
-                    TextDocumentSyncOptions {
+                    lsp::TextDocumentSyncOptions {
                         open_close: Some(true),
-                        change: Some(TextDocumentSyncKind::FULL),
+                        change: Some(lsp::TextDocumentSyncKind::FULL),
                         ..default()
                     }
                     .into(),
                 ),
-                definition_provider: Some(OneOf::Left(true)),
+                definition_provider: Some(lsp::OneOf::Left(true)),
                 ..default()
             },
-            server_info: Some(ServerInfo {
+            server_info: Some(lsp::ServerInfo {
                 name: NAME.into(),
                 // @Task supply version here (do what main.rs does)
                 version: None,
@@ -142,9 +144,9 @@ impl tower_lsp::LanguageServer for Server {
         })
     }
 
-    async fn initialized(&self, _: InitializedParams) {
+    async fn initialized(&self, _: lsp::InitializedParams) {
         self.client
-            .log_message(MessageType::INFO, "Language server initialized")
+            .log_message(lsp::MessageType::INFO, "Language server initialized")
             .await;
     }
 
@@ -152,7 +154,7 @@ impl tower_lsp::LanguageServer for Server {
         Ok(())
     }
 
-    async fn did_open(&self, parameters: DidOpenTextDocumentParams) {
+    async fn did_open(&self, parameters: lsp::DidOpenTextDocumentParams) {
         let content = Arc::new(parameters.text_document.text);
 
         self.documents
@@ -165,7 +167,7 @@ impl tower_lsp::LanguageServer for Server {
             .await;
     }
 
-    async fn did_change(&self, mut parameters: DidChangeTextDocumentParams) {
+    async fn did_change(&self, mut parameters: lsp::DidChangeTextDocumentParams) {
         // @Bug incredibly fragile!
         let content = Arc::new(parameters.content_changes.swap_remove(0).text);
 
@@ -182,7 +184,7 @@ impl tower_lsp::LanguageServer for Server {
         .await;
     }
 
-    async fn did_close(&self, parameters: DidCloseTextDocumentParams) {
+    async fn did_close(&self, parameters: lsp::DidCloseTextDocumentParams) {
         // @Task unless it's a workspace(?) (a package), get rid of any diagnostics
         self.client
             .publish_diagnostics(parameters.text_document.uri, Vec::new(), None)
@@ -191,17 +193,19 @@ impl tower_lsp::LanguageServer for Server {
 
     async fn goto_definition(
         &self,
-        parameters: GotoDefinitionParams,
-    ) -> jsonrpc::Result<Option<GotoDefinitionResponse>> {
+        parameters: lsp::GotoDefinitionParams,
+    ) -> jsonrpc::Result<Option<lsp::GotoDefinitionResponse>> {
+        let uri = parameters.text_document_position_params.text_document.uri;
+        if self.validate_uri(&uri).await.is_err() {
+            return Ok(None);
+        }
+
+        let path = Path::new(uri.path());
+        let content = self.documents.read().unwrap().get(&uri).unwrap().clone();
+
+        self.reset_source_map();
+
         Ok((|| {
-            let uri = parameters.text_document_position_params.text_document.uri;
-
-            let path = Path::new(uri.path());
-            // @Task error on unsupported URI scheme!
-            let content = self.documents.read().unwrap().get(&uri).unwrap().clone();
-
-            self.reset_source_map();
-
             let (session, component_roots) =
                 check_file(path, content, &self.map, Reporter::silent()).ok()?;
 
@@ -227,7 +231,7 @@ impl tower_lsp::LanguageServer for Server {
                 return None;
             };
 
-            Some(GotoDefinitionResponse::Scalar(
+            Some(lsp::GotoDefinitionResponse::Scalar(
                 session[index]
                     .source
                     .span()

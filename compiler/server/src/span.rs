@@ -1,29 +1,29 @@
 use span::{ByteIndex, LocalByteIndex, SourceMap, Span};
 use std::path::Path;
-use tower_lsp::lsp_types::{Location, Position, Range, Url};
+use tower_lsp::lsp_types as lsp;
 
 pub(crate) trait ToLocationExt {
-    fn to_location(self, map: &SourceMap) -> Location;
+    fn to_location(self, map: &SourceMap) -> lsp::Location;
 }
 
 impl ToLocationExt for Span {
-    fn to_location(self, map: &SourceMap) -> Location {
+    fn to_location(self, map: &SourceMap) -> lsp::Location {
         let lines = map.lines_with_highlight(self);
 
-        Location {
+        lsp::Location {
             // @Beacon @Task handle anonymous SourceFiles smh!!!
-            uri: Url::from_file_path(lines.path.unwrap()).unwrap(),
-            range: Range {
-                start: Position {
+            uri: lsp::Url::from_file_path(lines.path.unwrap()).unwrap(),
+            range: lsp::Range {
+                start: lsp::Position {
                     line: lines.first.number - 1,
                     character: lines.first.highlight.start - 1,
                 },
                 end: match lines.last {
-                    Some(line) => Position {
+                    Some(line) => lsp::Position {
                         line: line.number - 1,
                         character: line.highlight.end - 1,
                     },
-                    None => Position {
+                    None => lsp::Position {
                         line: lines.first.number - 1,
                         character: lines.first.highlight.end - 1,
                     },
@@ -34,12 +34,12 @@ impl ToLocationExt for Span {
 }
 
 pub(crate) trait FromPositionExt {
-    fn from_position(position: Position, path: &Path, map: &SourceMap) -> Self;
+    fn from_position(position: lsp::Position, path: &Path, map: &SourceMap) -> Self;
 }
 
 impl FromPositionExt for ByteIndex {
     // @Beacon @Note this is an abomination!!!
-    fn from_position(position: Position, path: &Path, map: &SourceMap) -> Self {
+    fn from_position(position: lsp::Position, path: &Path, map: &SourceMap) -> Self {
         let file = map.file_by_path(path).unwrap();
         let mut index = LocalByteIndex::new(0);
 
