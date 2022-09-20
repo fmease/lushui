@@ -309,6 +309,10 @@ section.main {
     background: rgb(206, 168, 255);
 }
 
+.labels .unsupported {
+    background: rgb(255, 134, 130);
+}
+
 /********** :labels **********/
 
 .description {

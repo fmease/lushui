@@ -548,12 +548,19 @@ impl Attributes {
                     .child(Element::anchor(format!("#{id}"), attribute.to_str()).class("binder")),
             );
 
-            if attribute.is_internal() {
+            {
                 let mut labels = Element::div("labels");
-                labels.add_child(Element::div("internal").child("internal"));
+
+                if attribute.is_internal() {
+                    labels.add_child(Element::div("internal").child("internal"));
+                }
+
+                if !attribute.is_implemented() {
+                    labels.add_child(Element::div("unsupported").child("not supported yet"));
+                }
+
                 section.add_child(labels);
             }
-
             // @Task include the documentation of each attribute here at compile-time
         }
 

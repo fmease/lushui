@@ -973,8 +973,7 @@ impl<'a> Lowerer<'a> {
                 .stain(&mut self.health);
         }
 
-        for attribute in attributes.filter(Predicate(|attribute| !attribute.is_fully_implemented()))
-        {
+        for attribute in attributes.filter(Predicate(|attribute| !attribute.is_implemented())) {
             Diagnostic::error()
                 .message(format!(
                     "the attribute ‘{}’ is not supported yet",

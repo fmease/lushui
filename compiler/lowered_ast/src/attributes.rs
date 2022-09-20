@@ -468,15 +468,8 @@ impl BareAttribute {
         }
     }
 
-    pub const fn is_fully_implemented(&self) -> bool {
-        matches!(
-            self,
-            Self::Deprecated { .. }
-                | Self::Doc { .. }
-                | Self::Location { .. }
-                | Self::Abstract
-                | Self::Public { .. }
-        ) || self.is_internal()
+    pub const fn is_implemented(&self) -> bool {
+        self.name().is_implemented()
     }
 
     pub const fn is_internal(&self) -> bool {
@@ -558,6 +551,17 @@ impl fmt::Display for BareAttribute {
 }
 
 impl AttributeName {
+    pub const fn is_implemented(self) -> bool {
+        matches!(
+            self,
+            Self::Deprecated { .. }
+                | Self::Doc { .. }
+                | Self::Location { .. }
+                | Self::Abstract
+                | Self::Public { .. }
+        ) || self.is_internal()
+    }
+
     pub const fn is_internal(self) -> bool {
         matches!(self, Self::Intrinsic | Self::Known | Self::Statistics)
     }
