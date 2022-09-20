@@ -7,11 +7,10 @@
 use ast::Explicitness;
 use diagnostics::{reporter::ErasedReportedError, Diagnostic, ErrorCode};
 use error::{Health, Result, Stain};
-use hir::{intrinsic, known, Declaration, EntityKind, Expression, Identifier};
+use hir::{intrinsic, known, AttributeName, Declaration, EntityKind, Expression, Identifier};
 use hir_format::{DefaultContext, Display};
 use interpreter::{BareBindingRegistration, BindingRegistration, FunctionScope, Interpreter};
 use joinery::JoinableIterator;
-use lowered_ast::AttributeName;
 use session::{BuildSession, Component, IdentifierExt};
 use std::default::default;
 use utilities::{displayed, pluralize, QuoteExt};
@@ -74,7 +73,7 @@ impl<'a> Typer<'a> {
             Function(function) => {
                 self.evaluate_registration(BindingRegistration {
                     attributes: declaration.attributes.clone(),
-                    bare: if declaration.attributes.contains(AttributeName::Intrinsic) {
+                    bare: if declaration.attributes.has(AttributeName::Intrinsic) {
                         BareBindingRegistration::IntrinsicFunction {
                             binder: function.binder.clone(),
                             type_: function.type_annotation.clone(),
@@ -618,7 +617,6 @@ expected type ‘_ -> _’
                     .substitute(substituted.substitution.clone());
                 self.infer_type_of_expression(expression, scope)?
             }
-            UseIn => todo!("1stP infer type of use/in"),
             CaseAnalysis(analysis) => {
                 let subject_type =
                     self.infer_type_of_expression(analysis.scrutinee.clone(), scope)?;

@@ -240,7 +240,7 @@ impl Targets {
 pub struct Attributes(pub Vec<Attribute>);
 
 impl Attributes {
-    pub fn contains<Q: Query>(&self, query: Q) -> bool {
+    pub fn has<Q: Query>(&self, query: Q) -> bool {
         self.0
             .iter()
             .any(move |attribute| query.matches(&attribute.bare))

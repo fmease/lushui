@@ -11,7 +11,7 @@ use inkwell::{
     context::Context,
     module::{Linkage, Module},
     targets::TargetMachine,
-    types::IntType,
+    types::{FunctionType, IntType},
     values::{BasicValueEnum, FunctionValue, GlobalValue, IntValue, UnnamedAddress},
 };
 use resolver::ProgramEntryExt;
@@ -124,7 +124,7 @@ struct Generator<'a, 'ctx> {
     context: &'ctx Context,
     builder: Builder<'ctx>,
     module: Module<'ctx>,
-    bindings: RefCell<HashMap<DeclarationIndex, Definition<'ctx>>>,
+    bindings: RefCell<HashMap<DeclarationIndex, Definition<'a, 'ctx>>>,
     options: Options,
     component: &'a Component,
     session: &'a BuildSession,
@@ -153,11 +153,13 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
     }
 
     /// Start compiling the given declaration.
-    fn start_compile_declaration(&self, declaration: &hir::Declaration) {
+    fn start_compile_declaration(&self, declaration: &'a hir::Declaration) {
         use hir::BareDeclaration::*;
 
         match &declaration.bare {
             Function(function) => {
+                use ExpressionClassification::*;
+
                 let index = function.binder.index.declaration().unwrap();
 
                 // @Task somewhere store the info if we've already found the program entry or not
@@ -165,66 +167,85 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
                     == Component::PROGRAM_ENTRY_IDENTIFIER
                     && self.look_up_parent(index).unwrap() == self.component.root();
 
-                match &function.expression {
-                    Some(expression) => {
-                        use ExpressionClassification::*;
+                if declaration.attributes.has(hir::AttributeName::Intrinsic) {
+                    todo!("compiling intrinsics");
+                }
 
-                        let mut classification = expression.classify(self.session);
-                        if is_program_entry && let Constant = classification {
-                            classification = Thunk;
-                        }
+                let Some(expression) = &function.expression else { return };
 
-                        match classification {
-                            Constant => {
-                                let constant = self.module.add_global(
-                                    self.type_(&function.type_annotation),
-                                    None,
-                                    self.name(index).as_ref(),
-                                );
-                                constant.set_unnamed_address(UnnamedAddress::Global);
-                                constant.set_linkage(Linkage::Internal);
-                                constant.set_constant(true);
-                                constant
-                                    .set_initializer(&self.compile_constant_expression(expression));
+                let classification = if is_program_entry {
+                    Thunk
+                } else {
+                    expression.classify(self.session)
+                };
 
-                                self.bindings
-                                    .borrow_mut()
-                                    .insert(index, Definition::Constant(constant));
-                            }
-                            // @Beacon @Task simplify
-                            Thunk => {
-                                let name = if is_program_entry {
-                                    PROGRAM_ENTRY_NAME.into()
-                                } else {
-                                    self.name(index)
-                                };
+                match classification {
+                    Constant => {
+                        let constant = self.module.add_global(
+                            self.translate_type(&function.type_annotation),
+                            None,
+                            self.name(index).as_ref(),
+                        );
+                        constant.set_unnamed_address(UnnamedAddress::Global);
+                        constant.set_linkage(Linkage::Internal);
+                        constant.set_constant(true);
+                        constant.set_initializer(&self.compile_constant_expression(expression));
 
-                                let type_ =
-                                    self.type_(&function.type_annotation).fn_type(&[], false);
-
-                                let thunk = self.module.add_function(
-                                    name.as_ref(),
-                                    type_,
-                                    if is_program_entry {
-                                        None
-                                    } else {
-                                        Some(Linkage::Internal)
-                                    },
-                                );
-
-                                thunk
-                                    .as_global_value()
-                                    .set_unnamed_address(UnnamedAddress::Global);
-
-                                self.bindings
-                                    .borrow_mut()
-                                    .insert(index, Definition::Thunk(thunk));
-                            }
-                            // @Beacon @Task
-                            Function(_) => todo!(),
-                        }
+                        self.bindings
+                            .borrow_mut()
+                            .insert(index, Definition::Constant(constant));
                     }
-                    None => todo!(),
+                    // @Beacon @Task simplify
+                    Thunk => {
+                        let name = if is_program_entry {
+                            PROGRAM_ENTRY_NAME.into()
+                        } else {
+                            self.name(index)
+                        };
+
+                        let type_ = self
+                            .translate_type(&function.type_annotation)
+                            .fn_type(&[], false);
+
+                        let thunk = self.module.add_function(
+                            name.as_ref(),
+                            type_,
+                            if is_program_entry {
+                                None
+                            } else {
+                                Some(Linkage::Internal)
+                            },
+                        );
+
+                        thunk
+                            .as_global_value()
+                            .set_unnamed_address(UnnamedAddress::Global);
+
+                        self.bindings
+                            .borrow_mut()
+                            .insert(index, Definition::Thunk(thunk));
+                    }
+                    Function(lambda) => {
+                        // @Beacon @Task handle functions of arbitrary "arity" here!
+
+                        let function_value = self.module.add_function(
+                            self.name(index).as_ref(),
+                            self.translate_unary_function_type(&function.type_annotation),
+                            Some(Linkage::Internal),
+                        );
+
+                        function_value
+                            .as_global_value()
+                            .set_unnamed_address(UnnamedAddress::Global);
+
+                        self.bindings.borrow_mut().insert(
+                            index,
+                            Definition::UnaryFunction {
+                                value: function_value,
+                                lambda,
+                            },
+                        );
+                    }
                 }
             }
             // @Temporary skipping for now
@@ -250,11 +271,38 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
             Function(function) => {
                 let index = function.binder.index.declaration().unwrap();
 
-                if let Definition::Thunk(thunk) = self.bindings.borrow()[&index] {
-                    let start_block = self.context.append_basic_block(thunk, "start");
-                    self.builder.position_at_end(start_block);
+                if declaration.attributes.has(hir::AttributeName::Intrinsic) {
+                    todo!("compiling intrinsics");
+                }
 
-                    self.compile_expression_into_basic_block(function.expression.as_ref().unwrap());
+                let Some(expression) = &function.expression else { return };
+
+                match self.bindings.borrow()[&index] {
+                    Definition::Constant(_) => {}
+                    Definition::Thunk(thunk) => {
+                        let start_block = self.context.append_basic_block(thunk, "start");
+                        self.builder.position_at_end(start_block);
+
+                        let value = self.compile_expression(expression, Vec::new());
+
+                        self.builder
+                            .build_return(value.as_ref().map(|value| value as _));
+                    }
+                    Definition::UnaryFunction {
+                        value: unary_function,
+                        lambda,
+                    } => {
+                        let start_block = self.context.append_basic_block(unary_function, "start");
+                        self.builder.position_at_end(start_block);
+
+                        let value = self.compile_expression(
+                            &lambda.body,
+                            vec![unary_function.get_nth_param(0).unwrap()],
+                        );
+
+                        self.builder
+                            .build_return(value.as_ref().map(|value| value as _));
+                    }
                 }
             }
             // @Temporary skipping for now
@@ -290,7 +338,6 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
             Text(_) => todo!(),
             Binding(_) => todo!(),
             Lambda(_)
-            | UseIn
             | CaseAnalysis(_)
             | Application(_)
             | IntrinsicApplication(_)
@@ -303,22 +350,47 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
         }
     }
 
-    fn compile_expression_into_basic_block(&self, expression: &hir::Expression) {
+    fn compile_expression(
+        &self,
+        expression: &hir::Expression,
+        substitutions: Vec<BasicValueEnum<'ctx>>,
+    ) -> Option<BasicValueEnum<'ctx>> {
         use hir::{intrinsic::Type, BareExpression::*};
 
         match &expression.bare {
-            PiType(_) => {
-                self.builder.build_return(None);
+            PiType(_) => None,
+            Application(application) => {
+                use hir::Index::*;
+
+                let Binding(callee) = &application.callee.bare else {
+                    todo!("compiling applications with non-binding callee");
+                };
+
+                let argument = self
+                    .compile_expression(&application.argument, substitutions)
+                    .unwrap();
+
+                let value = match callee.0.index {
+                    Declaration(index) => {
+                        let Definition::UnaryFunction { value: function, .. } = self.bindings.borrow()[&index] else {
+                            unreachable!();
+                        };
+
+                        self.builder
+                            .build_call(function, &[argument.into()], "")
+                            .try_as_basic_value()
+                            .left()
+                            .unwrap()
+                    }
+                    DeBruijn(_) => todo!("compiling application with local callee"),
+                    DeBruijnParameter => unreachable!(),
+                };
+
+                Some(value)
             }
-            Application(_) => todo!(),
-            Number(number) => {
-                self.builder
-                    .build_return(Some(&self.compile_number(number)));
-            }
-            Text(_) => todo!(),
-            Binding(binding) if self.session.is_intrinsic_type(Type::Type, &binding.0) => {
-                self.builder.build_return(None);
-            }
+            Number(number) => Some(self.compile_number(number).into()),
+            Text(_) => todo!("compiling text"),
+            Binding(binding) if self.session.is_intrinsic_type(Type::Type, &binding.0) => None,
             Binding(binding) => {
                 use hir::Index::*;
 
@@ -334,24 +406,23 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
                                 .try_as_basic_value()
                                 .left()
                                 .unwrap(),
+                            Definition::UnaryFunction { .. } => unreachable!(),
                         };
 
-                        self.builder.build_return(Some(&value));
+                        Some(value)
                     }
-                    DeBruijn(_) => todo!(),
-                    DeBruijnParameter => todo!(),
+                    DeBruijn(index) => Some(substitutions[index.0]),
+
+                    DeBruijnParameter => unreachable!(),
                 }
             }
-            Lambda(_) => todo!(),
-            UseIn => todo!(),
-            CaseAnalysis(_) => todo!(),
-            Substituted(_) => todo!(),
-            IntrinsicApplication(_) => todo!(),
-            Projection(_) => todo!(),
-            IO(_) => todo!(),
-            // @Question how should we handle that?
-            Error => todo!(),
-        };
+            Lambda(_) => todo!("compiling lambdas"),
+            CaseAnalysis(_) => todo!("compiling case analyses"),
+            IntrinsicApplication(_) => todo!("compiling intrinsic applications"),
+            Projection(_) => todo!("compiling record projections"),
+            IO(_) => todo!("compiling IO actions"),
+            Substituted(_) | Error => unreachable!(),
+        }
     }
 
     fn compile_number(&self, number: &hir::Number) -> IntValue<'ctx> {
@@ -370,14 +441,12 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
     }
 
     // @Note currently only handles numeric types
-    fn type_(&self, type_: &hir::Expression) -> IntType<'ctx> {
+    fn translate_type(&self, type_: &hir::Expression) -> IntType<'ctx> {
         use hir::BareExpression::*;
 
         match &type_.bare {
             PiType(_) => todo!(),
             Application(_) => todo!(),
-            Number(_) => todo!(),
-            Text(_) => todo!(),
             Binding(binding) => {
                 use hir::Index::*;
 
@@ -405,11 +474,34 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
                         }
                     }
                     DeBruijn(_) => todo!(),
-                    DeBruijnParameter => todo!(),
+                    DeBruijnParameter => unreachable!(),
                 }
             }
             Lambda(_) => todo!(),
-            UseIn => todo!(),
+            CaseAnalysis(_) => todo!(),
+            Substituted(_) => todo!(),
+            IntrinsicApplication(_) => todo!(),
+            Projection(_) => todo!(),
+            Error => todo!(),
+            Number(_) | Text(_) | IO(_) => unreachable!(),
+        }
+    }
+
+    fn translate_unary_function_type(&self, type_: &hir::Expression) -> FunctionType<'ctx> {
+        use hir::BareExpression::*;
+
+        match &type_.bare {
+            PiType(pi) => {
+                let domain = self.translate_type(&pi.domain);
+                // @Task pass along the parameter!
+                let codomain = self.translate_type(&pi.codomain);
+
+                codomain.fn_type(&[domain.into()], false)
+            }
+            Application(_) => todo!(),
+            Number(_) | Text(_) => unreachable!(),
+            Binding(_) => todo!(),
+            Lambda(_) => todo!(),
             CaseAnalysis(_) => todo!(),
             Substituted(_) => todo!(),
             IntrinsicApplication(_) => todo!(),
@@ -455,7 +547,6 @@ impl ExpressionExt for hir::Expression {
             // @Note we could make this more nuanced (prefering Constant if possible)
             Binding(_) => Thunk,
             Lambda(lambda) => Function(lambda),
-            UseIn => todo!(),
             CaseAnalysis(_) => Thunk,
             Substituted(_) => todo!(),
             Projection(_) => todo!(),
@@ -465,9 +556,13 @@ impl ExpressionExt for hir::Expression {
     }
 }
 
-enum Definition<'ctx> {
+enum Definition<'a, 'ctx> {
     Constant(GlobalValue<'ctx>),
     Thunk(FunctionValue<'ctx>),
+    UnaryFunction {
+        value: FunctionValue<'ctx>,
+        lambda: &'a hir::Lambda,
+    },
 }
 
 enum ExpressionClassification<'a> {

@@ -10,9 +10,9 @@
 use crossbeam::thread::Scope;
 use derivation::Elements;
 use error::Result;
+use hir::{Attribute, AttributeName, Attributes, BareAttribute};
 use hir_format::ComponentExt;
 use joinery::JoinableIterator;
-use lowered_ast::{Attribute, AttributeName, Attributes, BareAttribute};
 use node::{Attributable, Document, Element, Node, VoidElement};
 use session::{BuildSession, Component, DeclarationIndexExt, IdentifierExt, Package, PackageIndex};
 use std::{

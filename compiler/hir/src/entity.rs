@@ -1,8 +1,8 @@
 use crate::{
-    DeclarationIndex, Exposure, Expression, Identifier, LocalDeclarationIndex, Namespace, ValueView,
+    Attributes, DeclarationIndex, Exposure, Expression, Identifier, LocalDeclarationIndex,
+    Namespace, ValueView,
 };
 use error::PossiblyErroneous;
-use lowered_ast::Attributes;
 use std::default::default;
 use utilities::obtain;
 

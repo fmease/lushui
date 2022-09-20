@@ -17,11 +17,10 @@ use ast::Explicit;
 use diagnostics::Diagnostic;
 use error::{PossiblyErroneous, Result};
 use hir::{
-    interfaceable, known, DeBruijnIndex, DeclarationIndex, Entity, Identifier, Substitution::Shift,
-    ValueView,
+    interfaceable, known, Attributes, DeBruijnIndex, DeclarationIndex, Entity, Identifier,
+    Substitution::Shift, ValueView,
 };
 use hir_format::Display;
-use lowered_ast::Attributes;
 use resolver::ProgramEntryExt;
 use session::{BuildSession, Component, DeclarationIndexExt, InterfaceableBindingExt};
 use std::{default::default, fmt};
@@ -251,7 +250,6 @@ impl<'a> Interpreter<'a> {
                     .substitute(substituted.substitution.clone());
                 self.evaluate_expression(expression, context)?
             }
-            UseIn => todo!("evaluate use/in"),
             // @Note partially applied constructors differ from normal values
             // I guess it's very likely that the first code we write will handle them incorrectly
             // because the code will not check for the arity of the neutral application
@@ -754,7 +752,6 @@ impl Substitute for Expression {
                 }
                 .into(),
             ),
-            (UseIn, _) => todo!("substitute use/in"),
             (IntrinsicApplication(application), substitution) => Expression::new(
                 self.attributes,
                 self.span,

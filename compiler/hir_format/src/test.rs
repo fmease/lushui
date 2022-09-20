@@ -1,9 +1,9 @@
 use crate::Display;
 use ast::Explicitness::*;
 use hir::{
-    Entity, EntityKind, Exposure, Expression, Identifier, LocalDeclarationIndex, Number, Text,
+    Attribute, Attributes, BareAttribute, Entity, EntityKind, Exposure, Expression, Identifier,
+    LocalDeclarationIndex, Number, Text,
 };
-use lowered_ast::{Attribute, Attributes, BareAttribute};
 use session::{BuildSession, Component, IdentifierExt, LocalDeclarationIndexExt};
 use span::Span;
 use std::default::default;

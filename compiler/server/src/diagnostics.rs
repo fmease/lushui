@@ -7,7 +7,7 @@ use tower_lsp::lsp_types::{
     NumberOrString, OneOf, Range,
 };
 
-const DIAGNOSTIC_SOURCE: &str = "source";
+const SOURCE: &str = "lushui";
 
 pub(crate) type LspMessage = (MessageType, String);
 
@@ -31,7 +31,7 @@ impl DiagnosticExt for UnboxedUntaggedDiagnostic {
                     range,
                     severity: Some(IntoLspType::into(self.severity)),
                     code: self.code.map(IntoLspType::into),
-                    source: Some(DIAGNOSTIC_SOURCE.into()),
+                    source: Some(SOURCE.into()),
                     message,
                     related_information: Some(related_information),
                     tags,

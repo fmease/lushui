@@ -189,7 +189,6 @@ fn write_pi_type_literal_or_lower(
             write!(f, " {arrow} ", arrow = "=>".color(SYMBOL_COLOR))?;
             lambda.body.write(f)
         }
-        UseIn => todo!(),
         CaseAnalysis(analysis) => {
             write!(f, "{case} ", case = "case".color(KEYWORD_COLOR),)?;
             analysis.scrutinee.write(f)?;

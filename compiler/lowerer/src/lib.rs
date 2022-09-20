@@ -29,7 +29,7 @@ use ast::{BareHanger, Explicit, Parameter, Path};
 use diagnostics::{reporter::ErasedReportedError, Diagnostic, ErrorCode, Reporter};
 use error::{Health, OkIfUntaintedExt, PossiblyErroneous, Result, Stain};
 use lowered_ast::{
-    attributes::{Predicate, Public, Query, Target},
+    attribute::{Predicate, Public, Query, Target},
     AttributeName, Attributes, BareAttribute,
 };
 use session::{BuildSession, Component};
@@ -919,7 +919,7 @@ impl<'a> Lowerer<'a> {
             let homonymous_attributes: Vec<_> =
                 conforming_attributes.filter(is_homonymous).collect();
 
-            if !attributes.contains(is_homonymous) {
+            if !attributes.has(is_homonymous) {
                 attributes.0.push(attribute.clone());
             }
 
@@ -1255,7 +1255,7 @@ impl BareAttributeExt for lowered_ast::BareAttribute {
             Ok(match name {
                 Abstract => Self::Abstract,
                 Allow | Deny | Forbid | Warn => {
-                    let lint = lowered_ast::attributes::Lint::parse(
+                    let lint = lowered_ast::attribute::Lint::parse(
                         argument(arguments, attribute.span, session.reporter())?
                             .path(Some("lint"), session.reporter())?
                             .clone(),
@@ -1270,7 +1270,7 @@ impl BareAttributeExt for lowered_ast::BareAttribute {
                         _ => unreachable!(),
                     }
                 }
-                Deprecated => Self::Deprecated(lowered_ast::attributes::Deprecated {
+                Deprecated => Self::Deprecated(lowered_ast::attribute::Deprecated {
                     reason: optional_argument(arguments)
                         .map(|argument| argument.text_literal(Some("reason"), session.reporter()))
                         .transpose()?
@@ -1565,7 +1565,7 @@ trait LintExt: Sized {
     fn parse(binder: Path, reporter: &Reporter) -> Result<Self, AttributeParsingError>;
 }
 
-impl LintExt for lowered_ast::attributes::Lint {
+impl LintExt for lowered_ast::attribute::Lint {
     fn parse(binder: Path, reporter: &Reporter) -> Result<Self, AttributeParsingError> {
         Err(AttributeParsingError::Erased(
             Diagnostic::error()

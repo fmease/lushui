@@ -5,7 +5,7 @@ use super::{
     Options, LOREM_IPSUM,
 };
 use derivation::Elements;
-use lowered_ast::{attributes::Query as _, AttributeName};
+use hir::{attribute::Query as _, AttributeName};
 use std::borrow::Cow;
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -164,7 +164,7 @@ impl<'a> Modules<'a> {
 
             let mut anchor = Element::anchor(module.id(), module.binder).class("binder");
 
-            if module.attributes.contains(AttributeName::Deprecated) {
+            if module.attributes.has(AttributeName::Deprecated) {
                 anchor.add_class("deprecated");
             }
 
@@ -181,7 +181,7 @@ impl<'a> Modules<'a> {
 }
 
 pub(crate) struct Module<'a> {
-    pub(crate) attributes: &'a lowered_ast::attributes::Attributes,
+    pub(crate) attributes: &'a hir::Attributes,
     pub(crate) binder: &'a str,
 }
 
@@ -229,7 +229,7 @@ impl<'a> Types<'a> {
 
             let mut anchor = Element::anchor(format!("#{id}"), type_.binder).class("binder");
 
-            if type_.attributes.contains(AttributeName::Deprecated) {
+            if type_.attributes.has(AttributeName::Deprecated) {
                 anchor.add_class("deprecated");
             }
 
@@ -258,7 +258,7 @@ impl<'a> Types<'a> {
             if type_.constructors.is_empty()
                 || type_
                     .attributes
-                    .contains(AttributeName::Abstract.or(AttributeName::Intrinsic))
+                    .has(AttributeName::Abstract.or(AttributeName::Intrinsic))
             {
                 continue;
             }
@@ -304,7 +304,7 @@ impl<'a> Types<'a> {
 }
 
 pub(crate) struct Type<'a> {
-    pub(crate) attributes: &'a lowered_ast::attributes::Attributes,
+    pub(crate) attributes: &'a hir::Attributes,
     pub(crate) binder: &'a str,
     // @Question store a hir::Expression?
     pub(crate) type_: String,
@@ -322,7 +322,7 @@ impl<'a> Subsubsection<'a> for Type<'a> {
 }
 
 pub(crate) struct Constructor<'a> {
-    pub(crate) attributes: &'a lowered_ast::attributes::Attributes,
+    pub(crate) attributes: &'a hir::Attributes,
     pub(crate) binder: &'a str,
     // @Question store a hir::Expression?
     pub(crate) type_: String,
@@ -362,7 +362,7 @@ impl<'a> Functions<'a> {
 
             let mut anchor = Element::anchor(format!("#{id}"), function.binder).class("binder");
 
-            if function.attributes.contains(AttributeName::Deprecated) {
+            if function.attributes.has(AttributeName::Deprecated) {
                 anchor.add_class("deprecated");
             }
 
@@ -391,7 +391,7 @@ impl<'a> Functions<'a> {
 }
 
 pub(crate) struct Function<'a> {
-    pub(crate) attributes: &'a lowered_ast::attributes::Attributes,
+    pub(crate) attributes: &'a hir::Attributes,
     pub(crate) binder: &'a str,
     // @Question store a hir::Expression?
     pub(crate) type_: String,

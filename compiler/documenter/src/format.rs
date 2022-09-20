@@ -116,7 +116,6 @@ impl<'a> Formatter<'a> {
                 self.write(" =&gt; ");
                 self.format_expression(&lambda.body);
             }
-            UseIn => todo!(),
             // @Task fix indentation
             CaseAnalysis(analysis) => {
                 self.write("case ");

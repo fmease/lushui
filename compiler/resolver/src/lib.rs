@@ -14,11 +14,10 @@ use colored::Colorize;
 use diagnostics::{reporter::ErasedReportedError, Diagnostic, ErrorCode, LintCode};
 use error::{Health, OkIfUntaintedExt, PossiblyErroneous, ReportedExt, Result, Stain};
 use hir::{
-    intrinsic, DeBruijnIndex, DeclarationIndex, Entity, EntityKind, Exposure, ExposureReach,
-    Identifier, Index, LocalDeclarationIndex, PartiallyResolvedPath,
+    intrinsic, AttributeName, Attributes, DeBruijnIndex, DeclarationIndex, Entity, EntityKind,
+    Exposure, ExposureReach, Identifier, Index, LocalDeclarationIndex, PartiallyResolvedPath,
 };
 use hir_format::{ComponentExt as _, DefaultContext, Display};
-use lowered_ast::{AttributeName, Attributes};
 use session::{
     BuildSession, Component, DeclarationIndexExt, IdentifierExt, LocalDeclarationIndexExt,
 };
@@ -205,11 +204,11 @@ impl<'a> ResolverMut<'a> {
 
                 if let Some(constructors) = &type_.constructors {
                     for constructor in constructors {
-                        let transparency =
-                            match declaration.attributes.contains(AttributeName::Abstract) {
-                                true => Transparency::Abstract,
-                                false => Transparency::Transparent,
-                            };
+                        let transparency = match declaration.attributes.has(AttributeName::Abstract)
+                        {
+                            true => Transparency::Abstract,
+                            false => Transparency::Transparent,
+                        };
 
                         self.start_resolve_declaration(
                             constructor,

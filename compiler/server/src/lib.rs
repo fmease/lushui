@@ -202,6 +202,7 @@ impl tower_lsp::LanguageServer for Server {
 
             self.reset_source_map();
 
+            // @Task keep going even with errors!
             let (session, component_roots) =
                 check_file(path, content, &self.map, Reporter::silent()).ok()?;
 
@@ -238,6 +239,7 @@ impl tower_lsp::LanguageServer for Server {
 }
 
 // @Beacon @Task instead of a path and the content, take a SourceFileIndex!!!
+// @Task keep going even with errors!
 fn check_file(
     path: &Path,
     content: Arc<String>,
@@ -258,6 +260,7 @@ fn check_file(
     Ok((session, component_roots))
 }
 
+// @Task keep going even with errors!
 fn build_components(
     components: Components,
     session: &mut BuildSession,
@@ -272,6 +275,7 @@ fn build_components(
     Ok(component_roots)
 }
 
+// @Task keep going even with errors!
 fn build_component(
     component: &mut Component,
     session: &mut BuildSession,
@@ -460,7 +464,6 @@ impl FindBinding for hir::Expression {
                     None
                 }
             }
-            UseIn => None,
             CaseAnalysis(analysis) => {
                 if analysis.scrutinee.span.contains(byte_index) {
                     analysis.scrutinee.find_binding(byte_index)

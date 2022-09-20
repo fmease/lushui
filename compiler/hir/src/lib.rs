@@ -6,7 +6,7 @@ pub use entity::{Entity, EntityKind};
 use error::PossiblyErroneous;
 pub use identifier::{DeBruijnIndex, DeclarationIndex, Identifier, Index, LocalDeclarationIndex};
 use joinery::JoinableIterator;
-pub use lowered_ast::Item;
+pub use lowered_ast::{attribute, Attribute, AttributeName, Attributes, BareAttribute, Item};
 use span::{SourceFileIndex, Span};
 use std::{
     fmt,
@@ -112,7 +112,6 @@ pub enum BareExpression {
     Text(Box<Text>),
     Binding(Box<Binding>),
     Lambda(Box<Lambda>),
-    UseIn,
     CaseAnalysis(Box<CaseAnalysis>),
     Substituted(Box<Substituted>),
     IntrinsicApplication(Box<IntrinsicApplication>),

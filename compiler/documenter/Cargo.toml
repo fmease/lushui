@@ -13,7 +13,6 @@ hir = { path = "../hir" }
 hir_format = { path = "../hir_format" }
 html-escape = "0.2.9"
 joinery = "2.1.0"
-lowered_ast = { path = "../lowered_ast" }
 minifier = "0.2.1"
 resolver = { path = "../resolver" }
 session = { path = "../session" }

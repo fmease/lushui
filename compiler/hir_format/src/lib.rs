@@ -96,7 +96,7 @@ fn write_pi_type_literal_or_lower(
 ) -> fmt::Result {
     use hir::BareExpression::*;
 
-    // In here, we format `Lambda`, `UseIn` and `CaseAnalysis` as a pi-type-literal-or-lower instead of
+    // In here, we format `Lambda` and `CaseAnalysis` as a pi-type-literal-or-lower instead of
     // a lowered expression — which you might have expected from reading through the grammar and the parser.
     // The reason for this is the way we treat bracketed expressions: We do not represent them in the AST
     // (as their own nodes).
@@ -171,7 +171,6 @@ fn write_pi_type_literal_or_lower(
             write!(f, " => ")?;
             lambda.body.write(context, f)
         }
-        UseIn => todo!(),
         // @Task fix indentation
         CaseAnalysis(analysis) => {
             write!(f, "case ")?;

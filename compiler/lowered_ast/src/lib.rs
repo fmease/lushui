@@ -3,15 +3,15 @@
 #![allow(incomplete_features)] // adt_const_params
 
 use ast::{Explicitness, Identifier, NumberLiteral, Path, SequenceLiteral, TextLiteral};
-pub use attributes::{Attribute, AttributeName, Attributes, BareAttribute};
+pub use attribute::{Attribute, AttributeName, Attributes, BareAttribute};
 use error::PossiblyErroneous;
 pub use format::Display;
 use span::{SourceFileIndex, Span};
 
-pub mod attributes;
+pub mod attribute;
 mod format;
 
-pub type Item<Bare> = item::Item<Bare, attributes::Attributes>;
+pub type Item<Bare> = item::Item<Bare, attribute::Attributes>;
 
 pub type Declaration = Item<BareDeclaration>;
 
