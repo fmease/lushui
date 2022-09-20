@@ -97,13 +97,17 @@ fn compile(
 
     let product = module.finish();
 
+    let name = component.name().as_str();
+
     let path = match session.goal_package() {
         // @Task ensure that the build folder exists
-        Some(package) => session
-            .build_folder()
-            .join(session[package].name.as_str())
-            .with_extension("o"),
-        None => PathBuf::from(component.name().as_str()).with_extension("o"),
+        Some(package) => {
+            let mut path = session[package].path.join(BuildSession::OUTPUT_FOLDER_NAME);
+            path.push(name);
+            path.set_extension("o");
+            path
+        }
+        None => Path::new(name).with_extension("o"),
     };
 
     std::fs::write(&path, product.emit().unwrap()).unwrap();
@@ -114,14 +118,19 @@ fn compile(
 // @Task support linkers other than clang
 //       (e.g. "`cc`", `gcc` (requires us to manually link to `libc` I think))
 fn link(path: &Path, component: &Component, session: &BuildSession) -> Result {
+    let name = component.name().as_str();
+
     // @Task error handling!
     let output = Command::new("clang")
         .arg(path)
         .arg("-o")
         .arg(match session.goal_package() {
-            // @Task ensure that the build folder exists
-            Some(package) => session.build_folder().join(session[package].name.as_str()),
-            None => PathBuf::from(component.name().as_str()),
+            Some(package) => {
+                let mut path = session[package].path.join(BuildSession::OUTPUT_FOLDER_NAME);
+                path.push(name);
+                path
+            }
+            None => PathBuf::from(name),
         })
         .output()
         .unwrap();

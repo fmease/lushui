@@ -706,12 +706,11 @@ impl BuildQueue {
         // @Task introduce proper concept of target components replacing the
         // current concept of a goal component
         let goal_component = self.components.last().unwrap();
-        let goal_component_index = goal_component.index();
 
         let session = BuildSession::new(
             self.packages,
             self.component_packages,
-            goal_component_index,
+            goal_component.outline(),
             &self.map,
             self.reporter,
         );

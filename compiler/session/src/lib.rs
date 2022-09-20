@@ -24,8 +24,6 @@ use std::{
 use token::Word;
 use utilities::{condition, ComponentIndex, HashMap};
 
-const BUILD_FOLDER_NAME: &str = "build";
-
 pub struct BuildSession {
     /// The components which have already been built in this session.
     components: HashMap<ComponentIndex, Component>,
@@ -33,7 +31,7 @@ pub struct BuildSession {
     packages: IndexMap<PackageIndex, Package>,
     /// The corresponding package of the components.
     component_packages: HashMap<ComponentIndex, PackageIndex>,
-    goal_component: ComponentIndex,
+    goal_component: ComponentOutline,
     // @Task Identifier -> DeclarationIndex
     known_bindings: HashMap<known::Binding, Identifier>,
     // @Task make this a DoubleHashMap
@@ -44,11 +42,13 @@ pub struct BuildSession {
 }
 
 impl BuildSession {
+    pub const OUTPUT_FOLDER_NAME: &'static str = "build";
+
     /// Create a new build session with all intrinsic functions defined.
     pub fn new(
         packages: IndexMap<PackageIndex, Package>,
         component_packages: HashMap<ComponentIndex, PackageIndex>,
-        goal_component: ComponentIndex,
+        goal_component: ComponentOutline,
         map: &Arc<RwLock<SourceMap>>,
         reporter: Reporter,
     ) -> Self {
@@ -74,7 +74,10 @@ impl BuildSession {
             components: default(),
             packages: default(),
             component_packages: default(),
-            goal_component: ComponentIndex::new(0),
+            goal_component: ComponentOutline {
+                name: Word::new_unchecked("test".into()),
+                index: ComponentIndex::new(0),
+            },
             known_bindings: default(),
             intrinsic_types: default(),
             intrinsic_functions: default(),
@@ -84,11 +87,11 @@ impl BuildSession {
     }
 
     pub fn goal_package(&self) -> Option<PackageIndex> {
-        self.package_of(self.goal_component)
+        self.package_of(self.goal_component.index)
     }
 
-    pub fn goal_component(&self) -> ComponentIndex {
-        self.goal_component
+    pub fn goal_component(&self) -> &ComponentOutline {
+        &self.goal_component
     }
 
     pub fn package_of(&self, component: ComponentIndex) -> Option<PackageIndex> {
@@ -98,15 +101,6 @@ impl BuildSession {
     pub fn in_goal_package(&self, component: ComponentIndex) -> bool {
         self.package_of(component)
             .map_or(false, |package| self.goal_package() == Some(package))
-    }
-
-    /// The path to the folder containing the build artifacts.
-    pub fn build_folder(&self) -> PathBuf {
-        match self.goal_package() {
-            Some(package) => self[package].path.join(BUILD_FOLDER_NAME),
-            // @Question how should the folder be called?
-            None => todo!(),
-        }
     }
 
     pub fn add(&mut self, component: Component) {
@@ -628,7 +622,7 @@ impl Component {
     }
 
     pub fn is_goal(&self, session: &BuildSession) -> bool {
-        self.index() == session.goal_component()
+        self.index() == session.goal_component.index
     }
 
     pub fn outline(&self) -> ComponentOutline {

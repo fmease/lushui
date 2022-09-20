@@ -280,10 +280,8 @@ impl<'a> Formatter<'a> {
             // (just something without the `extern`/`core` prefix)
             let path = self.component.index_to_path(index, self.session);
 
-            Element::new("a")
-                .attribute("href", declaration_url)
+            Element::anchor(declaration_url, binder.to_string())
                 .attribute("title", path)
-                .child(binder.to_string())
                 .render(&mut self.output);
         } else {
             self.write(&binder.to_string());

@@ -14,8 +14,16 @@ use hir_format::ComponentExt;
 use joinery::JoinableIterator;
 use lowered_ast::{Attribute, AttributeName, Attributes, BareAttribute};
 use node::{Attributable, Document, Element, Node, VoidElement};
-use session::{BuildSession, Component, ComponentOutline, DeclarationIndexExt, IdentifierExt};
-use std::{default::default, fs, io::BufWriter, path::PathBuf};
+use session::{
+    BuildSession, Component, ComponentOutline, DeclarationIndexExt, IdentifierExt, Package,
+    PackageIndex,
+};
+use std::{
+    default::default,
+    fs,
+    io::BufWriter,
+    path::{Path, PathBuf},
+};
 use text_processor::TextProcessor;
 use token::Word;
 
@@ -25,9 +33,9 @@ mod node;
 mod subsections;
 mod text_processor;
 
-const DOCUMENTATION_FOLDER_NAME: &str = "doc";
-const MAIN_STYLE_SHEET_FILE_NAME: &str = "style.min.css";
-const MAIN_SCRIPT_FILE_NAME: &str = "script.min.js";
+const OUTPUT_FOLDER_NAME: &str = "doc";
+const STYLE_SHEET_FILE_NAME: &str = "style.min.css";
+const SCRIPT_FILE_NAME: &str = "script.min.js";
 const SEARCH_INDEX_FILE_NAME: &str = "search-index.min.js";
 
 // @Task make this an unstable option instead
@@ -42,23 +50,40 @@ pub fn document(
     components: &[ComponentOutline],
     component: &Component,
     session: &BuildSession,
-) -> Result<PathBuf> {
+) -> Result<()> {
     crossbeam::scope(|scope| {
         let mut documenter =
             Documenter::new(options, components, component, session, scope).unwrap();
 
+        // @Beacon @Bug this re-creates these special pages with every component!
+        //         @Task do it only once!
         documenter
             .pages
-            .push(documenter.render_reserved_identifiers_page());
-        documenter.pages.push(documenter.render_attributes_page());
+            .push(documenter.reserved_identifiers_page());
+        documenter.pages.push(documenter.attributes_page());
+
+        // @Task don't document the same package twice!
+        if let Some(package) = session.package_of(component.index()) {
+            documenter.pages.push(documenter.package_page(package));
+        }
+
         documenter.document_declaration(component_root)?;
         documenter.collect_search_items(component_root);
-        let index_page_path = documenter.persist().unwrap();
+        documenter.persist().unwrap();
         documenter.text_processor.destruct().unwrap();
 
-        Ok(index_page_path)
+        Ok(())
     })
     .unwrap()
+}
+
+pub fn index_page(session: &BuildSession) -> PathBuf {
+    let mut path = Documenter::folder(session);
+    if session.goal_package().is_none() {
+        path.push(session.goal_component().name.as_str());
+    }
+    path.push("index.html");
+    path
 }
 
 struct Documenter<'a, 'scope> {
@@ -80,7 +105,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
         session: &'a BuildSession,
         scope: &'scope Scope<'a>,
     ) -> Result<Self, std::io::Error> {
-        let path = session.build_folder().join(DOCUMENTATION_FOLDER_NAME);
+        let path = Self::folder(session);
 
         if !path.exists() {
             fs::create_dir_all(&path)?;
@@ -100,15 +125,33 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
         })
     }
 
+    fn folder(session: &BuildSession) -> PathBuf {
+        match session.goal_package() {
+            Some(package) => {
+                let package = &session[package];
+                let mut path = package.path.clone();
+                path.push(BuildSession::OUTPUT_FOLDER_NAME);
+                path.push(OUTPUT_FOLDER_NAME);
+                path.push(package.name.as_str());
+                path
+            }
+            None => {
+                Path::new(session.goal_component().name.as_str()).with_extension(OUTPUT_FOLDER_NAME)
+            }
+        }
+    }
+
     /// Persist the generated documentation to disk.
     ///
     /// Returns the path to the index page (of the component).
-    fn persist(&self) -> Result<PathBuf, std::io::Error> {
+    // @Beacon @Bug this re-creates the CSS, JS and fonts with every component!
+    //         @Task do it only once!
+    fn persist(&self) -> Result<(), std::io::Error> {
         // @Task handle the case where two+ components (goal and/or (transitive) deps)
         // have the same name and are being documented
 
         {
-            let path = self.path.join(MAIN_STYLE_SHEET_FILE_NAME);
+            let path = self.path.join(STYLE_SHEET_FILE_NAME);
             // @Task instead of `DEVELOPING`, compare hash (maybe)?
             if DEVELOPING || !path.exists() {
                 static STYLE_SHEET: &str = include_str!("../include/css/style.css");
@@ -129,7 +172,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
         }
 
         {
-            let path = self.path.join(MAIN_SCRIPT_FILE_NAME);
+            let path = self.path.join(SCRIPT_FILE_NAME);
             // @Task instead of `DEVELOPING`, compare hash (maybe)?
             if DEVELOPING || !path.exists() {
                 static SCRIPT: &str = include_str!("../include/js/script.js");
@@ -156,7 +199,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
         }
 
         // @Task use BufWriter
-        // @Task put it in self.destination instead once the search index contains all components
+        // @Task put it in self.path instead once the search index contains all components
         fs::write(component_path.join(SEARCH_INDEX_FILE_NAME), {
             let mut search_index = String::from("window.searchIndex=[");
 
@@ -215,7 +258,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
             search_index
         })?;
 
-        Ok(component_path.join("index.html"))
+        Ok(())
     }
 
     fn collect_search_items(&mut self, component_root: &hir::Declaration) {
@@ -278,7 +321,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
         if let hir::BareDeclaration::Module(module) = &declaration.bare {
             // @Task defer generation, only collect into structured data to be able to
             // generate the pages in parallel later on!
-            let page = self.render_module_page(module, &declaration.attributes);
+            let page = self.add_module_page(module, &declaration.attributes);
             self.pages.push(page);
 
             for declaration in &module.declarations {
@@ -359,7 +402,140 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
         subsections
     }
 
-    fn render_module_page(&self, module: &hir::Module, attributes: &Attributes) -> Page {
+    fn reserved_identifiers_page(&self) -> Page {
+        let url_prefix = "./";
+        let mut body = Element::new("body").child(ledge(url_prefix, None, None));
+        let mut container = Element::div("container");
+
+        let subsections = subsections::Subsections::reserved_identifiers();
+        container.add_child(sidebar(&subsections, url_prefix, self.components));
+
+        // main content
+        {
+            let mut main = Element::new("section").class("main");
+
+            // main heading
+            {
+                let mut heading = Element::new("h1");
+                heading.add_child("Reserved Identifiers");
+                main.add_child(heading);
+            }
+
+            subsections.render(url_prefix, &mut main, &self.text_processor, &self.options);
+
+            container.add_child(main);
+        }
+
+        body.add_child(container);
+
+        Page {
+            path: self.path.join("identifiers.html"),
+            content: render_page(
+                head(
+                    self.component.name(),
+                    url_prefix,
+                    "Reserved Identifiers".into(),
+                ),
+                body,
+            ),
+        }
+    }
+
+    fn attributes_page(&self) -> Page {
+        let url_prefix = "./";
+        let mut body = Element::new("body").child(ledge(url_prefix, None, None));
+        let mut container = Element::div("container");
+
+        let subsections = subsections::Subsections::attributes();
+        container.add_child(sidebar(&subsections, url_prefix, self.components));
+
+        // main content
+        {
+            let mut main = Element::new("section").class("main");
+
+            // main heading
+            {
+                let mut heading = Element::new("h1");
+                heading.add_child("Attributes");
+                main.add_child(heading);
+            }
+
+            subsections.render(url_prefix, &mut main, &self.text_processor, &self.options);
+
+            container.add_child(main);
+        }
+
+        body.add_child(container);
+
+        Page {
+            path: self.path.join("attributes.html"),
+            content: render_page(
+                head(self.component.name(), url_prefix, "Attributes".into()),
+                body,
+            ),
+        }
+    }
+
+    fn package_page(&self, package: PackageIndex) -> Page {
+        let url_prefix = "./";
+        let package = &self.session[package];
+        let name = &package.name;
+
+        let mut body = Element::new("body").child(ledge(url_prefix, Some(package), None));
+        let mut container = Element::div("container");
+
+        container.add_child(sidebar(&default(), url_prefix, self.components));
+
+        // main content
+        {
+            let mut main = Element::new("section").class("main");
+
+            // main heading
+            {
+                let mut heading = Element::new("h1");
+                heading.add_child(format!("Package {name} {}", package.version.0));
+                main.add_child(heading);
+            }
+
+            main.add_child(Element::div("description").child(&package.description));
+
+            // @Task add `section.subsection`s!
+
+            {
+                main.add_child(Element::new("h2").child("Components"));
+
+                let mut list = Element::new("ul");
+
+                for component in package.components.keys() {
+                    list.add_child(Element::new("li").child(Element::anchor(
+                        format!("{url_prefix}{component}/index.html"),
+                        component.as_str(),
+                    )));
+                }
+
+                main.add_child(list);
+            }
+
+            container.add_child(main);
+        }
+
+        body.add_child(container);
+
+        Page {
+            path: self.path.join("index.html"),
+            content: render_page(
+                head(
+                    // @Temporary hack
+                    &Word::new_unchecked("__".into()),
+                    url_prefix,
+                    format!("Package {name}").into(),
+                ),
+                body,
+            ),
+        }
+    }
+
+    fn add_module_page(&self, module: &hir::Module, attributes: &Attributes) -> Page {
         let index = module
             .binder
             .local_declaration_index(self.component)
@@ -369,13 +545,18 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
         let page_depth = path_segments.len();
         let url_prefix = format!("./{}", "../".repeat(page_depth));
 
-        let mut body = Element::new("body");
-        render_ledge(&mut body, &url_prefix);
+        let mut body = Element::new("body").child(ledge(
+            &url_prefix,
+            self.session
+                .package_of(self.component.index())
+                .map(|package| &self.session[package]),
+            Some(self.component.name()),
+        ));
 
-        let mut container = Element::new("div").class("container");
+        let mut container = Element::div("container");
 
         let subsections = self.collect_module_subsections(module, &url_prefix);
-        container.add_child(render_sidebar(&subsections, &url_prefix, self.components));
+        container.add_child(sidebar(&subsections, &url_prefix, self.components));
 
         // main content
         {
@@ -395,13 +576,10 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                 for (position, &path_segment) in path_segments.iter().enumerate() {
                     let is_last_segment = position + 1 == page_depth;
 
-                    let mut anchor = Element::new("a").attribute(
-                        "href",
+                    heading.add_child(Element::anchor(
                         format!("{}index.html", "../".repeat(page_depth - 1 - position)),
-                    );
-                    anchor.add_child(path_segment);
-
-                    heading.add_child(anchor);
+                        path_segment,
+                    ));
 
                     if !is_last_segment {
                         // @Task add extra spacing (left or right, depends) for
@@ -413,7 +591,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                 main.add_child(heading);
             }
 
-            render_declaration_attributes(
+            add_declaration_attributes(
                 attributes,
                 &url_prefix,
                 &mut main,
@@ -438,133 +616,81 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
 
         Page {
             path,
-            content: render_page(
-                render_head(self.component.name(), &url_prefix, title.into()),
-                body,
-            ),
-        }
-    }
-
-    fn render_reserved_identifiers_page(&self) -> Page {
-        let url_prefix = "./";
-
-        let mut body = Element::new("body");
-        render_ledge(&mut body, url_prefix);
-
-        let mut container = Element::new("div").class("container");
-
-        let subsections = subsections::Subsections::reserved_identifiers();
-        container.add_child(render_sidebar(&subsections, url_prefix, self.components));
-
-        // main content
-        {
-            let mut main = Element::new("section").class("main");
-
-            // main heading
-            {
-                let mut heading = Element::new("h1");
-                heading.add_child("Reserved Identifiers");
-                main.add_child(heading);
-            }
-
-            subsections.render(url_prefix, &mut main, &self.text_processor, &self.options);
-
-            container.add_child(main);
-        }
-
-        body.add_child(container);
-
-        Page {
-            path: self.path.join("identifiers.html"),
-            content: render_page(
-                render_head(
-                    self.component.name(),
-                    url_prefix,
-                    "Reserved Identifiers".into(),
-                ),
-                body,
-            ),
-        }
-    }
-
-    fn render_attributes_page(&self) -> Page {
-        let url_prefix = "./";
-
-        let mut body = Element::new("body");
-        render_ledge(&mut body, url_prefix);
-
-        let mut container = Element::new("div").class("container");
-
-        let subsections = subsections::Subsections::attributes();
-        container.add_child(render_sidebar(&subsections, url_prefix, self.components));
-
-        // main content
-        {
-            let mut main = Element::new("section").class("main");
-
-            // main heading
-            {
-                let mut heading = Element::new("h1");
-                heading.add_child("Attributes");
-                main.add_child(heading);
-            }
-
-            subsections.render(url_prefix, &mut main, &self.text_processor, &self.options);
-
-            container.add_child(main);
-        }
-
-        body.add_child(container);
-
-        Page {
-            path: self.path.join("attributes.html"),
-            content: render_page(
-                render_head(self.component.name(), url_prefix, "Attributes".into()),
-                body,
-            ),
+            content: render_page(head(self.component.name(), &url_prefix, title.into()), body),
         }
     }
 }
 
-fn render_ledge<'a>(body: &mut Element<'a>, url_prefix: &'a str) {
-    body.add_child(
-        Element::new("div").class("ledge__positioner").child(
-            Element::new("div").class("ledge").child(
-                Element::new("div")
-                    .child(
-                        VoidElement::new("input")
-                            .attribute("type", "search")
-                            .attribute("id", "searchbar")
-                            .attribute("placeholder", "Search…")
-                            .attribute("autocomplete", "off")
-                            .attribute("data-url-prefix", url_prefix),
-                    )
-                    .child(
-                        Element::new("div")
-                            .attribute("id", "search-results__positioner")
-                            .child(Element::new("div").attribute("id", "search-results")),
-                    ),
-            ),
-        ),
-    );
+fn ledge<'a>(
+    url_prefix: &'a str,
+    package: Option<&'a Package>,
+    component: Option<&'a Word>,
+) -> Element<'a> {
+    let mut context = Element::div("name");
+
+    if let Some(package) = package {
+        // @Beacon @Task actual link
+        context.add_child(
+            Element::new("a")
+                .attribute("href", format!("{url_prefix}index.html"))
+                .child(Element::span("package").child(package.name.as_str()))
+                .child(" ")
+                .child(&package.version.0),
+        );
+    }
+
+    if let Some(component) = component {
+        if package.is_some() {
+            context.add_child(" / ");
+        }
+
+        // @Beacon @Task actual link
+        context.add_child(
+            Element::anchor(
+                format!("{url_prefix}{component}/index.html"),
+                component.as_str(),
+            )
+            .class("component"),
+        );
+    }
+
+    Element::div("ledge-container").child(
+        Element::div("ledge")
+            .child(context)
+            .child(search_bar(url_prefix)),
+    )
+}
+
+fn search_bar<'a>(url_prefix: &'a str) -> Element<'a> {
+    Element::new("div")
+        .child(
+            VoidElement::new("input")
+                .attribute("type", "search")
+                .attribute("id", "searchbar")
+                .attribute("placeholder", "Search…")
+                .attribute("autocomplete", "off")
+                .attribute("data-url-prefix", url_prefix),
+        )
+        .child(
+            Element::new("div")
+                .attribute("id", "search-results-container")
+                .child(Element::new("div").attribute("id", "search-results")),
+        )
 }
 
 fn render_page(head: Element<'_>, body: Element<'_>) -> String {
-    let mut html = Element::new("html");
-    html.add_attribute("lang", "en");
-    html.add_child(head);
-    html.add_child(body);
-
-    let mut page = Document::default();
-    page.add_child(html);
-
-    let mut content = String::new();
-    page.render(&mut content);
-
-    content
+    Document::default()
+        .child(
+            Element::new("html")
+                .attribute("lang", "en")
+                .child(head)
+                .child(body),
+        )
+        .render()
 }
 
-fn render_head<'a>(component: &Word, url_prefix: &str, title: Node<'a>) -> Element<'a> {
+// @Task remove `component` param
+fn head<'a>(component: &Word, url_prefix: &str, title: Node<'a>) -> Element<'a> {
     Element::new("head")
         .child(VoidElement::new("meta").attribute("charset", "utf-8"))
         .child(
@@ -576,41 +702,40 @@ fn render_head<'a>(component: &Word, url_prefix: &str, title: Node<'a>) -> Eleme
         .child(
             VoidElement::new("meta")
                 .attribute("name", "generator")
-                .attribute(
-                    "content",
-                    format!("lushui documenter {}", env!("CARGO_PKG_VERSION")),
-                ),
+                // @Task insert version smh
+                .attribute("content", "lushui documenter"),
         )
         .child(
             VoidElement::new("link")
                 .attribute("rel", "stylesheet")
-                .attribute("href", format!("{url_prefix}{MAIN_STYLE_SHEET_FILE_NAME}")),
+                .attribute("href", format!("{url_prefix}{STYLE_SHEET_FILE_NAME}")),
         )
         .child(
             Element::new("script")
-                .attribute("src", format!("{url_prefix}{MAIN_SCRIPT_FILE_NAME}"))
+                .attribute("src", format!("{url_prefix}{SCRIPT_FILE_NAME}"))
                 .boolean_attribute("defer"),
         )
         .child(
             Element::new("script")
                 .attribute(
                     "src",
+                    // @Task only create a single search index
                     format!("{url_prefix}{component}/{SEARCH_INDEX_FILE_NAME}"),
                 )
                 .boolean_attribute("defer"),
         )
 }
 
-fn render_sidebar<'a>(
+fn sidebar<'a>(
     subsections: &subsections::Subsections<'a>,
     url_prefix: &str,
     components: &'a [ComponentOutline],
 ) -> Element<'a> {
-    let mut sidebar = Element::new("div").class("sidebar");
+    let mut sidebar = Element::div("sidebar");
 
     subsections.render_table_of_contents(&mut sidebar);
 
-    sidebar.add_child(Element::new("div").class("title").child("Components"));
+    sidebar.add_child(Element::div("title").child("Components"));
 
     let mut list = Element::new("ul");
 
@@ -618,9 +743,10 @@ fn render_sidebar<'a>(
     components.sort_unstable_by_key(|component| &component.name);
 
     for component in components {
-        let anchor = Element::new("a")
-            .attribute("href", format!("{url_prefix}{}/index.html", component.name))
-            .child(Node::from(component.name.as_str()));
+        let anchor = Element::anchor(
+            format!("{url_prefix}{}/index.html", component.name),
+            Node::from(component.name.as_str()),
+        );
 
         list.add_child(Element::new("li").child(anchor));
     }
@@ -630,24 +756,24 @@ fn render_sidebar<'a>(
     sidebar
 }
 
-fn render_declaration_attributes(
+fn add_declaration_attributes(
     attributes: &Attributes,
     url_prefix: &str,
     parent: &mut Element<'_>,
     text_processor: &TextProcessor<'_>,
     options: &Options,
 ) {
-    let mut labels = Element::new("div").class("labels");
+    let mut labels = Element::div("labels");
 
     // @Task sort attributes
 
     for attribute in &attributes.0 {
-        render_declaration_attribute(attribute, &mut labels, url_prefix);
+        add_declaration_attribute(attribute, &mut labels, url_prefix);
     }
 
     parent.add_child(labels);
 
-    let mut description = Element::new("div").class("description");
+    let mut description = Element::div("description");
 
     if let Some(amount) = options.lorem_ipsum {
         for _ in 0..amount {
@@ -665,7 +791,7 @@ fn render_declaration_attributes(
     parent.add_child(description);
 }
 
-fn render_declaration_attribute(attribute: &Attribute, parent: &mut Element<'_>, url_prefix: &str) {
+fn add_declaration_attribute(attribute: &Attribute, parent: &mut Element<'_>, url_prefix: &str) {
     use BareAttribute::*;
 
     #[allow(clippy::match_same_arms)]
@@ -674,19 +800,13 @@ fn render_declaration_attribute(attribute: &Attribute, parent: &mut Element<'_>,
         Abstract | Static | If { .. } | Intrinsic | Moving => {
             let name = attribute.bare.name().to_str();
 
-            parent.add_child(
-                Element::new("div").class("attribute").child(
-                    Element::new("a")
-                        .attribute(
-                            "href",
-                            format!(
-                                "{url_prefix}attributes.html#attribute.{}",
-                                urlencoding::encode(name)
-                            ),
-                        )
-                        .child(name),
+            parent.add_child(Element::div("attribute").child(Element::anchor(
+                format!(
+                    "{url_prefix}attributes.html#attribute.{}",
+                    urlencoding::encode(name)
                 ),
-            );
+                name,
+            )));
         }
 
         // @Task make the path a link; only display this with --document-private-items
@@ -694,15 +814,11 @@ fn render_declaration_attribute(attribute: &Attribute, parent: &mut Element<'_>,
 
         // @Task incorporate message contain within the attribute etc
         Deprecated(_) => {
-            parent.add_child(Element::new("div").class("deprecated").child("deprecated"));
+            parent.add_child(Element::div("deprecated").child("deprecated"));
         }
         // @Task incorporate message contain within the attribute etc
-        Unstable(_) => parent.add_child(
-            Element::new("div")
-                .class("experimental")
-                .child("experimental"),
-        ),
-        Unsafe => parent.add_child(Element::new("div").class("unsafe").child("unsafe")),
+        Unstable(_) => parent.add_child(Element::div("experimental").child("experimental")),
+        Unsafe => parent.add_child(Element::div("unsafe").child("unsafe")),
 
         // rendered separately
         Doc { .. } => {}

@@ -5,6 +5,7 @@
     --monospace: 'Source Code Pro', monospace;
     --ledge-height: 3em;
     --ledge-margin-bottom: 1em;
+    --container-offset: calc(var(--ledge-height) + var(--ledge-margin-bottom));
 
     /* colors */
     --mint: #DDFFE7;
@@ -15,12 +16,14 @@
     --ice-gray: #F5F5F5;
 }
 
-*, *::before, *::after {
+*,
+*::before,
+*::after {
     box-sizing: border-box;
 }
 
 html {
-    scroll-padding-top: calc(var(--ledge-height) + var(--ledge-margin-bottom));
+    scroll-padding-top: var(--container-offset);
 }
 
 body {
@@ -40,13 +43,16 @@ a:hover {
     text-decoration: underline;
 }
 
-.ledge__positioner {
+.ledge-container {
     height: var(--ledge-height);
     margin-bottom: var(--ledge-margin-bottom);
 }
 
 .ledge {
-    display: flex;
+    display: grid;
+    grid-template-columns: 1fr 40em 1fr;
+    align-items: center;
+    /* justify-content: space-between; */
     position: fixed;
     z-index: 999;
     top: 0;
@@ -55,16 +61,24 @@ a:hover {
     width: 100%;
     height: var(--ledge-height);
     background: var(--teal-green);
-    justify-content: center;
-    align-items: center;
     box-shadow: 0 2px 4px #0003;
     --search-padding-y: 5px;
     --search-padding-x: 10px;
 }
 
+.ledge>.name {
+    color: white;
+    font-size: 18px;
+    margin-left: 2em;
+}
+
+.ledge>.name .package {
+    font-weight: bold;
+}
+
 #searchbar {
     display: block;
-    width: 40em;
+    width: 100%;
     border: none;
     font-size: 16px;
     padding: var(--search-padding-y) var(--search-padding-x);
@@ -88,7 +102,7 @@ a:hover {
     border-bottom-right-radius: 0;
 }
 
-#search-results__positioner {
+#search-results-container {
     position: relative;
     left: auto;
     right: auto;
@@ -110,30 +124,29 @@ a:hover {
     border-bottom-right-radius: 4px;
 }
 
-#search-results > * {
+#search-results>* {
     padding: 0 var(--search-padding-x);
 }
 
-#search-results > .no-results {
+#search-results>.no-results {
     font-style: italic;
 }
 
-#search-results > a {
+#search-results>a {
     display: block;
     width: 100%;
 }
 
-#search-results > a:hover {
+#search-results>a:hover {
     background: var(--spearmint);
     text-decoration: none;
 }
 
-#searchbar:not(.performed) + #search-results__positioner {
+#searchbar:not(.performed)+#search-results__positioner {
     visibility: hidden;
 }
 
 .container {
-    /* @Task use grid */
     display: flex;
     justify-content: center;
     gap: 0 5em;
@@ -141,46 +154,40 @@ a:hover {
     width: 90%;
 }
 
-.main {
-    width: 50%;
+.sidebar {
+    position: sticky;
+    top: var(--container-offset);
+    overflow-y: scroll;
+    height: 100%;
 }
 
-.sidebar > .title {
+.sidebar>.title {
     display: block;
-    font-size: 18px;
+    font-size: 17px;
     font-weight: 900;
     margin: 0.5em 0;
 }
 
-.sidebar > ul {
+.sidebar>ul {
     list-style-type: none;
     margin: 0;
-    padding-left: 0.5em;
+    padding: 0;
 }
 
-h1, h2, h3, h4, h5, h6 {
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
     margin: 0.2em 0;
     padding: 0.2em 0;
     font-weight: bold;
 }
 
-:target {
-    animation: flash 0.5s ease-in;
-    animation-fill-mode: forwards;
-    border-radius: 4px;
-}
-
-@keyframes flash {
-    0% {
-        background-color: var(--spearmint);
-    }
-    
-    100% {
-        background-color: var(--ice-gray);
-    }
-}
-
 h1 {
+    margin-top: 0;
+    padding-top: 0;
     font-size: 24px;
 }
 
@@ -200,6 +207,22 @@ h5 {
     font-size: 17px;
 }
 
+:target {
+    animation: flash 0.5s ease-in;
+    animation-fill-mode: forwards;
+    border-radius: 4px;
+}
+
+@keyframes flash {
+    0% {
+        background-color: var(--spearmint);
+    }
+
+    100% {
+        background-color: var(--ice-gray);
+    }
+}
+
 .subheading {
     position: relative;
 }
@@ -208,7 +231,7 @@ h5 {
     border-top: 1px solid var(--light-gray);
 }
 
-.subheading > a:first-of-type:hover::before {
+.subheading>a:first-of-type:hover::before {
     content: '§';
     position: absolute;
     left: -1em;
@@ -244,6 +267,13 @@ section {
     padding: 0.5em 0;
 }
 
+section.main {
+    width: 50%;
+    padding-top: 0;
+}
+
+/********** labels: **********/
+
 .labels {
     display: flex;
     gap: 10px;
@@ -251,7 +281,7 @@ section {
     margin-left: 4em;
 }
 
-.labels > * {
+.labels>* {
     padding: 0 14px;
     border-radius: 2px;
 }
@@ -280,6 +310,8 @@ section {
     background: rgb(206, 168, 255);
 }
 
+/********** :labels **********/
+
 .description {
     margin-left: 2em;
     text-align: justify;
@@ -299,6 +331,8 @@ section {
     color: var(--teal-green);
 }
 
+/********** module tables: **********/
+
 table.modules {
     border-collapse: collapse;
 }
@@ -316,3 +350,5 @@ table.modules td:not(:last-of-type) {
 table.modules a.binder {
     font-weight: 600;
 }
+
+/********** :module tables **********/
