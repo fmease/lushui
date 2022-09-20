@@ -1,7 +1,7 @@
 #![feature(
     decl_macro,
     default_free_fn,
-    let_else,
+    let_chains,
     associated_type_bounds,
     type_alias_impl_trait
 )]
@@ -210,6 +210,16 @@ fn build_components(
             &mut session,
         )?;
         session.add(component);
+    }
+
+    if let BuildMode::Document { options } = mode && options.open {
+        // @Task smh open in background and immediately disown the child process afterwards
+        if let Err(error) = open::that(documenter::index_page(&session)) {
+            return Err(Diagnostic::error()
+                .message("could not open the generated documentation")
+                .note(error.format())
+                .report(session.reporter()));
+        }
     }
 
     Ok(())
@@ -465,28 +475,13 @@ fn build_component(
             time! {
                 //! Documentation Generation
 
-                let index_page_path = documenter::document(
+                documenter::document_component(
                     &component_root,
                     options.general,
                     component_outlines,
                     component,
                     session,
                 )?;
-            }
-
-            if options.open {
-                // @Task smh open in background and immediately disown the child process afterwards
-                if let Err(error) = open::that(&index_page_path) {
-                    // Not sure if this should be a user error or an internal compiler error.
-                    // There is no way of knowing the cause of the I/O error.
-                    // Is it more likely that the user misconfigured their browser setup or
-                    // that the index page is erroneously missing or in some other way faulty?
-                    // I have no idea.
-                    return Err(Diagnostic::error()
-                        .message("could not open the generated documentation")
-                        .note(error.format())
-                        .report(session.reporter()));
-                }
             }
         }
         // already done at this point

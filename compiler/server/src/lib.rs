@@ -1,5 +1,5 @@
 //! An LSP language server for the Lushui programming language.
-#![feature(default_free_fn, let_chains, let_else)]
+#![feature(default_free_fn, let_chains)]
 
 use self::diagnostics::DiagnosticExt;
 use self::span::{FromPositionExt, ToLocationExt};

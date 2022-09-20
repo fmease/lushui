@@ -84,14 +84,19 @@ fn link(
     session: &BuildSession,
 ) -> Result {
     let buffer = module.write_bitcode_to_memory();
+    let name = component.name().as_str();
 
     // @Task error handling!
     let mut compiler = Command::new("clang")
         .args(["-x", "ir", "-", "-o"])
         .arg(match session.goal_package() {
             // @Task ensure that the build folder exists
-            Some(package) => session.build_folder().join(session[package].name.as_str()),
-            None => PathBuf::from(component.name().as_str()),
+            Some(package) => {
+                let mut path = session[package].path.join(BuildSession::OUTPUT_FOLDER_NAME);
+                path.push(name);
+                path
+            }
+            None => PathBuf::from(name),
         })
         .stdin(Stdio::piped())
         // @Task smh store stderr for reporting later

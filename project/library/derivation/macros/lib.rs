@@ -1,5 +1,3 @@
-#![feature(let_else)]
-
 use utility::{SerializeExt, TokenStream1};
 
 mod discriminant;

@@ -1,5 +1,5 @@
 //! The package and component resolver.
-#![feature(default_free_fn, let_chains, let_else, try_trait_v2)]
+#![feature(default_free_fn, let_chains, try_trait_v2)]
 
 use diagnostics::{reporter::ErasedReportedError, Diagnostic, ErrorCode, Reporter};
 use error::Result;
@@ -706,12 +706,11 @@ impl BuildQueue {
         // @Task introduce proper concept of target components replacing the
         // current concept of a goal component
         let goal_component = self.components.last().unwrap();
-        let goal_component_index = goal_component.index();
 
         let session = BuildSession::new(
             self.packages,
             self.component_packages,
-            goal_component_index,
+            goal_component.outline(),
             &self.map,
             self.reporter,
         );

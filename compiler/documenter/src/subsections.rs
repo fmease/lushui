@@ -1,7 +1,6 @@
 use super::{
-    declaration_id, documentation,
+    add_declaration_attributes, declaration_id, documentation,
     node::{Attributable, Element, Node},
-    render_declaration_attributes,
     text_processor::TextProcessor,
     Options, LOREM_IPSUM,
 };
@@ -86,12 +85,7 @@ pub(crate) trait Subsection<'a> {
             return;
         }
 
-        parent.add_child(
-            Element::new("a")
-                .attribute("href", format!("#{}", Self::ID))
-                .class("title")
-                .child(Self::TITLE),
-        );
+        parent.add_child(Element::anchor(format!("#{}", Self::ID), Self::TITLE).class("title"));
 
         let mut list = Element::new("ul");
 
@@ -100,13 +94,10 @@ pub(crate) trait Subsection<'a> {
         subsubsections.sort_by_key(|subsubsection| subsubsection.title().to_lowercase());
 
         for subsubsection in subsubsections {
-            list.add_child(
-                Element::new("li").child(
-                    Element::new("a")
-                        .attribute("href", format!("#{}", subsubsection.id()))
-                        .child(subsubsection.title()),
-                ),
-            );
+            list.add_child(Element::new("li").child(Element::anchor(
+                format!("#{}", subsubsection.id()),
+                subsubsection.title(),
+            )));
         }
 
         parent.add_child(list);
@@ -136,12 +127,7 @@ impl<'a> Subsection<'a> for Modules<'a> {
             return;
         }
 
-        parent.add_child(
-            Element::new("a")
-                .attribute("href", format!("#{}", Self::ID))
-                .class("title")
-                .child(Self::TITLE),
-        );
+        parent.add_child(Element::anchor(format!("#{}", Self::ID), Self::TITLE).class("title"));
     }
 }
 
@@ -175,10 +161,7 @@ impl<'a> Modules<'a> {
                 table_definition.add_child(first_sentence);
             }
 
-            let mut anchor = Element::new("a")
-                .attribute("href", module.id())
-                .class("binder")
-                .child(module.binder);
+            let mut anchor = Element::anchor(module.id(), module.binder).class("binder");
 
             if module.attributes.contains(AttributeName::Deprecated) {
                 anchor.add_class("deprecated");
@@ -243,10 +226,7 @@ impl<'a> Types<'a> {
         for type_ in self.0 {
             let id = declaration_id(type_.binder);
 
-            let mut anchor = Element::new("a")
-                .class("binder")
-                .attribute("href", format!("#{id}"))
-                .child(type_.binder);
+            let mut anchor = Element::anchor(format!("#{id}"), type_.binder).class("binder");
 
             if type_.attributes.contains(AttributeName::Deprecated) {
                 anchor.add_class("deprecated");
@@ -264,7 +244,7 @@ impl<'a> Types<'a> {
 
             section.add_child(subheading);
 
-            render_declaration_attributes(
+            add_declaration_attributes(
                 type_.attributes,
                 url_prefix,
                 &mut section,
@@ -300,16 +280,13 @@ impl<'a> Types<'a> {
                         .attribute("id", id.clone())
                         .class("subheading declaration")
                         .child(
-                            Element::new("a")
-                                .class("binder")
-                                .attribute("href", format!("#{id}"))
-                                .child(constructor.binder),
+                            Element::anchor(format!("#{id}"), constructor.binder).class("binder"),
                         )
                         .child(": ")
                         .child(Node::verbatim(constructor.type_)),
                 );
 
-                render_declaration_attributes(
+                add_declaration_attributes(
                     constructor.attributes,
                     url_prefix,
                     &mut subsection,
@@ -382,10 +359,7 @@ impl<'a> Functions<'a> {
         for function in self.0 {
             let id = declaration_id(function.binder);
 
-            let mut anchor = Element::new("a")
-                .class("binder")
-                .attribute("href", format!("#{id}"))
-                .child(function.binder);
+            let mut anchor = Element::anchor(format!("#{id}"), function.binder).class("binder");
 
             if function.attributes.contains(AttributeName::Deprecated) {
                 anchor.add_class("deprecated");
@@ -402,7 +376,7 @@ impl<'a> Functions<'a> {
                     .child(source_link()),
             );
 
-            render_declaration_attributes(
+            add_declaration_attributes(
                 function.attributes,
                 url_prefix,
                 &mut section,
@@ -462,12 +436,7 @@ impl<'a> Keywords<'a> {
                 Element::new("h3")
                     .attribute("id", id.clone())
                     .class("subheading declaration")
-                    .child(
-                        Element::new("a")
-                            .class("binder")
-                            .attribute("href", format!("#{id}"))
-                            .child(keyword.name),
-                    ),
+                    .child(Element::anchor(format!("#{id}"), keyword.name).class("binder")),
             );
 
             // @Task include the documentation of each reserved punctuation here at compile-time
@@ -522,10 +491,8 @@ impl<'a> ReservedPunctuation<'a> {
                     .attribute("id", id.clone())
                     .class("subheading declaration")
                     .child(
-                        Element::new("a")
-                            .class("binder")
-                            .attribute("href", format!("#{id}"))
-                            .child(reserved_punctuation.name),
+                        Element::anchor(format!("#{id}"), reserved_punctuation.name)
+                            .class("binder"),
                     ),
             );
 
@@ -580,17 +547,12 @@ impl Attributes {
                 Element::new("h3")
                     .attribute("id", id.clone())
                     .class("subheading declaration")
-                    .child(
-                        Element::new("a")
-                            .class("binder")
-                            .attribute("href", format!("#{id}"))
-                            .child(attribute.to_str()),
-                    ),
+                    .child(Element::anchor(format!("#{id}"), attribute.to_str()).class("binder")),
             );
 
             if attribute.is_internal() {
-                let mut labels = Element::new("div").class("labels");
-                labels.add_child(Element::new("div").class("internal").child("internal"));
+                let mut labels = Element::div("labels");
+                labels.add_child(Element::div("internal").child("internal"));
                 section.add_child(labels);
             }
 
@@ -613,11 +575,9 @@ impl<'a> Subsubsection<'a> for AttributeName {
 
 fn source_link() -> Element<'static> {
     // @Task create an actual link!
-    Element::new("a")
+    Element::anchor("#", "source")
         .class("source")
-        .attribute("href", "#")
         .attribute("title", "Go to the source code")
-        .child("source")
 }
 
 fn anchored_subheading<'a>(
@@ -629,11 +589,7 @@ fn anchored_subheading<'a>(
         Element::new(format!("h{level}"))
             .attribute("id", id.clone())
             .class("subheading")
-            .child(
-                Element::new("a")
-                    .attribute("href", format!("#{id}"))
-                    .child(content),
-            )
+            .child(Element::anchor(format!("#{id}"), content))
     }
 
     anchored_subheading(level, id.into(), content.into())

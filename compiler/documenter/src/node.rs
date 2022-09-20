@@ -10,7 +10,7 @@ impl<'a> Node<'a> {
         Self(NodeKind::Verbatim(content.into()))
     }
 
-    pub(crate) fn render(self, output: &mut String) {
+    fn render(self, output: &mut String) {
         match self.0 {
             NodeKind::Element(element) => element.render(output),
             NodeKind::VoidElement(element) => element.render(output),
@@ -63,9 +63,10 @@ impl<'a> Document<'a> {
         self.children.0.push(child.into());
     }
 
-    pub(crate) fn render(self, output: &mut String) {
-        *output += "<!doctype html>";
-        self.children.render(output);
+    pub(crate) fn render(self) -> String {
+        let mut output = String::from("<!doctype html>");
+        self.children.render(&mut output);
+        output
     }
 }
 
@@ -82,6 +83,22 @@ impl<'a> Element<'a> {
             attributes: Attributes::default(),
             children: NodeList::default(),
         }
+    }
+
+    pub(crate) fn anchor(href: impl Into<Cow<'a, str>>, child: impl Into<Node<'a>>) -> Self {
+        fn anchor<'s>(href: Cow<'s, str>, child: Node<'s>) -> Element<'s> {
+            Element::new("a").attribute("href", href).child(child)
+        }
+
+        anchor(href.into(), child.into())
+    }
+
+    pub(crate) fn div(class: &'a str) -> Self {
+        Self::new("div").class(class)
+    }
+
+    pub(crate) fn span(class: &'a str) -> Self {
+        Self::new("span").class(class)
     }
 
     pub(crate) fn child(mut self, child: impl Into<Node<'a>>) -> Self {
@@ -126,7 +143,7 @@ impl<'a> VoidElement<'a> {
         }
     }
 
-    pub(crate) fn render(self, output: &mut String) {
+    fn render(self, output: &mut String) {
         *output += "<";
         *output += &self.tag;
         self.attributes.render(output);

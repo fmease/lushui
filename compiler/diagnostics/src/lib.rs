@@ -10,8 +10,7 @@
     associated_type_bounds,
     adt_const_params,
     default_free_fn,
-    map_first_last,
-    let_else
+    map_first_last
 )]
 #![allow(incomplete_features)] // adt_const_params
 

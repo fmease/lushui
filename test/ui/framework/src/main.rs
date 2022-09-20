@@ -3,7 +3,6 @@
     const_option,
     once_cell,
     let_chains,
-    let_else,
     str_split_as_str,
     drain_filter
 )]

@@ -443,6 +443,7 @@ impl TypedValueParser for ColorModeParser {
 
 pub(crate) enum BuildMode {
     Check,
+    // @Task rename to Compile
     Build { options: CompilationOptions },
     Run { options: CompilationOptions },
     Document { options: DocumentationOptions },
