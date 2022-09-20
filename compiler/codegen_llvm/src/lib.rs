@@ -33,7 +33,7 @@ pub fn compile_and_link(
     component: &Component,
     session: &BuildSession,
 ) -> Result<()> {
-    if !component.is_goal(session) {
+    if !component.is_target(session) {
         return Err(Diagnostic::error()
             .message("extern components cannot be built yet with the LLVM backend")
             .report(session.reporter()));
@@ -89,7 +89,7 @@ fn link(
     // @Task error handling!
     let mut compiler = Command::new("clang")
         .args(["-x", "ir", "-", "-o"])
-        .arg(match session.goal_package() {
+        .arg(match session.target_package() {
             // @Task ensure that the build folder exists
             Some(package) => {
                 let mut path = session[package].path.join(BuildSession::OUTPUT_FOLDER_NAME);

@@ -29,9 +29,10 @@ pub struct BuildSession {
     components: HashMap<ComponentIndex, Component>,
     /// The packages whose components have not necessarily been built yet in this session but are about to.
     packages: IndexMap<PackageIndex, Package>,
-    /// The corresponding package of the components.
+    /// The mapping from component to corresponding package.
     component_packages: HashMap<ComponentIndex, PackageIndex>,
-    goal_component: ComponentOutline,
+    // @Task support multiple target components (depending on a user-supplied component filter)
+    target_component: ComponentOutline,
     // @Task Identifier -> DeclarationIndex
     known_bindings: HashMap<known::Binding, Identifier>,
     // @Task make this a DoubleHashMap
@@ -48,7 +49,7 @@ impl BuildSession {
     pub fn new(
         packages: IndexMap<PackageIndex, Package>,
         component_packages: HashMap<ComponentIndex, PackageIndex>,
-        goal_component: ComponentOutline,
+        target_component: ComponentOutline,
         map: &Arc<RwLock<SourceMap>>,
         reporter: Reporter,
     ) -> Self {
@@ -56,7 +57,7 @@ impl BuildSession {
             components: default(),
             packages,
             component_packages,
-            goal_component,
+            target_component,
             known_bindings: default(),
             intrinsic_types: default(),
             intrinsic_functions: intrinsic::functions(),
@@ -74,7 +75,7 @@ impl BuildSession {
             components: default(),
             packages: default(),
             component_packages: default(),
-            goal_component: ComponentOutline {
+            target_component: ComponentOutline {
                 name: Word::new_unchecked("test".into()),
                 index: ComponentIndex::new(0),
             },
@@ -86,21 +87,21 @@ impl BuildSession {
         }
     }
 
-    pub fn goal_package(&self) -> Option<PackageIndex> {
-        self.package_of(self.goal_component.index)
+    pub fn target_package(&self) -> Option<PackageIndex> {
+        self.package_of(self.target_component.index)
     }
 
-    pub fn goal_component(&self) -> &ComponentOutline {
-        &self.goal_component
+    pub fn target_component(&self) -> &ComponentOutline {
+        &self.target_component
     }
 
     pub fn package_of(&self, component: ComponentIndex) -> Option<PackageIndex> {
         self.component_packages.get(&component).copied()
     }
 
-    pub fn in_goal_package(&self, component: ComponentIndex) -> bool {
+    pub fn in_target_package(&self, component: ComponentIndex) -> bool {
         self.package_of(component)
-            .map_or(false, |package| self.goal_package() == Some(package))
+            .map_or(false, |package| self.target_package() == Some(package))
     }
 
     pub fn add(&mut self, component: Component) {
@@ -620,8 +621,8 @@ impl Component {
         })
     }
 
-    pub fn is_goal(&self, session: &BuildSession) -> bool {
-        self.index() == session.goal_component.index
+    pub fn is_target(&self, session: &BuildSession) -> bool {
+        self.index() == session.target_component.index
     }
 
     pub fn outline(&self) -> ComponentOutline {

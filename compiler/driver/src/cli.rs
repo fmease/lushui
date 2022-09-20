@@ -236,7 +236,7 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
                         CompilationOptions::deserialize(matches, unstable_compilation_options);
 
                     let mode = match command {
-                        subcommand::BUILD => BuildMode::Build { options },
+                        subcommand::BUILD => BuildMode::Compile { options },
                         subcommand::RUN => BuildMode::Run { options },
                         _ => unreachable!(),
                     };
@@ -276,7 +276,7 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
                         CompilationOptions::deserialize(matches, unstable_compilation_options);
 
                     let mode = match command {
-                        subcommand::BUILD => BuildMode::Build { options },
+                        subcommand::BUILD => BuildMode::Compile { options },
                         subcommand::RUN => BuildMode::Run { options },
                         _ => unreachable!(),
                     };
@@ -443,8 +443,7 @@ impl TypedValueParser for ColorModeParser {
 
 pub(crate) enum BuildMode {
     Check,
-    // @Task rename to Compile
-    Build { options: CompilationOptions },
+    Compile { options: CompilationOptions },
     Run { options: CompilationOptions },
     Document { options: DocumentationOptions },
 }

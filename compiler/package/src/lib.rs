@@ -110,7 +110,7 @@ struct BuildQueue {
     /// The components which have not been built yet.
     components: Components,
     packages: IndexMap<PackageIndex, Package>,
-    /// The corresponding package of the components.
+    /// The mapping from component to corresponding package.
     component_packages: HashMap<ComponentIndex, PackageIndex>,
     map: Arc<RwLock<SourceMap>>,
     reporter: Reporter,
@@ -498,7 +498,7 @@ impl BuildQueue {
                     //               find_cycles later on for scalable diagnostics (> 3 packages that are cyclic)
                     Some(Unresolved) => {
                         // @Note the message does not scale to more complex cycles (e.g. a cycle of three components)
-                        // @Task provide more context for transitive dependencies of the goal component
+                        // @Task provide more context for transitive dependencies of the target component
                         // @Task code
 
                         // @Question does this need to be fatal?
@@ -531,7 +531,7 @@ impl BuildQueue {
                 // and stores them locally, this probably means the local resources were
                 // tampered with or a bug occurred.
 
-                // @Task provide more context for transitive dependencies of the goal component
+                // @Task provide more context for transitive dependencies of the target component
                 // @Question code?
                 // @Task provide more information when provider==distribution
                 // @Question use endonym here instead? or use both?
@@ -702,15 +702,14 @@ impl BuildQueue {
     }
 
     fn finalize(self) -> (Components, BuildSession) {
-        // @Bug no longer correct!
-        // @Task introduce proper concept of target components replacing the
-        // current concept of a goal component
-        let goal_component = self.components.last().unwrap();
+        // @Task Support the existence of more than one target component
+        //       dependending on a component filter provided by the user
+        let target_component = self.components.last().unwrap();
 
         let session = BuildSession::new(
             self.packages,
             self.component_packages,
-            goal_component.outline(),
+            target_component.outline(),
             &self.map,
             self.reporter,
         );

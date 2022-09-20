@@ -62,8 +62,8 @@ pub enum BareToken {
     Shebang,
     Comment,
     DocumentationComment,
-    Word(Atom),   // @Task use crate::Word
-    Symbol(Atom), // @Task create newtype Symbol
+    Word(Atom),
+    Symbol(Atom),
     NumberLiteral(Atom),
     TextLiteral(Atom),
     /// For attributes.

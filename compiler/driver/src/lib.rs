@@ -15,7 +15,7 @@ use hir_format::Display as _;
 use lowered_ast::Display as _;
 use package::{find_package, resolve_file, resolve_package, MANIFEST_FILE_NAME};
 use resolver::ProgramEntryExt;
-use session::{BuildSession, Component, ComponentOutline, ComponentType, Components};
+use session::{BuildSession, Component, ComponentType, Components};
 use span::SourceMap;
 use std::{
     borrow::Cow,
@@ -187,28 +187,8 @@ fn build_components(
     global_options: &cli::GlobalOptions,
     mut session: BuildSession,
 ) -> Result {
-    // @Note we don't try to handle duplicate names yet
-    // cargo disallows them since its lock-file format is flat
-    // npm allows them since it stores transitive dependencies in the folder
-    // of the respective dependent component (in the build folder)
-    // it's a tiny edge case but I feel like we should allow a transitive dependency to
-    // be named exactly like the goal component
-    // (analogous cases for direct and transitive dependencies follow the same way)
-    // since the end user might not have control over those dependencies to patch them
-    //
-    // only used in the documenter
-    // @Task smh get rid of this (move this into session?)
-    let component_outline: Vec<_> = components.values().map(Component::outline).collect();
-
     for mut component in components.into_values() {
-        build_component(
-            &mut component,
-            &component_outline,
-            mode,
-            options,
-            global_options,
-            &mut session,
-        )?;
+        build_component(&mut component, mode, options, global_options, &mut session)?;
         session.add(component);
     }
 
@@ -227,25 +207,24 @@ fn build_components(
 
 fn build_component(
     component: &mut Component,
-    component_outlines: &[ComponentOutline],
     mode: &cli::BuildMode,
     options: &cli::BuildOptions,
     global_options: &cli::GlobalOptions,
     session: &mut BuildSession,
 ) -> Result {
     // @Task abstract over this as print_status_report and report w/ label="Running" for
-    // goal component if mode==Run (in addition to initial "Building")
+    // target component if mode==Run (in addition to initial "Building")
     if !global_options.quiet {
         let label = match mode {
             BuildMode::Check => "Checking",
-            BuildMode::Build { .. } | BuildMode::Run { .. } => "Building",
-            // @Bug this should not be printed for non-goal components and --no-deps
+            BuildMode::Compile { .. } | BuildMode::Run { .. } => "Building",
+            // @Bug this should not be printed for non-target components and --no-deps
             BuildMode::Document { .. } => "Documenting",
         };
         let label = label.green().bold();
         println!(
             "   {label} {} ({})",
-            if session.in_goal_package(component.index()) {
+            if session.in_target_package(component.index()) {
                 format!("{}", component.name())
             } else {
                 component.name().to_string()
@@ -255,7 +234,7 @@ fn build_component(
     }
 
     macro restriction_point($restriction:ident) {
-        if component.is_goal(&session)
+        if component.is_target(&session)
             && options.pass_restriction == Some(PassRestriction::$restriction)
         {
             return Ok(());
@@ -311,7 +290,7 @@ fn build_component(
         let tokens = syntax::lex(file, session);
     };
 
-    if component.is_goal(session) && options.emit_tokens {
+    if component.is_target(session) && options.emit_tokens {
         for token in &tokens.tokens {
             eprintln!("{token:?}");
         }
@@ -325,7 +304,7 @@ fn build_component(
         let component_root = syntax::parse_root_module_file(tokens, file, session)?;
     }
 
-    if component.is_goal(session) && options.emit_ast {
+    if component.is_target(session) && options.emit_ast {
         eprintln!("{}", displayed(|f| component_root.write(f)));
     }
 
@@ -344,7 +323,7 @@ fn build_component(
             lowerer::lower_file(component_root, lowering_options, component, session)?;
     }
 
-    if component.is_goal(session) && options.emit_lowered_ast {
+    if component.is_target(session) && options.emit_lowered_ast {
         eprintln!("{}", displayed(|f| component_root.write(f)));
     }
 
@@ -363,7 +342,7 @@ fn build_component(
             displayed(|f| component_root.write((component, session), f))
         );
     }
-    if component.is_goal(session) && options.emit_untyped_bindings {
+    if component.is_target(session) && options.emit_untyped_bindings {
         eprintln!("{}", displayed(|f| component.write(session, f)));
     }
 
@@ -375,7 +354,7 @@ fn build_component(
         typer::check(&component_root, component, session)?;
     }
 
-    if component.is_goal(session) && options.emit_bindings {
+    if component.is_target(session) && options.emit_bindings {
         eprintln!("{}", displayed(|f| component.write(session, f)));
     }
 
@@ -395,7 +374,7 @@ fn build_component(
 
     match &mode {
         BuildMode::Run { options } => {
-            if component.is_goal(session) {
+            if component.is_target(session) {
                 if !component.is_executable() {
                     // @Question code?
                     // @Note I don't like this code here at all, it's hacky and not principled!
@@ -436,7 +415,7 @@ fn build_component(
                 }
             }
         }
-        BuildMode::Build { options } => match options.backend {
+        BuildMode::Compile { options } => match options.backend {
             Backend::Hiri => {
                 // @Task smh print this earlier than the status info (“Building”)
                 return Err(Diagnostic::error()
@@ -468,7 +447,7 @@ fn build_component(
         },
         BuildMode::Document { options } => {
             // @Bug leads to broken links, @Task the documenter has to handle this itself
-            if options.no_dependencies && !component.is_goal(session) {
+            if options.no_dependencies && !component.is_target(session) {
                 return Ok(());
             }
 
@@ -478,7 +457,6 @@ fn build_component(
                 documenter::document_component(
                     &component_root,
                     options.general,
-                    component_outlines,
                     component,
                     session,
                 )?;

@@ -1,11 +1,11 @@
 //! The documentation generator.
 #![feature(decl_macro, default_free_fn)]
 
-// @Task instead of showing all components in the session in the left pane, have two sections:
-//     (1) the dependencies of the target(s) (formerly known as "goals")
-//     (2) the dependencies of the component currently viewed
-// If one currently views the docs of a target (that is most of the time), they are identical (duh)
-// and obviously, only show the list once. Don't show empty sections (obviously)
+// @Bug We currently store the documentation of each component (be it a target component,
+// a direct dependency or a transitive dependency) flat in a single folder meaning we
+// don't properly handle components that are distinct but share the same name (which we
+// generally want to support contrary to Cargo). Concretely, we overwrite folders in such
+// cases leading to a broken links and missing pages.
 
 use crossbeam::thread::Scope;
 use derivation::Elements;
@@ -14,11 +14,9 @@ use hir_format::ComponentExt;
 use joinery::JoinableIterator;
 use lowered_ast::{Attribute, AttributeName, Attributes, BareAttribute};
 use node::{Attributable, Document, Element, Node, VoidElement};
-use session::{
-    BuildSession, Component, ComponentOutline, DeclarationIndexExt, IdentifierExt, Package,
-    PackageIndex,
-};
+use session::{BuildSession, Component, DeclarationIndexExt, IdentifierExt, Package, PackageIndex};
 use std::{
+    collections::BTreeSet,
     default::default,
     fs,
     io::BufWriter,
@@ -47,13 +45,11 @@ const DEVELOPING: bool = true;
 pub fn document_component(
     component_root: &hir::Declaration,
     options: Options,
-    components: &[ComponentOutline],
     component: &Component,
     session: &BuildSession,
 ) -> Result<()> {
     crossbeam::scope(|scope| {
-        let mut documenter =
-            Documenter::new(options, components, component, session, scope).unwrap();
+        let mut documenter = Documenter::new(options, component, session, scope).unwrap();
 
         // @Beacon @Bug this re-creates these special pages with every component!
         //         @Task do it only once!
@@ -79,8 +75,8 @@ pub fn document_component(
 
 pub fn index_page(session: &BuildSession) -> PathBuf {
     let mut path = Documenter::folder(session);
-    if session.goal_package().is_none() {
-        path.push(session.goal_component().name.as_str());
+    if session.target_package().is_none() {
+        path.push(session.target_component().name.as_str());
     }
     path.push("index.html");
     path
@@ -88,7 +84,6 @@ pub fn index_page(session: &BuildSession) -> PathBuf {
 
 struct Documenter<'a, 'scope> {
     options: Options,
-    components: &'a [ComponentOutline],
     component: &'a Component,
     session: &'a BuildSession,
     text_processor: TextProcessor<'scope>,
@@ -100,7 +95,6 @@ struct Documenter<'a, 'scope> {
 impl<'a, 'scope> Documenter<'a, 'scope> {
     fn new(
         options: Options,
-        components: &'a [ComponentOutline],
         component: &'a Component,
         session: &'a BuildSession,
         scope: &'scope Scope<'a>,
@@ -115,7 +109,6 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
 
         Ok(Self {
             options,
-            components,
             component,
             session,
             text_processor,
@@ -126,7 +119,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
     }
 
     fn folder(session: &BuildSession) -> PathBuf {
-        match session.goal_package() {
+        match session.target_package() {
             Some(package) => {
                 let package = &session[package];
                 let mut path = package.path.clone();
@@ -135,9 +128,8 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                 path.push(package.name.as_str());
                 path
             }
-            None => {
-                Path::new(session.goal_component().name.as_str()).with_extension(OUTPUT_FOLDER_NAME)
-            }
+            None => Path::new(session.target_component().name.as_str())
+                .with_extension(OUTPUT_FOLDER_NAME),
         }
     }
 
@@ -145,7 +137,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
     // @Beacon @Bug this re-creates the CSS, JS and fonts with every component!
     //         @Task do it only once!
     fn persist(&self) -> Result<(), std::io::Error> {
-        // @Task handle the case where two+ components (goal and/or (transitive) deps)
+        // @Task handle the case where two+ components (target and/or (transitive) deps)
         // have the same name and are being documented
 
         {
@@ -402,7 +394,12 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
         let mut container = Element::div("container");
 
         let subsections = subsections::Subsections::reserved_identifiers();
-        container.add_child(sidebar(&subsections, url_prefix, self.components));
+        container.add_child(sidebar(
+            &subsections,
+            url_prefix,
+            default(),
+            BTreeSet::from([&self.session.target_component().name]),
+        ));
 
         // main content
         {
@@ -441,7 +438,12 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
         let mut container = Element::div("container");
 
         let subsections = subsections::Subsections::attributes();
-        container.add_child(sidebar(&subsections, url_prefix, self.components));
+        container.add_child(sidebar(
+            &subsections,
+            url_prefix,
+            default(),
+            BTreeSet::from([&self.session.target_component().name]),
+        ));
 
         // main content
         {
@@ -478,7 +480,12 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
         let mut body = Element::new("body").child(ledge(url_prefix, Some(package), None));
         let mut container = Element::div("container");
 
-        container.add_child(sidebar(&default(), url_prefix, self.components));
+        container.add_child(sidebar(
+            &default(),
+            url_prefix,
+            default(),
+            BTreeSet::from([&self.session.target_component().name]),
+        ));
 
         // main content
         {
@@ -550,7 +557,12 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
         let mut container = Element::div("container");
 
         let subsections = self.collect_module_subsections(module, &url_prefix);
-        container.add_child(sidebar(&subsections, &url_prefix, self.components));
+        container.add_child(sidebar(
+            &subsections,
+            &url_prefix,
+            self.component.dependencies.keys().collect(),
+            BTreeSet::from([&self.session.target_component().name]),
+        ));
 
         // main content
         {
@@ -723,29 +735,53 @@ fn head<'a>(component: &Word, url_prefix: &str, title: Node<'a>) -> Element<'a> 
 fn sidebar<'a>(
     subsections: &subsections::Subsections<'a>,
     url_prefix: &str,
-    components: &'a [ComponentOutline],
+    dependencies: BTreeSet<&'a Word>,
+    targets: BTreeSet<&'a Word>,
 ) -> Element<'a> {
     let mut sidebar = Element::div("sidebar");
 
     subsections.render_table_of_contents(&mut sidebar);
 
-    sidebar.add_child(Element::div("title").child("Components"));
-
-    let mut list = Element::new("ul");
-
-    let mut components: Vec<_> = components.iter().collect();
-    components.sort_unstable_by_key(|component| &component.name);
-
-    for component in components {
-        let anchor = Element::anchor(
-            format!("{url_prefix}{}/index.html", component.name),
-            Node::from(component.name.as_str()),
+    if !dependencies.is_empty() {
+        sidebar.add_child(
+            Element::div("title")
+                .child("Dependencies")
+                .attribute("title", "Direct Dependencies"),
         );
 
-        list.add_child(Element::new("li").child(anchor));
+        let mut list = Element::new("ul");
+        for dependency in dependencies {
+            // @Bug this is erroneous for components that share the same name
+            let anchor = Element::anchor(
+                format!("{url_prefix}{dependency}/index.html"),
+                Node::from(dependency.as_str()),
+            );
+
+            list.add_child(Element::new("li").child(anchor));
+        }
+
+        sidebar.add_child(list);
     }
 
-    sidebar.add_child(list);
+    {
+        sidebar.add_child(
+            Element::div("title")
+                .child("Targets")
+                .attribute("title", "Target Components"),
+        );
+
+        let mut list = Element::new("ul");
+        for component in targets {
+            let anchor = Element::anchor(
+                format!("{url_prefix}{component}/index.html"),
+                Node::from(component.as_str()),
+            );
+
+            list.add_child(Element::new("li").child(anchor));
+        }
+
+        sidebar.add_child(list);
+    }
 
     sidebar
 }
