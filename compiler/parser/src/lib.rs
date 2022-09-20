@@ -243,11 +243,11 @@ impl<'a> Parser<'a> {
     /// # Grammar
     ///
     /// ```ebnf
-    /// Identifier ::= #Word | #Punctuation
+    /// Identifier ::= #Word | #Symbol
     /// ```
     fn consume_identifier(&mut self) -> Result<Identifier> {
         match self.current_token().name() {
-            Word | Punctuation => {
+            Word | Symbol => {
                 let identifier = self.current_token_into_identifier();
                 self.advance();
                 Ok(identifier)
@@ -286,7 +286,7 @@ impl<'a> Parser<'a> {
 
     /// Try to turn the current token into an identifier.
     ///
-    /// May panic if the token is neither an identifier nor punctuation.
+    /// May panic if the token is neither an identifier nor a symbol.
     fn current_token_into_identifier(&self) -> Identifier {
         self.current_token().clone().try_into().unwrap()
     }
@@ -783,7 +783,7 @@ impl<'a> Parser<'a> {
 
         while self.has_consumed(Dot) {
             match self.current_token().name() {
-                Word | Punctuation => {
+                Word | Symbol => {
                     let identifier = self.current_token_into_identifier();
                     self.advance();
                     path.segments.push(identifier);
@@ -819,7 +819,7 @@ impl<'a> Parser<'a> {
                                 ClosingRoundBracket.into(),
                                 // @Question Expected::Identifier?
                                 Word.into(),
-                                Punctuation.into(),
+                                Symbol.into(),
                                 Self_.into(),
                                 Super.into(),
                                 Topmost.into(),
@@ -1190,7 +1190,7 @@ impl<'a> Parser<'a> {
     /// Parse the first segment of a path.
     fn parse_first_path_segment(&mut self) -> Result<Path> {
         let path = match self.current_token().name() {
-            Word | Punctuation => Identifier::try_from(self.current_token().clone())
+            Word | Symbol => Identifier::try_from(self.current_token().clone())
                 .unwrap()
                 .into(),
             name if name.is_path_hanger() => self
@@ -1793,7 +1793,7 @@ impl<'a> Parser<'a> {
 
         while self.has_consumed(Dot) {
             match self.current_token().name() {
-                Word | Punctuation => {
+                Word | Symbol => {
                     let identifier = self.current_token_into_identifier();
                     self.advance();
                     path.segments.push(identifier);

@@ -592,12 +592,12 @@ impl TryFrom<BareToken> for BareHanger {
     }
 }
 
-/// Either a word or punctuation.
+/// Either a [word](Word) or a symbol.
 #[derive(Clone, Debug)]
 pub struct Identifier(Spanned<Atom>);
 
 impl Identifier {
-    // @Beacon @Task docs why unchecked
+    /// Create a new identifier without checking if it is a valid word or symbol.
     pub const fn new_unchecked(atom: Atom, span: Span) -> Self {
         Self(Spanned::new(span, atom))
     }
@@ -618,14 +618,14 @@ impl Identifier {
         self.0.as_ref().map(|atom| &**atom)
     }
 
-    pub fn is_punctuation(&self) -> bool {
-        // either all characters are punctuation or none
-        token::is_punctuation(self.as_atom().chars().next().unwrap())
+    pub fn is_symbol(&self) -> bool {
+        // either all characters are symbols or none
+        token::is_symbol(self.as_atom().chars().next().unwrap())
     }
 
     pub fn is_word(&self) -> bool {
         // either all characters are letters or none
-        !self.is_punctuation()
+        !self.is_symbol()
     }
 }
 

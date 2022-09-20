@@ -19,7 +19,7 @@
 ; | `(> A)`   | Positive Look-Ahead                 |                                                               |
 ; | `(< A)`   | Positive Look-Behind                |                                                               |
 
-Identifier ::= #Word | #Punctuation
+Identifier ::= #Word | #Symbol
 
 Declaration ::= (Attribute #Line-Break*)* Bare-Declaration
 Bare-Declaration ::=

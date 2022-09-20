@@ -100,7 +100,7 @@ fn not_a_shebang_but_a_hashtag() {
         "\
 #hashtag",
         vec![
-            Token::new(span(1, 2), Punctuation("#".into())),
+            Token::new(span(1, 2), Symbol("#".into())),
             Token::new(span(2, 9), Word("hashtag".into())),
             Token::new(span(9, 9), EndOfInput),
         ],
@@ -113,19 +113,19 @@ fn not_a_shabang_but_a_hash() {
         "\
 #",
         vec![
-            Token::new(span(1, 2), Punctuation("#".into())),
+            Token::new(span(1, 2), Symbol("#".into())),
             Token::new(span(2, 2), EndOfInput),
         ],
     );
 }
 
 #[test]
-fn not_a_shebang_but_punctuation() {
+fn not_a_shebang_but_a_symbol() {
     assert_lex_eq!(
         "\
 #?/WEIRD",
         vec![
-            Token::new(span(1, 4), Punctuation("#?/".into())),
+            Token::new(span(1, 4), Symbol("#?/".into())),
             Token::new(span(4, 9), Word("WEIRD".into())),
             Token::new(span(9, 9), EndOfInput),
         ],
@@ -140,11 +140,11 @@ fn shebang_lookalike_not_first_line() {
 ",
         vec![
             Token::new(span(1, 2), Semicolon(Provenance::Lexer)),
-            Token::new(span(2, 5), Punctuation("#!/".into())),
+            Token::new(span(2, 5), Symbol("#!/".into())),
             Token::new(span(5, 8), Word("usr".into())),
-            Token::new(span(8, 9), Punctuation("/".into())),
+            Token::new(span(8, 9), Symbol("/".into())),
             Token::new(span(9, 12), Word("bin".into())),
-            Token::new(span(12, 13), Punctuation("/".into())),
+            Token::new(span(12, 13), Symbol("/".into())),
             Token::new(span(13, 19), Word("lushui".into())),
             Token::new(span(20, 23), Word("run".into())),
             Token::new(span(23, 24), Semicolon(Provenance::Lexer)),
@@ -190,9 +190,9 @@ fn weird_dashed_identifiers() {
             Token::new(span(8, 14), Word("alpha-".into())),
             Token::new(span(14, 15), Colon),
             Token::new(span(16, 30), Word("alpha--beta---".into())),
-            Token::new(span(31, 32), Punctuation("-".into())),
+            Token::new(span(31, 32), Symbol("-".into())),
             Token::new(span(32, 34), Word("no".into())),
-            Token::new(span(35, 37), Punctuation("--".into())),
+            Token::new(span(35, 37), Symbol("--".into())),
             Token::new(span(37, 42), Word("no-no".into())),
             Token::new(span(42, 42), EndOfInput),
         ],
@@ -215,18 +215,18 @@ fn keywords_and_lookalikes() {
 }
 
 #[test]
-fn punctuation() {
+fn symbols() {
     assert_lex_eq!(
         "+ +>alpha//$~%  #0 . ..",
         vec![
-            Token::new(span(1, 2), Punctuation("+".into())),
-            Token::new(span(3, 5), Punctuation("+>".into())),
+            Token::new(span(1, 2), Symbol("+".into())),
+            Token::new(span(3, 5), Symbol("+>".into())),
             Token::new(span(5, 10), Word("alpha".into())),
-            Token::new(span(10, 15), Punctuation("//$~%".into())),
-            Token::new(span(17, 18), Punctuation("#".into())),
+            Token::new(span(10, 15), Symbol("//$~%".into())),
+            Token::new(span(17, 18), Symbol("#".into())),
             Token::new(span(18, 19), NumberLiteral("0".into())),
             Token::new(span(20, 21), Dot),
-            Token::new(span(22, 24), Punctuation("..".into())),
+            Token::new(span(22, 24), Symbol("..".into())),
             Token::new(span(24, 24), EndOfInput),
         ],
     );
@@ -245,51 +245,51 @@ fn identifier_with_trailing_dot() {
 }
 
 #[test]
-fn identifier_dot_punctuation() {
+fn identifier_dot_symbol() {
     assert_lex_eq!(
         "namespace.+>!",
         vec![
             Token::new(span(1, 10), Word("namespace".into())),
             Token::new(span(10, 11), Dot),
-            Token::new(span(11, 14), Punctuation("+>!".into())),
+            Token::new(span(11, 14), Symbol("+>!".into())),
             Token::new(span(14, 14), EndOfInput),
         ],
     )
 }
 
 #[test]
-fn lex_identifier_dot_dotted_punctuation() {
+fn lex_identifier_dot_dotted_symbol() {
     assert_lex_eq!(
         "namespace.$.?!.",
         vec![
             Token::new(span(1, 10), Word("namespace".into())),
             Token::new(span(10, 11), Dot),
-            Token::new(span(11, 16), Punctuation("$.?!.".into())),
+            Token::new(span(11, 16), Symbol("$.?!.".into())),
             Token::new(span(16, 16), EndOfInput),
         ],
     )
 }
 
 #[test]
-fn lex_identifier_and_dotted_punctuation_after_space() {
+fn lex_identifier_and_dotted_symbol_after_space() {
     assert_lex_eq!(
         "namespace .$.?!.",
         vec![
             Token::new(span(1, 10), Word("namespace".into())),
-            Token::new(span(11, 17), Punctuation(".$.?!.".into())),
+            Token::new(span(11, 17), Symbol(".$.?!.".into())),
             Token::new(span(17, 17), EndOfInput),
         ],
     )
 }
 
 #[test]
-fn lex_keyword_dot_punctuation() {
+fn lex_keyword_dot_symbol() {
     assert_lex_eq!(
         "data.#",
         vec![
             Token::new(span(1, 5), Data),
             Token::new(span(5, 6), Dot),
-            Token::new(span(6, 7), Punctuation("#".into())),
+            Token::new(span(6, 7), Symbol("#".into())),
             Token::new(span(7, 7), EndOfInput),
         ],
     )
@@ -462,7 +462,7 @@ alpha #?
 \"moot\"",
         vec![
             Token::new(span(1, 6), Word("alpha".into())),
-            Token::new(span(7, 9), Punctuation("#?".into())),
+            Token::new(span(7, 9), Symbol("#?".into())),
             Token::new(span(9, 10), Semicolon(Provenance::Lexer)),
             Token::new(span(10, 13), NumberLiteral("100".into())),
             Token::new(span(14, 16), Word("it".into())),
@@ -505,9 +505,9 @@ $%&~~
             Token::new(span(83, 84), OpeningRoundBracket),
             Token::new(span(101, 102), ClosingRoundBracket),
             Token::new(span(102, 104), Semicolon(Provenance::Lexer)),
-            Token::new(span(104, 109), Punctuation("$%&~~".into())),
-            Token::new(span(114, 117), Punctuation(".!^".into())),
-            Token::new(span(119, 121), Punctuation(r"\/".into())),
+            Token::new(span(104, 109), Symbol("$%&~~".into())),
+            Token::new(span(114, 117), Symbol(".!^".into())),
+            Token::new(span(119, 121), Symbol(r"\/".into())),
             Token::new(span(121, 121), EndOfInput),
         ],
     );
@@ -536,7 +536,7 @@ fn line_breaks_are_not_terminators_in_continued_sections() {
             Token::new(span(16, 20), Word("side".into())),
             Token::new(span(25, 27), TextLiteral("".into())),
             Token::new(span(27, 28), Semicolon(Provenance::Lexer)),
-            Token::new(span(28, 31), Punctuation("@@@".into())),
+            Token::new(span(28, 31), Symbol("@@@".into())),
             Token::new(span(32, 33), At),
             Token::new(span(40, 44), Word("lvl1".into())),
             Token::new(span(53, 57), Word("lvl2".into())),
@@ -580,7 +580,7 @@ of
             Token::new(span(35, 39), NumberLiteral("1980".into())),
             Token::new(span(41, 41), ClosingCurlyBracket(Provenance::Lexer)),
             Token::new(span(41, 41), Semicolon(Provenance::Lexer)),
-            Token::new(span(41, 42), Punctuation(">".into())),
+            Token::new(span(41, 42), Symbol(">".into())),
             Token::new(span(42, 44), Of),
             Token::new(span(45, 49), OpeningCurlyBracket(Provenance::Lexer)),
             Token::new(span(49, 55), Module),
@@ -592,7 +592,7 @@ of
             Token::new(span(75, 79), Semicolon(Provenance::Lexer)),
             Token::new(span(79, 81), Of),
             Token::new(span(82, 90), OpeningCurlyBracket(Provenance::Lexer)),
-            Token::new(span(90, 95), Punctuation(">>!<<".into())),
+            Token::new(span(90, 95), Symbol(">>!<<".into())),
             Token::new(span(96, 96), ClosingCurlyBracket(Provenance::Lexer)),
             Token::new(span(96, 96), Semicolon(Provenance::Lexer)),
             Token::new(span(96, 96), ClosingCurlyBracket(Provenance::Lexer)),
@@ -726,7 +726,7 @@ fn square_bracket_closes_indented_section() {
             Token::new(span(11, 12), ClosingCurlyBracket(Provenance::Lexer)),
             Token::new(span(11, 12), ClosingSquareBracket),
             Token::new(span(12, 13), Semicolon(Provenance::Lexer)),
-            Token::new(span(13, 14), Punctuation("#".into())),
+            Token::new(span(13, 14), Symbol("#".into())),
             Token::new(span(14, 14), EndOfInput),
         ],
     );
@@ -776,7 +776,7 @@ fn brackets_reset_indentation() {
             Token::new(span(11, 12), ClosingCurlyBracket(Provenance::Lexer)),
             Token::new(span(11, 12), ClosingRoundBracket),
             Token::new(span(17, 18), Equals),
-            // @Question should this be Punctuation?
+            // @Question should this be a Symbol?
             Token::new(span(19, 20), Dot),
             Token::new(span(20, 21), Semicolon(Provenance::Lexer)),
             Token::new(span(21, 21), EndOfInput),

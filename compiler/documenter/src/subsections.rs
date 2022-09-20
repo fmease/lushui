@@ -9,6 +9,7 @@ use lowered_ast::{attributes::Query as _, AttributeName};
 use std::borrow::Cow;
 use unicode_segmentation::UnicodeSegmentation;
 
+// @Task get rid of this rigid non-extensible struct!
 #[derive(Default)]
 pub(crate) struct Subsections<'a> {
     // pub(crate) uses: Uses<'a>, // @Task
@@ -17,7 +18,7 @@ pub(crate) struct Subsections<'a> {
     pub(crate) functions: Functions<'a>,
     pub(crate) attributes: Attributes,
     pub(crate) keywords: Keywords<'a>,
-    pub(crate) reserved_punctuation: ReservedPunctuation<'a>,
+    pub(crate) reserved_symbols: ReservedSymbols<'a>,
 }
 
 impl<'a> Subsections<'a> {
@@ -30,10 +31,10 @@ impl<'a> Subsections<'a> {
                 .map(|keyword| Keyword { name: keyword }),
         );
 
-        subsections.reserved_punctuation.0.extend(
-            crate::RESERVED_PUNCTUATION
+        subsections.reserved_symbols.0.extend(
+            crate::RESERVED_SYMBOLS
                 .into_iter()
-                .map(|punctuation| SingleReservedPunctuation { name: punctuation }),
+                .map(|symbol| ReservedSymbol { name: symbol }),
         );
 
         subsections
@@ -51,7 +52,7 @@ impl<'a> Subsections<'a> {
         self.functions.render_table_of_contents(parent);
         self.attributes.render_table_of_contents(parent);
         self.keywords.render_table_of_contents(parent);
-        self.reserved_punctuation.render_table_of_contents(parent);
+        self.reserved_symbols.render_table_of_contents(parent);
     }
 
     pub(crate) fn render(
@@ -68,7 +69,7 @@ impl<'a> Subsections<'a> {
             .render(url_prefix, parent, text_processor, options);
         self.attributes.render(parent);
         self.keywords.render(parent);
-        self.reserved_punctuation.render(parent);
+        self.reserved_symbols.render(parent);
     }
 }
 
@@ -439,7 +440,7 @@ impl<'a> Keywords<'a> {
                     .child(Element::anchor(format!("#{id}"), keyword.name).class("binder")),
             );
 
-            // @Task include the documentation of each reserved punctuation here at compile-time
+            // @Task include the documentation of each keyword here at compile-time
         }
 
         parent.add_child(section);
@@ -461,20 +462,20 @@ impl<'a> Subsubsection<'a> for Keyword<'a> {
 }
 
 #[derive(Default)]
-pub(crate) struct ReservedPunctuation<'a>(pub(crate) Vec<SingleReservedPunctuation<'a>>);
+pub(crate) struct ReservedSymbols<'a>(pub(crate) Vec<ReservedSymbol<'a>>);
 
-impl<'a> Subsection<'a> for ReservedPunctuation<'a> {
-    const ID: &'static str = "punctuation";
-    const TITLE: &'static str = "Reserved Punctuation";
+impl<'a> Subsection<'a> for ReservedSymbols<'a> {
+    const ID: &'static str = "symbols";
+    const TITLE: &'static str = "Reserved Symbols";
 
-    type Subsubsection = SingleReservedPunctuation<'a>;
+    type Subsubsection = ReservedSymbol<'a>;
 
     fn subsections(&self) -> &[Self::Subsubsection] {
         &self.0
     }
 }
 
-impl<'a> ReservedPunctuation<'a> {
+impl<'a> ReservedSymbols<'a> {
     fn render(self, parent: &mut Element<'a>) {
         if self.0.is_empty() {
             return;
@@ -483,33 +484,30 @@ impl<'a> ReservedPunctuation<'a> {
         let mut section =
             Element::new("section").child(anchored_subheading(2, Self::ID, Self::TITLE));
 
-        for reserved_punctuation in self.0 {
-            let id = reserved_punctuation.id();
+        for reserved_symbol in self.0 {
+            let id = reserved_symbol.id();
 
             section.add_child(
                 Element::new("h3")
                     .attribute("id", id.clone())
                     .class("subheading declaration")
-                    .child(
-                        Element::anchor(format!("#{id}"), reserved_punctuation.name)
-                            .class("binder"),
-                    ),
+                    .child(Element::anchor(format!("#{id}"), reserved_symbol.name).class("binder")),
             );
 
-            // @Task include the documentation of each reserved punctuation here at compile-time
+            // @Task include the documentation of each reserved symbol here at compile-time
         }
 
         parent.add_child(section);
     }
 }
 
-pub(crate) struct SingleReservedPunctuation<'a> {
+pub(crate) struct ReservedSymbol<'a> {
     pub(crate) name: &'a str,
 }
 
-impl<'a> Subsubsection<'a> for SingleReservedPunctuation<'a> {
+impl<'a> Subsubsection<'a> for ReservedSymbol<'a> {
     fn id(&self) -> String {
-        format!("punctuation.{}", urlencoding::encode(self.name))
+        format!("symbol.{}", urlencoding::encode(self.name))
     }
 
     fn title(&self) -> &'a str {

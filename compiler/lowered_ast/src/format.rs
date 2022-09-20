@@ -5,7 +5,7 @@ use std::fmt;
 use token::INDENTATION;
 
 const KEYWORD_COLOR: Color = Color::Cyan;
-const PUNCTUATION_COLOR: Color = Color::BrightMagenta;
+const SYMBOL_COLOR: Color = Color::BrightMagenta;
 const ATTRIBUTE_COLOR: Color = Color::BrightWhite;
 
 pub trait Display {
@@ -44,11 +44,11 @@ fn write_declaration(
                 f,
                 "{}{colon} ",
                 function.binder,
-                colon = ":".color(PUNCTUATION_COLOR)
+                colon = ":".color(SYMBOL_COLOR)
             )?;
             function.type_annotation.write(f)?;
             if let Some(expression) = &function.expression {
-                write!(f, " {equals} ", equals = "=".color(PUNCTUATION_COLOR))?;
+                write!(f, " {equals} ", equals = "=".color(SYMBOL_COLOR))?;
                 expression.write(f)?;
             }
             writeln!(f)
@@ -60,7 +60,7 @@ fn write_declaration(
                     "{data} {binder}{colon} ",
                     data = "data".color(KEYWORD_COLOR),
                     binder = type_.binder,
-                    colon = ":".color(PUNCTUATION_COLOR),
+                    colon = ":".color(SYMBOL_COLOR),
                 )?;
                 type_.type_annotation.write(f)?;
                 writeln!(f, " {of}", of = "of".color(KEYWORD_COLOR))?;
@@ -75,7 +75,7 @@ fn write_declaration(
                     "{data} {binder}{colon} ",
                     data = "data".color(KEYWORD_COLOR),
                     binder = type_.binder,
-                    colon = ":".color(PUNCTUATION_COLOR),
+                    colon = ":".color(SYMBOL_COLOR),
                 )?;
                 type_.type_annotation.write(f)?;
                 writeln!(f)
@@ -86,7 +86,7 @@ fn write_declaration(
                 f,
                 "{binder}{colon} ",
                 binder = constructor.binder,
-                colon = ":".color(PUNCTUATION_COLOR),
+                colon = ":".color(SYMBOL_COLOR),
             )?;
             constructor.type_annotation.write(f)?;
             writeln!(f)
@@ -145,11 +145,7 @@ fn write_pi_type_literal_or_lower(
                 }
 
                 if let Some(parameter) = &pi.parameter {
-                    write!(
-                        f,
-                        "{parameter}{colon} ",
-                        colon = ":".color(PUNCTUATION_COLOR)
-                    )?;
+                    write!(f, "{parameter}{colon} ", colon = ":".color(SYMBOL_COLOR))?;
                 }
 
                 pi.domain.write(f)?;
@@ -158,14 +154,14 @@ fn write_pi_type_literal_or_lower(
                 format_application_or_lower(&pi.domain, f)?;
             }
 
-            write!(f, " {arrow} ", arrow = "->".color(PUNCTUATION_COLOR))?;
+            write!(f, " {arrow} ", arrow = "->".color(SYMBOL_COLOR))?;
             write_pi_type_literal_or_lower(&pi.codomain, f)
         }
         Lambda(lambda) => {
             write!(
                 f,
                 "{backslash}{explicitness}",
-                backslash = "\\".color(PUNCTUATION_COLOR),
+                backslash = "\\".color(SYMBOL_COLOR),
                 explicitness = lambda.explicitness,
             )?;
             let parameter_needs_brackets =
@@ -178,7 +174,7 @@ fn write_pi_type_literal_or_lower(
                 }
                 write!(f, "{}", lambda.parameter)?;
                 if let Some(annotation) = &lambda.parameter_type_annotation {
-                    write!(f, "{colon} ", colon = ":".color(PUNCTUATION_COLOR),)?;
+                    write!(f, "{colon} ", colon = ":".color(SYMBOL_COLOR),)?;
                     annotation.write(f)?;
                 }
                 write!(f, ")")?;
@@ -187,10 +183,10 @@ fn write_pi_type_literal_or_lower(
             }
 
             if let Some(annotation) = &lambda.body_type_annotation {
-                write!(f, "{colon} ", colon = ":".color(PUNCTUATION_COLOR),)?;
+                write!(f, "{colon} ", colon = ":".color(SYMBOL_COLOR),)?;
                 annotation.write(f)?;
             }
-            write!(f, " {arrow} ", arrow = "=>".color(PUNCTUATION_COLOR))?;
+            write!(f, " {arrow} ", arrow = "=>".color(SYMBOL_COLOR))?;
             lambda.body.write(f)
         }
         UseIn => todo!(),
@@ -207,7 +203,7 @@ fn write_pi_type_literal_or_lower(
                 }
 
                 case.pattern.write(f)?;
-                write!(f, " {arrow} ", arrow = "=>".color(PUNCTUATION_COLOR),)?;
+                write!(f, " {arrow} ", arrow = "=>".color(SYMBOL_COLOR),)?;
                 case.body.write(f)?;
             }
             write!(f, " }}")
@@ -283,11 +279,7 @@ impl Display for super::Pattern {
             NumberLiteral(number) => write!(f, "{number}"),
             TextLiteral(text) => write!(f, "{text}"),
             Path(path) => write!(f, "{path}"),
-            Binder(path) => write!(
-                f,
-                "{backslash}{path}",
-                backslash = "\\".color(PUNCTUATION_COLOR),
-            ),
+            Binder(path) => write!(f, "{backslash}{path}", backslash = "\\".color(SYMBOL_COLOR),),
             Application(application) => {
                 write!(f, "(")?;
                 application.callee.write(f)?;

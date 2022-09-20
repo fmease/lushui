@@ -44,7 +44,7 @@ impl TokenExt for Token {
     fn into_identifier(self) -> Option<Atom> {
         use BareToken::*;
 
-        obtain!(self.bare, Word(identifier) | Punctuation(identifier) => identifier)
+        obtain!(self.bare, Word(identifier) | Symbol(identifier) => identifier)
     }
 
     fn into_number_literal(self) -> Option<Atom> {
@@ -62,8 +62,8 @@ pub enum BareToken {
     Shebang,
     Comment,
     DocumentationComment,
-    Word(Atom),        // @Task use crate::Word
-    Punctuation(Atom), // @Task create newtype Punctuation
+    Word(Atom),   // @Task use crate::Word
+    Symbol(Atom), // @Task create newtype Symbol
     NumberLiteral(Atom),
     TextLiteral(Atom),
     /// For attributes.
@@ -148,7 +148,7 @@ impl fmt::Display for BareToken {
 impl TokenName {
     /// Test if the token may appear at the start of a path.
     pub const fn is_path_head(self) -> bool {
-        matches!(self, Word | Punctuation) || self.is_path_hanger()
+        matches!(self, Word | Symbol) || self.is_path_hanger()
     }
 
     pub const fn is_path_hanger(self) -> bool {
@@ -176,7 +176,7 @@ impl fmt::Display for TokenName {
             Comment => "comment",
             DocumentationComment => "documentation comment",
             Word => "word",
-            Punctuation => "punctuation",
+            Symbol => "symbol",
             NumberLiteral => "number literal",
             TextLiteral => "text literal",
             At => quoted!("@"),
@@ -230,7 +230,7 @@ pub enum Provenance {
 }
 
 // @Question should this reside in `lexer`?
-pub const fn is_punctuation(character: char) -> bool {
+pub const fn is_symbol(character: char) -> bool {
     #[rustfmt::skip]
     matches!(
         character,

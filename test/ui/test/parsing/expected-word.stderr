@@ -1,0 +1,8 @@
+error[E010]: found ‘?’ but expected word
+  ┌─ ${TEST_FOLDER}/parsing/expected-word.lushui:1:6
+  │
+1 │ data ? : Type of
+  │      ═ unexpected token
+
+error: aborting due to previous error
+

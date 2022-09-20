@@ -81,17 +81,17 @@ impl<'a> Lexer<'a> {
                 character if is_identifier_segment_start(character) => self.lex_identifier(),
                 '\n' if self.sections.current() != Section::Delimited => self.lex_indentation(),
                 '\n' => self.advance(),
-                '-' => self.lex_punctuation_or_number_literal(),
+                '-' => self.lex_symbol_or_number_literal(),
                 character if character.is_ascii_digit() => {
                     self.take();
                     self.advance();
                     self.lex_number_literal();
                 }
-                character if token::is_punctuation(character) => {
+                character if token::is_symbol(character) => {
                     self.take();
                     self.advance();
 
-                    self.lex_punctuation();
+                    self.lex_symbol();
                 }
                 '"' => self.lex_text_literal(),
                 '(' => self.add_opening_bracket(BracketKind::Round),
@@ -195,7 +195,7 @@ impl<'a> Lexer<'a> {
                 self.add(Shebang);
             }
         } else {
-            self.lex_punctuation();
+            self.lex_symbol();
         }
     }
 
@@ -390,23 +390,23 @@ impl<'a> Lexer<'a> {
         // }
     }
 
-    fn lex_punctuation_or_number_literal(&mut self) {
+    fn lex_symbol_or_number_literal(&mut self) {
         self.take();
         self.advance();
 
         match self.peek() {
             Some(character) if character.is_ascii_digit() => self.lex_number_literal(),
-            _ => self.lex_punctuation(),
+            _ => self.lex_symbol(),
         }
     }
 
-    fn lex_punctuation(&mut self) {
-        self.take_while(token::is_punctuation);
+    fn lex_symbol(&mut self) {
+        self.take_while(token::is_symbol);
 
-        match parse_reserved_punctuation(&self.file[self.local_span]) {
-            Some(punctuation) => self.add(punctuation),
+        match parse_reserved_symbol(&self.file[self.local_span]) {
+            Some(symbol) => self.add(symbol),
             None => {
-                self.add(Punctuation(self.source().into()));
+                self.add(Symbol(self.source().into()));
             }
         }
     }
@@ -689,7 +689,7 @@ fn parse_keyword(source: &str) -> Option<BareToken> {
     })
 }
 
-fn parse_reserved_punctuation(source: &str) -> Option<BareToken> {
+fn parse_reserved_symbol(source: &str) -> Option<BareToken> {
     Some(match source {
         "." => Dot,
         ":" => Colon,

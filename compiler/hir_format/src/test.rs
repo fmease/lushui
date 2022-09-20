@@ -858,7 +858,7 @@ fn path() {
 }
 
 #[test]
-fn path_identifier_punctuation_punctuation_identifier_segments() {
+fn path_identifier_symbol_symbol_identifier_segments() {
     let session = BuildSession::test();
     let mut component = Component::test();
 

@@ -1,0 +1,8 @@
+error[E010]: found line break but expected identifier
+  ┌─ ${TEST_FOLDER}/parsing/expected-identifier.lushui:1:19
+  │
+1 │ use extern.core as
+  │                  ⟫⟪ unexpected token
+
+error: aborting due to previous error
+

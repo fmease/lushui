@@ -503,16 +503,15 @@ impl ComponentExt for Component {
         if let Some(parent) = entity.parent {
             let mut parent_path = self.local_index_with_root_to_extern_path(parent, root);
 
-            let parent_is_punctuation =
-                token::is_punctuation(parent_path.chars().next_back().unwrap());
+            let parent_is_symbol = token::is_symbol(parent_path.chars().next_back().unwrap());
 
-            if parent_is_punctuation {
+            if parent_is_symbol {
                 parent_path.push(' ');
             }
 
             parent_path.push('.');
 
-            if entity.source.is_punctuation() && parent_is_punctuation {
+            if entity.source.is_symbol() && parent_is_symbol {
                 parent_path.push(' ');
             }
 

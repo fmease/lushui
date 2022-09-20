@@ -229,14 +229,11 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                         )
                         .unwrap();
                     }
-                    SearchItem::ReservedPunctuation(punctuation) => {
+                    SearchItem::ReservedSymbol(symbol) => {
                         write!(
                             search_index,
-                            "[{punctuation:?},{:?}],",
-                            format!(
-                                "identifiers.html#punctuation.{}",
-                                urlencoding::encode(punctuation)
-                            )
+                            "[{symbol:?},{:?}],",
+                            format!("identifiers.html#symbol.{}", urlencoding::encode(symbol))
                         )
                         .unwrap();
                     }
@@ -264,9 +261,8 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
             self.search_items.push(SearchItem::Keyword(keyword));
         }
 
-        for punctuation in RESERVED_PUNCTUATION {
-            self.search_items
-                .push(SearchItem::ReservedPunctuation(punctuation));
+        for symbol in RESERVED_SYMBOLS {
+            self.search_items.push(SearchItem::ReservedSymbol(symbol));
         }
 
         for attribute in AttributeName::elements() {
@@ -855,7 +851,7 @@ pub struct Options {
 enum SearchItem {
     Declaration(hir::DeclarationIndex),
     Keyword(&'static str),
-    ReservedPunctuation(&'static str),
+    ReservedSymbol(&'static str),
     Attribute(&'static str),
 }
 
@@ -876,7 +872,7 @@ static KEYWORDS: [&str; 15] = [
     "super", "topmost", "use",
 ];
 
-static RESERVED_PUNCTUATION: [&str; 10] = [".", ":", "=", "\\", "?", "@", "->", "<-", "=>", "::"];
+static RESERVED_SYMBOLS: [&str; 10] = [".", ":", "=", "\\", "?", "@", "->", "<-", "=>", "::"];
 
 static LOREM_IPSUM: &str = "\
     Lorem ipsum dolor sit amet, consectetur adipiscing elit, \
