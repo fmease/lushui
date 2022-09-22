@@ -37,7 +37,7 @@ pub struct BuildSession {
     known_bindings: HashMap<known::Binding, Identifier>,
     // @Task make this a DoubleHashMap
     intrinsic_types: HashMap<intrinsic::Type, Identifier>,
-    intrinsic_functions: HashMap<intrinsic::Function, intrinsic::FunctionValue>,
+    intrinsic_functions: HashMap<intrinsic::Function, Identifier>,
     map: Arc<RwLock<SourceMap>>,
     reporter: Reporter,
 }
@@ -45,7 +45,6 @@ pub struct BuildSession {
 impl BuildSession {
     pub const OUTPUT_FOLDER_NAME: &'static str = "build";
 
-    /// Create a new build session with all intrinsic functions defined.
     pub fn new(
         packages: IndexMap<PackageIndex, Package>,
         component_packages: HashMap<ComponentIndex, PackageIndex>,
@@ -60,7 +59,7 @@ impl BuildSession {
             target_component,
             known_bindings: default(),
             intrinsic_types: default(),
-            intrinsic_functions: intrinsic::functions(),
+            intrinsic_functions: default(),
             map: map.clone(),
             reporter,
         }
@@ -153,7 +152,7 @@ impl BuildSession {
                         .unwrap_or_default()
                 ))
                 .primary_span(binder)
-                .secondary_span(attribute)
+                .labeled_secondary_span(attribute, "marks the binding as known to the compiler")
                 .report(self.reporter()));
         };
 
@@ -220,9 +219,8 @@ impl BuildSession {
     pub fn define_intrinsic_function(
         &mut self,
         binder: Identifier,
-        type_: Expression,
         attribute: Span,
-    ) -> Result<EntityKind> {
+    ) -> Result<intrinsic::Function> {
         let Ok(intrinsic) = binder.as_str().parse() else {
             return Err(unrecognized_intrinsic_binding_error(binder.as_str(), intrinsic::Kind::Function)
                 .primary_span(&binder)
@@ -230,15 +228,21 @@ impl BuildSession {
                 .report(self.reporter()));
         };
 
-        // @Task explain why we remove here
-        // @Task explain why unwrap
-        let function = self.intrinsic_functions.remove(&intrinsic).unwrap();
+        // @Beacon @Task add a UI test for this!
+        if let Some(previous) = self.intrinsic_functions.get(&intrinsic) {
+            return Err(Diagnostic::error()
+                .code(ErrorCode::E040)
+                .message(format!(
+                    "the intrinsic function ‘{intrinsic}’ is defined multiple times",
+                ))
+                .labeled_primary_span(&binder, "redefinition")
+                .labeled_secondary_span(previous as &_, "previous definition")
+                .report(self.reporter()));
+        }
 
-        Ok(EntityKind::IntrinsicFunction {
-            type_,
-            arity: function.arity,
-            function: function.function,
-        })
+        self.intrinsic_functions.insert(intrinsic, binder);
+
+        Ok(intrinsic)
     }
 
     pub fn is_intrinsic_type(&self, intrinsic: intrinsic::Type, binder: &hir::Identifier) -> bool {

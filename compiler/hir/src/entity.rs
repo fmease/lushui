@@ -1,6 +1,6 @@
 use crate::{
-    Attributes, DeclarationIndex, Exposure, Expression, Identifier, LocalDeclarationIndex,
-    Namespace, ValueView,
+    intrinsic, Attributes, DeclarationIndex, Exposure, Expression, Identifier,
+    LocalDeclarationIndex, Namespace, ValueView,
 };
 use error::PossiblyErroneous;
 use std::default::default;
@@ -177,10 +177,8 @@ pub enum EntityKind {
         type_: Expression,
     },
     IntrinsicFunction {
+        function: intrinsic::Function,
         type_: Expression,
-        // @Beacon @Task wrap this in an IntrinsicFnVal
-        arity: usize,
-        function: crate::intrinsic::BareFunctionValue,
     },
     // @Task explain why we want entities to be possibly erroneous
     Error,

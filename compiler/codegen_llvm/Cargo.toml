@@ -16,5 +16,5 @@ utilities = { path = "../utilities" }
 
 [dependencies.inkwell]
 git = "https://github.com/TheDan64/inkwell"
-rev = "25b9fc5"
-features = ["llvm13-0"]
+rev = "4b67a7f"
+features = ["llvm14-0"]

@@ -7,7 +7,6 @@ publish = false
 
 [dependencies]
 ast = { path = "../ast" }
-derivation = { path = "../../project/library/derivation" }
 error = { path = "../error" }
 index_map = { path = "../../project/library/index_map" }
 joinery = "2.1.0"

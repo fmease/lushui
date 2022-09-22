@@ -364,14 +364,15 @@ impl<'a> Typer<'a> {
                 let index = binder.local_declaration_index(self.component).unwrap();
                 debug_assert!(self.component[index].is_untyped());
 
-                self.component[index].kind = self.session.define_intrinsic_function(
+                let function = self.session.define_intrinsic_function(
                     binder,
-                    type_,
                     registration
                         .attributes
                         .span(AttributeName::Intrinsic)
                         .unwrap(),
                 )?;
+
+                self.component[index].kind = EntityKind::IntrinsicFunction { function, type_ };
             }
         }
         Ok(())

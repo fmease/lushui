@@ -1,10 +1,10 @@
 //! The LLVM-IR generator.
-#![feature(default_free_fn, let_chains)]
+#![feature(default_free_fn, let_chains, io_error_other)]
 #![allow(clippy::match_same_arms)] // @Temporary
 
 use diagnostics::Diagnostic;
 use error::Result;
-use hir::{DeclarationIndex, Entity};
+use hir::DeclarationIndex;
 use hir_format::ComponentExt;
 use inkwell::{
     builder::Builder,
@@ -20,10 +20,10 @@ use std::{
     cell::RefCell,
     default::default,
     io::Write,
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{Command, Stdio},
 };
-use utilities::{HashMap, Str};
+use utilities::{FormatError, HashMap, Str};
 
 const PROGRAM_ENTRY_NAME: &str = "main";
 
@@ -54,7 +54,29 @@ pub fn compile_and_link(
             .report(session.reporter()));
     }
 
-    link(module, component, session)
+    if let Err(error) = link(module, component, session) {
+        return Err(Diagnostic::error()
+            .message("could not link object files")
+            .with(|it| match error {
+                // @Task print the path
+                LinkingError::UnresolvedRuntimeSystem(error) => it
+                    .note(format!(
+                        "failed to load the runtime system ‘boot’: {}",
+                        error.format()
+                    ))
+                    .help("consider rebuilding it"),
+                LinkingError::ProcessExecutionFailed(error) => it.note(format!(
+                    "failed to execute the linker `clang`: {}",
+                    error.format()
+                )),
+                LinkingError::LinkerFailed(stderr) => it
+                    .note("the linker `clang` exited unsuccessfully")
+                    .note(stderr),
+            })
+            .report(session.reporter()));
+    }
+
+    Ok(())
 }
 
 #[derive(Clone, Copy, Default)]
@@ -82,49 +104,73 @@ fn link(
     module: inkwell::module::Module<'_>,
     component: &Component,
     session: &BuildSession,
-) -> Result {
+) -> Result<(), LinkingError> {
     let buffer = module.write_bitcode_to_memory();
     let name = component.name().as_str();
 
-    // @Task error handling!
+    let output_file_path = match session.target_package() {
+        // @Task ensure that the build folder exists
+        Some(package) => {
+            let mut path = session[package].path.join(BuildSession::OUTPUT_FOLDER_NAME);
+            path.push(name);
+            path
+        }
+        None => PathBuf::from(name),
+    };
+
+    // @Task search the "distributed libraries path" (sysroot) instead
+    let runtime_system_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target/release")
+        .canonicalize()
+        .map_err(LinkingError::UnresolvedRuntimeSystem)?;
+
     let mut compiler = Command::new("clang")
-        .args(["-x", "ir", "-", "-o"])
-        .arg(match session.target_package() {
-            // @Task ensure that the build folder exists
-            Some(package) => {
-                let mut path = session[package].path.join(BuildSession::OUTPUT_FOLDER_NAME);
-                path.push(name);
-                path
-            }
-            None => PathBuf::from(name),
-        })
+        .args(["-x", "ir", "-", "-lboot", "-L"])
+        .arg(runtime_system_path)
+        .arg("-o")
+        .arg(output_file_path)
         .stdin(Stdio::piped())
-        // @Task smh store stderr for reporting later
-        .spawn()
-        .unwrap();
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()?;
 
     compiler
         .stdin
         .take()
         .unwrap()
-        .write_all(buffer.as_slice())
-        .unwrap();
+        .write_all(buffer.as_slice())?;
 
-    let status = compiler.wait().unwrap();
+    let output = compiler.wait_with_output()?;
 
-    if !status.success() {
-        return Err(Diagnostic::error()
-            .message("failed to link object files")
-            .report(session.reporter()));
+    if !output.status.success() {
+        let stderr = match String::from_utf8(output.stderr) {
+            Ok(stderr) => stderr,
+            Err(error) => String::from_utf8_lossy(&error.into_bytes()).into_owned(),
+        };
+
+        return Err(LinkingError::LinkerFailed(stderr));
     }
 
     Ok(())
 }
+
+enum LinkingError {
+    UnresolvedRuntimeSystem(std::io::Error),
+    ProcessExecutionFailed(std::io::Error),
+    LinkerFailed(String),
+}
+
+impl From<std::io::Error> for LinkingError {
+    fn from(error: std::io::Error) -> Self {
+        Self::ProcessExecutionFailed(error)
+    }
+}
+
 struct Generator<'a, 'ctx> {
     context: &'ctx Context,
     builder: Builder<'ctx>,
     module: Module<'ctx>,
-    bindings: RefCell<HashMap<DeclarationIndex, Definition<'a, 'ctx>>>,
+    bindings: RefCell<HashMap<DeclarationIndex, Entity<'a, 'ctx>>>,
     options: Options,
     component: &'a Component,
     session: &'a BuildSession,
@@ -167,20 +213,17 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
                     == Component::PROGRAM_ENTRY_IDENTIFIER
                     && self.look_up_parent(index).unwrap() == self.component.root();
 
-                if declaration.attributes.has(hir::AttributeName::Intrinsic) {
-                    todo!("compiling intrinsics");
-                }
-
-                let Some(expression) = &function.expression else { return };
-
-                let classification = if is_program_entry {
-                    Thunk
-                } else {
-                    expression.classify(self.session)
-                };
+                let classification = function.expression.as_ref().map(|expression| {
+                    let classification = if is_program_entry {
+                        Thunk
+                    } else {
+                        expression.classify(self.session)
+                    };
+                    (classification, expression)
+                });
 
                 match classification {
-                    Constant => {
+                    Some((Constant, expression)) => {
                         let constant = self.module.add_global(
                             self.translate_type(&function.type_annotation),
                             None,
@@ -193,10 +236,10 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
 
                         self.bindings
                             .borrow_mut()
-                            .insert(index, Definition::Constant(constant));
+                            .insert(index, Entity::Constant(constant));
                     }
                     // @Beacon @Task simplify
-                    Thunk => {
+                    Some((Thunk, _)) => {
                         let name = if is_program_entry {
                             PROGRAM_ENTRY_NAME.into()
                         } else {
@@ -223,9 +266,9 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
 
                         self.bindings
                             .borrow_mut()
-                            .insert(index, Definition::Thunk(thunk));
+                            .insert(index, Entity::Thunk(thunk));
                     }
-                    Function(lambda) => {
+                    Some((Function(lambda), _)) => {
                         // @Beacon @Task handle functions of arbitrary "arity" here!
 
                         let function_value = self.module.add_function(
@@ -240,9 +283,33 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
 
                         self.bindings.borrow_mut().insert(
                             index,
-                            Definition::UnaryFunction {
+                            Entity::UnaryFunction {
                                 value: function_value,
                                 lambda,
+                            },
+                        );
+                    }
+                    None => {
+                        let hir::EntityKind::IntrinsicFunction { function: intrinsic, .. } = self.look_up(index).kind else {
+                            unreachable!();
+                        };
+
+                        // @Beacon @Task handle functions of arbitrary "arity" here!
+
+                        let function_value = self.module.add_function(
+                            intrinsic.name(),
+                            self.translate_unary_function_type(&function.type_annotation),
+                            None,
+                        );
+
+                        function_value
+                            .as_global_value()
+                            .set_unnamed_address(UnnamedAddress::Global);
+
+                        self.bindings.borrow_mut().insert(
+                            index,
+                            Entity::Intrinsic {
+                                value: function_value,
                             },
                         );
                     }
@@ -272,14 +339,14 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
                 let index = function.binder.index.declaration().unwrap();
 
                 if declaration.attributes.has(hir::AttributeName::Intrinsic) {
-                    todo!("compiling intrinsics");
+                    return;
                 }
 
-                let Some(expression) = &function.expression else { return };
+                let expression = function.expression.as_ref().unwrap();
 
                 match self.bindings.borrow()[&index] {
-                    Definition::Constant(_) => {}
-                    Definition::Thunk(thunk) => {
+                    Entity::Constant(_) | Entity::Intrinsic { .. } => {}
+                    Entity::Thunk(thunk) => {
                         let start_block = self.context.append_basic_block(thunk, "start");
                         self.builder.position_at_end(start_block);
 
@@ -288,7 +355,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
                         self.builder
                             .build_return(value.as_ref().map(|value| value as _));
                     }
-                    Definition::UnaryFunction {
+                    Entity::UnaryFunction {
                         value: unary_function,
                         lambda,
                     } => {
@@ -372,7 +439,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
 
                 let value = match callee.0.index {
                     Declaration(index) => {
-                        let Definition::UnaryFunction { value: function, .. } = self.bindings.borrow()[&index] else {
+                        let (Entity::UnaryFunction { value: function, .. } | Entity::Intrinsic { value: function }) = self.bindings.borrow()[&index] else {
                             unreachable!();
                         };
 
@@ -397,16 +464,18 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
                 match binding.0.index {
                     Declaration(index) => {
                         let value = match self.bindings.borrow()[&index] {
-                            Definition::Constant(constant) => {
+                            Entity::Constant(constant) => {
                                 self.builder.build_load(constant.as_pointer_value(), "")
                             }
-                            Definition::Thunk(thunk) => self
+                            Entity::Thunk(thunk) => self
                                 .builder
                                 .build_call(thunk, &[], "")
                                 .try_as_basic_value()
                                 .left()
                                 .unwrap(),
-                            Definition::UnaryFunction { .. } => unreachable!(),
+                            Entity::UnaryFunction { .. } | Entity::Intrinsic { .. } => {
+                                unreachable!()
+                            }
                         };
 
                         Some(value)
@@ -512,7 +581,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
     }
 
     // @Task dedup with name resolver, documenter, interpreter
-    fn look_up(&self, index: DeclarationIndex) -> &'a Entity {
+    fn look_up(&self, index: DeclarationIndex) -> &'a hir::Entity {
         match index.local(self.component) {
             Some(index) => &self.component[index],
             None => &self.session[index],
@@ -556,12 +625,15 @@ impl ExpressionExt for hir::Expression {
     }
 }
 
-enum Definition<'a, 'ctx> {
+enum Entity<'a, 'ctx> {
     Constant(GlobalValue<'ctx>),
     Thunk(FunctionValue<'ctx>),
     UnaryFunction {
         value: FunctionValue<'ctx>,
         lambda: &'a hir::Lambda,
+    },
+    Intrinsic {
+        value: FunctionValue<'ctx>,
     },
 }
 

@@ -378,26 +378,29 @@ impl<'a> Interpreter<'a> {
         arguments: Vec<Expression>,
     ) -> Result<Option<Expression>> {
         match self.look_up(binder.declaration_index().unwrap()).kind {
-            hir::EntityKind::IntrinsicFunction {
-                arity, function, ..
-            } => Ok(if arguments.len() == arity {
-                let mut value_arguments = Vec::new();
+            hir::EntityKind::IntrinsicFunction { function, .. } => {
+                Ok(if arguments.len() == function.arity() {
+                    let mut value_arguments = Vec::new();
 
-                // @Task tidy up with iterator combinators
-                for argument in arguments {
-                    if let Some(argument) =
-                        interfaceable::Value::from_expression(&argument, self.session)
-                    {
-                        value_arguments.push(argument);
-                    } else {
-                        return Ok(None);
+                    for argument in arguments {
+                        if let Some(argument) =
+                            interfaceable::Value::from_expression(&argument, self.session)
+                        {
+                            value_arguments.push(argument);
+                        } else {
+                            return Ok(None);
+                        }
                     }
-                }
 
-                Some(function(value_arguments).into_expression(self.session)?)
-            } else {
-                None
-            }),
+                    Some(
+                        function
+                            .evaluate(value_arguments)
+                            .into_expression(self.session)?,
+                    )
+                } else {
+                    None
+                })
+            }
             _ => unreachable!(),
         }
     }

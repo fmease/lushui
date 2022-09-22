@@ -85,7 +85,34 @@ for the language server to work.
 For Lushui Metadata support, copy or symlink the folder `./project/editor/vscode/fmease.lushui-metadata-syntax-0.0.1`
 to `~/.vscode/extensions/`.
 
-== Generated API Documentation
+== Compiling With LLVM (Experimental)
+
+The LLVM backend is currently in the earliest of stages.
+You can only compile super simple programs.
+
+First, compile the runtime system called `boot` (part of `core`).
+This step only needs to be done once (unless you want to modify the system).
+
+[source,sh]
+----
+cargo build --release --package boot
+----
+
+This should create the file `/target/release/libboot.a` necessary for compiling intrinsic functions.
+
+Make sure that you have built / you are executing the compiler with the Cargo feature `llvm` enabled.
+Set the backend to `llvm` via the `--backend` option.
+
+=== Example Invocation
+
+[source,sh]
+----
+./lushui +llvm file build input.lushui -Zinternals --no-core --backend=llvm -Zverify-llvm-ir
+----
+
+This should create an executable called `input`.
+
+== Generating API Documentation
 
 As hinted in the help text (`./lushui -h`), you use `./lushui doc` (and variations) to generate (HTML) documentation.
 To view it, just pass `--open`.

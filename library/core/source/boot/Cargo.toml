@@ -1,0 +1,15 @@
+[package]
+name = "boot"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["staticlib"]
+
+# @Task smh specify this only for this pkg in the workspace root
+# [profile.release]
+# strip = true
+# debug = false
+
+[dependencies]

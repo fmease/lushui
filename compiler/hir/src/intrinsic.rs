@@ -1,8 +1,7 @@
-use crate::interfaceable::Value;
-use derivation::{FromStr, Str};
+use crate::interfaceable::{self, Value};
 use num_traits::{CheckedDiv, CheckedSub};
 use std::{fmt, str::FromStr};
-use utilities::HashMap;
+
 /// An intrinsic type.
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]
 pub enum Type {
@@ -90,37 +89,198 @@ impl fmt::Display for NumericType {
 }
 
 /// An intrinsic function.
-#[derive(PartialEq, Eq, Hash, Clone, Copy, FromStr, Str)]
-#[format(dash_case)]
+// @Task derive Str, FromStr it again
+#[derive(PartialEq, Eq, Hash, Clone, Copy)]
 pub enum Function {
-    Add,
-    Subtract,
+    NatAdd,
+    NatSubtract,
+    NatUncheckedSubtract,
+    NatMultiply,
+    NatDivide,
+    NatEqual,
+    NatLess,
+    NatLessEqual,
+    NatGreater,
+    NatGreaterEqual,
+    NatDisplay,
+    TextConcat,
+    Nat32Add,
     // @Temporary
-    PanickingSubtract,
-    Multiply,
-    Divide,
-    Equal,
-    Less,
-    LessEqual,
-    Greater,
-    GreaterEqual,
-    Display,
-    Concat,
-    AddNat32,
-    Print,
+    Nat32Successor,
+    IoPrint,
+}
+
+// @Task find a better system than this arity/eval-split
+impl Function {
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::NatAdd => "nat.add",
+            Self::NatSubtract => "nat.subtract",
+            Self::NatUncheckedSubtract => "nat.unchecked-subtract",
+            Self::NatMultiply => "nat.multiply",
+            Self::NatDivide => "nat.divide",
+            Self::NatEqual => "nat.equal",
+            Self::NatLess => "nat.less",
+            Self::NatLessEqual => "nat.less-equal",
+            Self::NatGreater => "nat.greater",
+            Self::NatGreaterEqual => "nat.greater-equal",
+            Self::NatDisplay => "nat.display",
+            Self::TextConcat => "text.concat",
+            Self::Nat32Add => "nat32.add",
+            Self::Nat32Successor => "nat32.successor",
+            Self::IoPrint => "io.print",
+        }
+    }
+
+    pub const fn arity(self) -> usize {
+        match self {
+            Self::Nat32Successor | Self::NatDisplay | Self::IoPrint => 1,
+            Self::NatAdd
+            | Self::NatSubtract
+            | Self::NatUncheckedSubtract
+            | Self::NatMultiply
+            | Self::NatDivide
+            | Self::NatEqual
+            | Self::NatLess
+            | Self::NatLessEqual
+            | Self::NatGreater
+            | Self::NatGreaterEqual
+            | Self::TextConcat
+            | Self::Nat32Add => 2,
+        }
+    }
+
+    pub fn evaluate(self, arguments: Vec<interfaceable::Value>) -> interfaceable::Value {
+        use interfaceable::Value::*;
+
+        let mut arguments = arguments.into_iter();
+        match self {
+            Self::NatAdd => {
+                let Some(Nat(x)) = arguments.next() else { unreachable!() };
+                let Some(Nat(y)) = arguments.next() else { unreachable!() };
+                (x + y).into()
+            }
+            Self::NatSubtract => {
+                let Some(Nat(x)) = arguments.next() else { unreachable!() };
+                let Some(Nat(y)) = arguments.next() else { unreachable!() };
+                x.checked_sub(&y).into()
+            }
+            Self::NatUncheckedSubtract => {
+                let Some(Nat(x)) = arguments.next() else { unreachable!() };
+                let Some(Nat(y)) = arguments.next() else { unreachable!() };
+                (x - y).into()
+            }
+            Self::NatMultiply => {
+                let Some(Nat(x)) = arguments.next() else { unreachable!() };
+                let Some(Nat(y)) = arguments.next() else { unreachable!() };
+                (x * y).into()
+            }
+            Self::NatDivide => {
+                let Some(Nat(x)) = arguments.next() else { unreachable!() };
+                let Some(Nat(y)) = arguments.next() else { unreachable!() };
+                x.checked_div(&y).into()
+            }
+            Self::NatEqual => {
+                let Some(Nat(x)) = arguments.next() else { unreachable!() };
+                let Some(Nat(y)) = arguments.next() else { unreachable!() };
+                (x == y).into()
+            }
+            Self::NatLess => {
+                let Some(Nat(x)) = arguments.next() else { unreachable!() };
+                let Some(Nat(y)) = arguments.next() else { unreachable!() };
+                (x < y).into()
+            }
+            Self::NatLessEqual => {
+                let Some(Nat(x)) = arguments.next() else { unreachable!() };
+                let Some(Nat(y)) = arguments.next() else { unreachable!() };
+                (x <= y).into()
+            }
+            Self::NatGreater => {
+                let Some(Nat(x)) = arguments.next() else { unreachable!() };
+                let Some(Nat(y)) = arguments.next() else { unreachable!() };
+                (x > y).into()
+            }
+            Self::NatGreaterEqual => {
+                let Some(Nat(x)) = arguments.next() else { unreachable!() };
+                let Some(Nat(y)) = arguments.next() else { unreachable!() };
+                (x >= y).into()
+            }
+            Self::NatDisplay => {
+                let Some(Nat(x)) = arguments.next() else { unreachable!() };
+                x.to_string().into()
+            }
+            Self::TextConcat => {
+                let Some(Text(x)) = arguments.next() else { unreachable!() };
+                let Some(Text(y)) = arguments.next() else { unreachable!() };
+                (x + &y).into()
+            }
+            Self::Nat32Add => {
+                let Some(Nat32(x)) = arguments.next() else { unreachable!() };
+                let Some(Nat32(y)) = arguments.next() else { unreachable!() };
+                (x + y).into()
+            }
+            Self::Nat32Successor => {
+                let Some(Nat32(x)) = arguments.next() else { unreachable!() };
+                (x + 1).into()
+            }
+            Self::IoPrint => {
+                let Some(Text(message)) = arguments.next() else { unreachable!() };
+                Value::IO {
+                    index: 0,
+                    arguments: vec![message.into()],
+                }
+            }
+        }
+    }
+}
+
+impl FromStr for Function {
+    type Err = ();
+
+    // @Task get rid of legacy names (e.g. via derivation) once
+    //       you implement properly namespaced intrinsics (see #138)
+    fn from_str(source: &str) -> Result<Self, Self::Err> {
+        Ok(match source {
+            "add" => Self::NatAdd,
+            "subtract" => Self::NatSubtract,
+            "unchecked-subtract" => Self::NatUncheckedSubtract,
+            "multiply" => Self::NatMultiply,
+            "divide" => Self::NatDivide,
+            "equal" => Self::NatEqual,
+            "less" => Self::NatLess,
+            "less-equal" => Self::NatLessEqual,
+            "greater" => Self::NatGreater,
+            "greater-equal" => Self::NatGreaterEqual,
+            "display" => Self::NatDisplay,
+            "concat" => Self::TextConcat,
+            "add-nat32" => Self::Nat32Add,
+            "successor-nat32" => Self::Nat32Successor,
+            "print" => Self::IoPrint,
+            _ => return Err(()),
+        })
+    }
 }
 
 impl fmt::Display for Function {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.name())
+        f.write_str(match self {
+            Self::NatAdd => "add",
+            Self::NatSubtract => "subtract",
+            Self::NatUncheckedSubtract => "unchecked-subtract",
+            Self::NatMultiply => "multiply",
+            Self::NatDivide => "divide",
+            Self::NatEqual => "equal",
+            Self::NatLess => "less",
+            Self::NatLessEqual => "less-equal",
+            Self::NatGreater => "greater",
+            Self::NatGreaterEqual => "greater-equal",
+            Self::NatDisplay => "display",
+            Self::TextConcat => "concat",
+            Self::Nat32Add => "add-nat32",
+            Self::Nat32Successor => "successor-nat32",
+            Self::IoPrint => "print",
+        })
     }
-}
-
-pub type BareFunctionValue = fn(arguments: Vec<super::interfaceable::Value>) -> Value;
-
-pub struct FunctionValue {
-    pub arity: usize,
-    pub function: BareFunctionValue,
 }
 
 pub enum Kind {
@@ -135,59 +295,4 @@ impl fmt::Display for Kind {
             Self::Function => "function",
         })
     }
-}
-
-// @Task replace this HashMap business with a match and interpret at call-site!
-pub fn functions() -> HashMap<Function, FunctionValue> {
-    use Function::*;
-
-    let mut intrinsics = HashMap::default();
-
-    intrinsics.insert(Add, pure!(|x: Nat, y: Nat| x + y));
-    intrinsics.insert(Subtract, pure!(|x: Nat, y: Nat| x.checked_sub(&y)));
-    intrinsics.insert(PanickingSubtract, pure!(|x: Nat, y: Nat| x - y));
-    intrinsics.insert(Multiply, pure!(|x: Nat, y: Nat| x * y));
-    intrinsics.insert(Divide, pure!(|x: Nat, y: Nat| x.checked_div(&y)));
-    intrinsics.insert(Equal, pure!(|x: Nat, y: Nat| x == y));
-    intrinsics.insert(Less, pure!(|x: Nat, y: Nat| x < y));
-    intrinsics.insert(LessEqual, pure!(|x: Nat, y: Nat| x <= y));
-    intrinsics.insert(Greater, pure!(|x: Nat, y: Nat| x > y));
-    intrinsics.insert(GreaterEqual, pure!(|x: Nat, y: Nat| x >= y));
-    intrinsics.insert(Display, pure!(|x: Nat| x.to_string()));
-    intrinsics.insert(Concat, pure!(|a: Text, b: Text| a + &b));
-    // @Temporary until we can target specific modules
-    intrinsics.insert(AddNat32, pure!(|a: Nat32, b: Nat32| a + b));
-    // @Temporary
-    intrinsics.insert(
-        Print,
-        pure!(|message: Text| Value::IO {
-            index: 0,
-            arguments: vec![Value::Text(message)],
-        }),
-    );
-
-    intrinsics
-}
-
-macro pure(|$( $var:ident: $variant:ident ),*| $body:expr ) {
-    FunctionValue {
-        arity: count!($( $var )*),
-        function: |arguments| {
-            let mut arguments = arguments.into_iter();
-
-            $(
-                let $var = match arguments.next() {
-                    Some(Value::$variant(value)) => value,
-                    _ => unreachable!(),
-                };
-            )+
-
-            $body.into()
-        }
-    }
-}
-
-macro count {
-    () => { 0 },
-    ($var:ident $( $rest:tt )*) => { 1 + count!($( $rest )*) },
 }
