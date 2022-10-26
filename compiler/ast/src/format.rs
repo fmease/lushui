@@ -143,7 +143,7 @@ fn format_text_literal(content: &str, f: &mut Formatter<'_>) -> Result {
         .map(|segment| segment.color(color_palette::VERBATIM))
         .join_with("\u{21b5}".black().on_color(color_palette::ELLIPSIS));
 
-    write!(f, "{}", content)
+    write!(f, "{content}")
 }
 
 pub trait Format {
@@ -428,7 +428,7 @@ impl Format for super::NumberLiteral {
 impl fmt::Display for super::NumberLiteral {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.path {
-            Some(path) => write!(f, "{}.{}", path, self.literal),
+            Some(path) => write!(f, "{path}.{}", self.literal),
             None => write!(f, "{}", self.literal),
         }
     }
@@ -451,7 +451,7 @@ impl Format for super::TextLiteral {
 impl fmt::Display for super::TextLiteral {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.path {
-            Some(path) => write!(f, "{}.{:?}", path, self.literal),
+            Some(path) => write!(f, "{path}.{:?}", self.literal),
             None => write!(f, "{:?}", self.literal),
         }
     }
@@ -579,7 +579,7 @@ impl Format for super::BareParameter {
 impl fmt::Display for super::Path {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         if let Some(hanger) = &self.hanger {
-            write!(f, "{}", hanger)?;
+            write!(f, "{hanger}")?;
 
             if !self.segments.is_empty() {
                 write!(f, ".")?;

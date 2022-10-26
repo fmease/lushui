@@ -10,19 +10,19 @@ error[E021]: the binding ‘Who-Am-I’ is not defined in this scope
 4 │ Foo: Who-Am-I = Type
   │      ════════
 
-error[E021]: the binding ‘who-am-i’ is not defined in module `topmost.namespaced`
+error[E021]: the binding ‘who-am-i’ is not defined in module ‘topmost.namespaced’
   ┌─ ${TEST_FOLDER}/name-resolution/exposure/undefined-reach.lushui:6:21
   │
 6 │ @(public namespaced.who-am-i)
   │                     ════════
 
-error[E021]: the binding ‘void’ is not defined in module `topmost.namespaced`
+error[E021]: the binding ‘void’ is not defined in module ‘topmost.namespaced’
    ┌─ ${TEST_FOLDER}/name-resolution/exposure/undefined-reach.lushui:11:17
    │
 11 │ @(public indir2.void)
    │                 ════
 
-error[E021]: the binding ‘emptiness’ is not defined in module `topmost.namespaced`
+error[E021]: the binding ‘emptiness’ is not defined in module ‘topmost.namespaced’
    ┌─ ${TEST_FOLDER}/name-resolution/exposure/undefined-reach.lushui:19:22
    │
 19 │ @(public self.indir2.emptiness)

@@ -1,6 +1,4 @@
 #![feature(type_alias_impl_trait)]
-#![deny(rust_2018_idioms, unused_must_use)]
-#![deny(clippy::pedantic)]
 
 use std::{
     fmt,

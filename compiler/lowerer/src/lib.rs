@@ -658,7 +658,7 @@ impl<'a> Lowerer<'a> {
                         None => {
                             Diagnostic::error()
                                 .code(ErrorCode::E012)
-                                .message(format!("the let-binding ‘{}’ has no definition", binder))
+                                .message(format!("the let-binding ‘{binder}’ has no definition"))
                                 .primary_span(
                                     let_in
                                         .binder
@@ -1570,7 +1570,7 @@ impl LintExt for lowered_ast::attribute::Lint {
         Err(AttributeParsingError::Erased(
             Diagnostic::error()
                 .code(ErrorCode::E018)
-                .message(format!("the lint ‘{}’ is not defined", binder))
+                .message(format!("the lint ‘{binder}’ is not defined"))
                 .primary_span(binder.span())
                 .report(reporter),
         ))

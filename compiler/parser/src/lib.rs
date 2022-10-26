@@ -2014,7 +2014,7 @@ impl fmt::Display for Expected {
         use Expected::*;
 
         match self {
-            Token(token) => write!(f, "{}", token),
+            Token(token) => write!(f, "{token}"),
             Identifier => write!(f, "identifier"),
             Path => write!(f, "path"),
             Declaration => write!(f, "declaration"),
@@ -2022,7 +2022,7 @@ impl fmt::Display for Expected {
             Pattern => write!(f, "pattern"),
             Parameter => write!(f, "parameter"),
             AttributeArgument => write!(f, "attribute argument"),
-            Delimiter(delimiter) => write!(f, "{}", delimiter),
+            Delimiter(delimiter) => write!(f, "{delimiter}"),
             OneOf(expected) => write!(f, "{}", expected.iter().list(Conjunction::Or)),
         }
     }
@@ -2055,7 +2055,7 @@ impl fmt::Display for Delimiter {
             Self::DefinitionPrefix => write!(f, "definition with ‘=’"),
             // @Question or spell it out? `;`, line break, `}`, dedentation, end of input?
             Self::Terminator => write!(f, "terminator"),
-            Self::Token(token) => write!(f, "{}", token),
+            Self::Token(token) => write!(f, "{token}"),
         }
     }
 }

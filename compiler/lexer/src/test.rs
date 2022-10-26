@@ -19,12 +19,11 @@ macro assert_lex_eq {
 
 #[track_caller]
 fn assert_eq(actual: Outcome, expected: Outcome) {
-    if actual != expected {
-        panic!(
-            "the output by the lexer does not match the expected one:\n{}",
-            difference(&format!("{:#?}", expected), &format!("{:#?}", actual), "\n"),
-        );
-    }
+    assert!(
+        actual == expected,
+        "the output by the lexer does not match the expected one:\n{}",
+        difference(&format!("{expected:#?}"), &format!("{actual:#?}"), "\n")
+    );
 }
 
 #[test]

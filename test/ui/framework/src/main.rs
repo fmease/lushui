@@ -191,7 +191,7 @@ fn try_main() -> Result<(), ()> {
             writeln!(stdout).unwrap();
 
             for failed_test in failed_tests {
-                writeln!(stdout, "  * {}", path::shorten(&failed_test).display()).unwrap();
+                writeln!(stdout, "  {}", path::shorten(&failed_test).display()).unwrap();
             }
         }
 
@@ -201,7 +201,7 @@ fn try_main() -> Result<(), ()> {
             writeln!(stdout).unwrap();
 
             for invalid_test in invalid_tests {
-                writeln!(stdout, "  * {}", path::shorten(&invalid_test).display()).unwrap();
+                writeln!(stdout, "  {}", path::shorten(&invalid_test).display()).unwrap();
             }
         }
     }

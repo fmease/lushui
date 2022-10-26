@@ -1,4 +1,4 @@
-error[E021]: the binding ‘Nothing’ is not defined in module `topmost.alpha`
+error[E021]: the binding ‘Nothing’ is not defined in module ‘topmost.alpha’
   ┌─ ${TEST_FOLDER}/name-resolution/multiple-undefined1.lushui:3:11
   │
 3 │ use alpha.Nothing
@@ -22,15 +22,15 @@ error[E021]: the binding ‘empty’ is not defined in the root module
 8 │     use topmost.empty as full
   │                 ═════
 
-error[E021]: the binding ‘air’ is not defined in module `topmost.alpha`
+error[E021]: the binding ‘air’ is not defined in module ‘topmost.alpha’
    ┌─ ${TEST_FOLDER}/name-resolution/multiple-undefined1.lushui:11:19
    │
 11 │         use super.air
    │                   ═══
    │
-  help: a binding with a similar name exists in scope: `Air` (aAir)
+  help: a binding with a similar name exists in scope: ‘Air’ (aAir)
 
-error[E021]: the binding ‘Nothingness’ is not defined in module `topmost.alpha`
+error[E021]: the binding ‘Nothingness’ is not defined in module ‘topmost.alpha’
    ┌─ ${TEST_FOLDER}/name-resolution/multiple-undefined1.lushui:13:12
    │
 13 │ use alpha.(Nothingness beta.space)

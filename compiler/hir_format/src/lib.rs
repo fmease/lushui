@@ -76,7 +76,7 @@ fn write_declaration(
             Ok(())
         }
         Use(use_) => match &use_.binder {
-            Some(binder) => writeln!(f, "use {} as {}", use_.target, binder),
+            Some(binder) => writeln!(f, "use {} as {binder}", use_.target),
             None => writeln!(f, "use {}", use_.target),
         },
         Error => writeln!(f, "?(error)"),
@@ -223,7 +223,7 @@ fn write_lower_expression(
     use hir::BareExpression::*;
 
     for attribute in &expression.attributes.0 {
-        write!(f, "{} ", attribute)?;
+        write!(f, "{attribute} ")?;
     }
 
     match &expression.bare {
@@ -286,7 +286,7 @@ impl Display for hir::Pattern {
 impl Display for hir::Substitution {
     fn write(&self, context: DefaultContext<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Shift(amount) => write!(f, "shift {}", amount),
+            Self::Shift(amount) => write!(f, "shift {amount}"),
             Self::Use(substitution, expression) => {
                 expression.write(context, f)?;
                 write!(f, "[")?;

@@ -509,7 +509,7 @@ impl fmt::Display for BareAttribute {
             Self::Allow { lint }
             | Self::Deny { lint }
             | Self::Forbid { lint }
-            | Self::Warn { lint } => write!(f, "({name} {})", lint),
+            | Self::Warn { lint } => write!(f, "({name} {lint})"),
 
             Self::Deprecated(deprecated) => {
                 if deprecated.reason.is_none()

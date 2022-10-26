@@ -6,12 +6,7 @@
 //! * display style: rich (current system) <-> short
 //! * a rust script (in /misc) that finds the lowest [`ErrorCode`] that can be used
 //!   as well as any unused error codes (searching `compiler/`)
-#![feature(
-    associated_type_bounds,
-    adt_const_params,
-    default_free_fn,
-    map_first_last
-)]
+#![feature(associated_type_bounds, adt_const_params, default_free_fn)]
 #![allow(incomplete_features)] // adt_const_params
 
 pub use code::{Code, ErrorCode, LintCode};

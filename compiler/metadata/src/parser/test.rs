@@ -25,13 +25,12 @@ fn parse(source: &str) -> Result<Value> {
 fn assert_eq(actual: Result<Value>, expected: Value) {
     match actual {
         Ok(actual) => {
-            if actual != expected {
-                // @Note for some reason, despite the `#`, large Records are not formatted with multiple line breaks
-                panic!(
-                    "the actual value outputted by the parser does not match the expected one:\n{}",
-                    difference(&format!("{expected:#?}"), &format!("{actual:#?}"), ""),
-                );
-            }
+            // @Note for some reason, despite the `#`, large Records are not formatted with multiple line breaks
+            assert!(
+                actual == expected,
+                "the actual value outputted by the parser does not match the expected one:\n{}",
+                difference(&format!("{expected:#?}"), &format!("{actual:#?}"), "")
+            );
         }
         _ => panic!("expected the value ‘{expected:?}’ but an error was (silently) reported"),
     }
@@ -243,7 +242,7 @@ left:right,
                     Value::new(
                         span(65, 72),
                         Record::from_iter([(
-                            WeaklySpanned::new(span(66, 68), "".into()),
+                            WeaklySpanned::new(span(66, 68), String::new()),
                             Value::new(span(69, 71), [].into()),
                         )])
                         .into(),

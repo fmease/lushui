@@ -20,12 +20,11 @@ fn assert_format(
 ) {
     let actual = displayed(|f| actual.write((component, session), f)).to_string();
 
-    if actual != expected {
-        panic!(
-            "the actual textual representation of the HIR node does not match the expected one:\n{}",
-            difference(expected, &actual, ""),
-        );
-    }
+    assert!(
+        actual == expected,
+        "the actual textual representation of the HIR node does not match the expected one:\n{}",
+        difference(expected, &actual, "")
+    );
 }
 
 trait ComponentExt {
@@ -181,7 +180,7 @@ fn pi_type_implicit_parameter() {
     );
 }
 
-/// Compare with [pi_type_two_curried_arguments].
+/// Compare with [`pi_type_two_curried_arguments`].
 #[test]
 fn pi_type_higher_order_argument() {
     let session = BuildSession::test();
@@ -220,7 +219,7 @@ fn pi_type_higher_order_argument() {
     );
 }
 
-/// Compare with [pi_type_higher_order_argument].
+/// Compare with [`pi_type_higher_order_argument`].
 #[test]
 fn pi_type_two_curried_arguments() {
     let session = BuildSession::test();
@@ -265,7 +264,7 @@ fn pi_type_two_curried_arguments() {
     );
 }
 
-/// Compare with [lambda_pi_type_body].
+/// Compare with [`lambda_pi_type_body`].
 #[test]
 fn pi_type_lambda_domain() {
     let session = BuildSession::test();
@@ -362,7 +361,7 @@ fn application_three_curried_arguments() {
     );
 }
 
-/// Compare with [application_lambda_argument].
+/// Compare with [`application_lambda_argument`].
 #[test]
 fn application_lambda_last_argument() {
     let session = BuildSession::test();
@@ -402,7 +401,7 @@ fn application_lambda_last_argument() {
     );
 }
 
-/// Compare with [application_lambda_last_argument].
+/// Compare with [`application_lambda_last_argument`].
 #[test]
 fn application_lambda_argument() {
     let session = BuildSession::test();
@@ -670,7 +669,7 @@ fn lambda_implicit_unannotated_parameter() {
     );
 }
 
-/// Compare with [pi_type_lambda_domain].
+/// Compare with [`pi_type_lambda_domain`].
 #[test]
 fn lambda_pi_type_body() {
     let session = BuildSession::test();

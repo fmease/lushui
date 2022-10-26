@@ -1605,9 +1605,9 @@ impl<'a> Resolver<'a> {
                                 true => "module",
                                 false => "namespace",
                             };
-                            message += " `";
+                            message += " ‘";
                             message += &self.component.index_to_path(namespace, self.session);
-                            message += "`";
+                            message += "’";
                         }
                     }
                 }
@@ -1963,11 +1963,11 @@ impl fmt::Display for Lookalike<'_> {
         let changeset = Changeset::new(self.actual, self.lookalike, "");
         let mut purely_additive = true;
 
-        write!(f, "`")?;
+        write!(f, "‘")?;
 
         for difference in &changeset.diffs {
             match difference {
-                Difference::Same(segment) => write!(f, "{}", segment)?,
+                Difference::Same(segment) => write!(f, "{segment}")?,
                 Difference::Add(segment) => write!(f, "{}", segment.bold())?,
                 Difference::Rem(_) => {
                     purely_additive = false;
@@ -1975,7 +1975,7 @@ impl fmt::Display for Lookalike<'_> {
             }
         }
 
-        write!(f, "`")?;
+        write!(f, "’")?;
 
         if !(purely_additive || self.actual.width() == 1 && changeset.distance == 2) {
             write!(f, " ({})", changeset.auto_colored())?;

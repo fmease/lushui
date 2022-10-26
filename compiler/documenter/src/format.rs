@@ -264,7 +264,7 @@ impl<'a> Formatter<'a> {
 
                 format!(
                     "{module_link}#{}",
-                    declaration_id(&format!("{}.{}", self.look_up(data_type).source, binder))
+                    declaration_id(&format!("{}.{binder}", self.look_up(data_type).source))
                 )
             }
             _ => unreachable!(),

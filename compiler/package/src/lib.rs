@@ -171,8 +171,8 @@ impl BuildQueue {
 
             self[package].components.extend(
                 component_worklist
-                    .iter()
-                    .map(|(name, _)| (name.bare.clone(), Unresolved)),
+                    .keys()
+                    .map(|name| (name.bare.clone(), Unresolved)),
             );
 
             while !component_worklist.is_empty() {

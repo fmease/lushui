@@ -6,18 +6,16 @@ use utilities::difference;
 #[track_caller]
 fn assert_format(diagnostic: &UnboxedUntaggedDiagnostic, map: Option<&SourceMap>, expected: &str) {
     colored::control::set_override(false);
-    let actual = super::format(&diagnostic, map);
+    let actual = super::format(diagnostic, map);
     // colored::control::unset_override(); // conflicts with parallel test execution
 
-    if actual != expected {
-        // @Beacon @Bug this diff now isn't colored because of the global setting
-        // @Task replace colored with something more flexible
-
-        panic!(
-            "the output differs:\n{}",
-            difference(expected, &actual, "\n"),
-        );
-    }
+    // @Beacon @Bug this diff now isn't colored because of the global setting
+    // @Task replace colored with something more flexible
+    assert!(
+        actual == expected,
+        "the output differs:\n{}",
+        difference(expected, &actual, "\n")
+    );
 }
 
 #[test]
