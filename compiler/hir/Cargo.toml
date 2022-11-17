@@ -9,7 +9,7 @@ publish = false
 ast = { path = "../ast" }
 error = { path = "../error" }
 index_map = { path = "../../project/library/index_map" }
-joinery = "2.1.0"
+joinery = "3.1.0"
 lowered_ast = { path = "../lowered_ast" }
 num-traits = "0.2.14"
 span = { path = "../span" }

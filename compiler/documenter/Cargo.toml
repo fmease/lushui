@@ -12,7 +12,7 @@ error = { path = "../error" }
 hir = { path = "../hir" }
 hir_format = { path = "../hir_format" }
 html-escape = "0.2.9"
-joinery = "2.1.0"
+joinery = "3.1.0"
 minifier = "0.2.1"
 resolver = { path = "../resolver" }
 session = { path = "../session" }

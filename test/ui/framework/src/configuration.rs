@@ -166,7 +166,7 @@ fn blocks<'a>(
     file: &'a SourceFile,
     language: Language,
     map: &'a SourceMap,
-) -> impl Iterator<Item = Spanned<&str>> + '_ {
+) -> impl Iterator<Item = Spanned<&'a str>> + 'a {
     let comment = language.comment();
 
     use metadata as _;

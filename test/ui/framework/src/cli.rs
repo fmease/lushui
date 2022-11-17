@@ -10,7 +10,6 @@ use std::{ffi::OsStr, num::NonZeroUsize, path::PathBuf, time::Duration};
 pub(crate) fn arguments() -> Result<Arguments, ()> {
     let available_parallelism =
         std::thread::available_parallelism().map(|number| number.to_string());
-    let available_parallelism = available_parallelism.as_deref();
 
     let number_test_threads = {
         let argument = Arg::new(option::NUMBER_TEST_THREADS)
@@ -33,11 +32,18 @@ pub(crate) fn arguments() -> Result<Arguments, ()> {
             Arg::new(option::RELEASE)
                 .long("release")
                 .short('r')
+                .action(ArgAction::SetTrue)
                 .help("Build the Lushui compiler in release mode, with optimizations"),
         )
-        .arg(Arg::new(option::GILD).long("gild").short('g').help(
-            "Update the golden files of all included failing tests to the current compiler output",
-        ))
+        .arg(
+            Arg::new(option::GILD)
+                .long("gild")
+                .short('g')
+                .action(ArgAction::SetTrue)
+                .help(
+                    "Update the golden files of all included failing tests to the current compiler output",
+                )
+        )
         .arg(
             Arg::new(option::TIMEOUT)
                 .long("timeout")
@@ -51,6 +57,7 @@ pub(crate) fn arguments() -> Result<Arguments, ()> {
             Arg::new(option::INSPECT)
                 .long("inspect")
                 .short('I')
+                .action(ArgAction::SetTrue)
                 .help("Inspect the test suite for issues"),
         )
         .arg(
@@ -63,7 +70,6 @@ pub(crate) fn arguments() -> Result<Arguments, ()> {
         .arg(
             Arg::new(argument::PATHS)
                 .value_name("PATH")
-                .multiple_values(true)
                 .action(ArgAction::Append)
                 .value_parser(PathBufValueParser::new())
                 .help(
@@ -100,12 +106,12 @@ pub(crate) fn arguments() -> Result<Arguments, ()> {
     }
 
     Ok(Arguments {
-        compiler_build_mode: if matches.contains_id(option::RELEASE) {
+        compiler_build_mode: if matches.get_flag(option::RELEASE) {
             CompilerBuildMode::Release
         } else {
             CompilerBuildMode::Debug
         },
-        gilding: if matches.contains_id(option::GILD) {
+        gilding: if matches.get_flag(option::GILD) {
             Gilding::Yes
         } else {
             Gilding::No
@@ -117,7 +123,7 @@ pub(crate) fn arguments() -> Result<Arguments, ()> {
             .get_one(option::DIFF_VIEW)
             .copied()
             .unwrap_or_default(),
-        inspecting: if matches.contains_id(option::INSPECT) {
+        inspecting: if matches.get_flag(option::INSPECT) {
             Inspecting::Yes
         } else {
             Inspecting::No
@@ -156,8 +162,8 @@ impl TypedValueParser for NonZeroUsizeParser {
 
     fn parse_ref(
         &self,
-        _: &clap::Command<'_>,
-        _: Option<&Arg<'_>>,
+        _: &clap::Command,
+        _: Option<&Arg>,
         source: &OsStr,
     ) -> Result<Self::Value, clap::Error> {
         let source: &str = parse_utf8(source)?;
@@ -166,7 +172,7 @@ impl TypedValueParser for NonZeroUsizeParser {
             // @Task smh. avoid using `Error::raw` and smh. pass along the context.
             //       https://github.com/clap-rs/clap/discussions/4029
             clap::Error::raw(
-                clap::ErrorKind::InvalidValue,
+                clap::error::ErrorKind::InvalidValue,
                 format!("‘{source}’ is not a valid non-zero usize\n"),
             )
         })
@@ -181,8 +187,8 @@ impl TypedValueParser for DurationParser {
 
     fn parse_ref(
         &self,
-        _: &clap::Command<'_>,
-        _: Option<&Arg<'_>>,
+        _: &clap::Command,
+        _: Option<&Arg>,
         source: &OsStr,
     ) -> Result<Self::Value, clap::Error> {
         let source: &str = parse_utf8(source)?;
@@ -191,7 +197,7 @@ impl TypedValueParser for DurationParser {
             // @Task smh. avoid using `Error::raw` and smh. pass along the context.
             //       https://github.com/clap-rs/clap/discussions/4029
             clap::Error::raw(
-                clap::ErrorKind::InvalidValue,
+                clap::error::ErrorKind::InvalidValue,
                 format!("‘{source}’ is not a valid number of seconds\n"),
             )
         })?;
@@ -208,8 +214,8 @@ impl TypedValueParser for DiffViewParser {
 
     fn parse_ref(
         &self,
-        _: &clap::Command<'_>,
-        _: Option<&Arg<'_>>,
+        _: &clap::Command,
+        _: Option<&Arg>,
         source: &OsStr,
     ) -> Result<Self::Value, clap::Error> {
         let source: &str = parse_utf8(source)?;
@@ -218,18 +224,16 @@ impl TypedValueParser for DiffViewParser {
             // @Task smh. avoid using `Error::raw` and smh. pass along the context.
             //       https://github.com/clap-rs/clap/discussions/4029
             clap::Error::raw(
-                clap::ErrorKind::InvalidValue,
+                clap::error::ErrorKind::InvalidValue,
                 format!("‘{source}’ is not a valid diff-view format\n"),
             )
         })
     }
 
-    fn possible_values(
-        &self,
-    ) -> Option<Box<dyn Iterator<Item = clap::PossibleValue<'static>> + '_>> {
-        Some(Box::new(
-            DiffView::elements().map(|format| clap::PossibleValue::new(format.name())),
-        ))
+    fn possible_values(&self) -> Option<Box<dyn Iterator<Item = clap::builder::PossibleValue>>> {
+        Some(Box::new(DiffView::elements().map(|format| {
+            clap::builder::PossibleValue::new(format.name())
+        })))
     }
 }
 
@@ -238,7 +242,7 @@ fn parse_utf8(source: &OsStr) -> Result<&str, clap::Error> {
         // @Task smh. avoid using `Error::raw` and smh. pass along the context.
         //       https://github.com/clap-rs/clap/discussions/4029
         clap::Error::raw(
-            clap::ErrorKind::InvalidUtf8,
+            clap::error::ErrorKind::InvalidUtf8,
             format!("‘{}’ is not valid UTF-8\n", source.to_string_lossy()),
         )
     })

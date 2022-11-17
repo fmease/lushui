@@ -22,7 +22,13 @@
 //! | `#T`      | Named Terminal                      | Lexed token by name                                           |
 //! | `(> A)`   | Positive Look-Ahead                 |                                                               |
 //! | `(< A)`   | Positive Look-Behind                |                                                               |
-#![feature(decl_macro, default_free_fn, never_type, never_type_fallback)]
+#![feature(
+    decl_macro,
+    default_free_fn,
+    never_type,
+    never_type_fallback,
+    let_chains
+)]
 
 use ast::{
     Attribute, AttributeArgument, Attributes, BareAttribute, BareAttributeArgument, BareParameter,
@@ -1404,7 +1410,7 @@ impl<'a> Parser<'a> {
                 }
                 _ => {
                     if self.current_token().name() == Word
-                        && matches!(self.succeeding_token().name(), Colon | ThinArrowLeft)
+                    && let Colon | ThinArrowLeft = self.succeeding_token().name()
                     {
                         // @Task move to its own function
                         let binder = self.current_token_into_identifier();

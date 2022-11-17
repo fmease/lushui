@@ -11,7 +11,7 @@ diagnostics = { path = "../diagnostics" }
 error = { path = "../error" }
 hir = { path = "../hir" }
 hir_format = { path = "../hir_format" }
-joinery = "2.1.0"
+joinery = "3.1.0"
 resolver = { path = "../resolver" }
 session = { path = "../session" }
 utilities = { path = "../utilities" }

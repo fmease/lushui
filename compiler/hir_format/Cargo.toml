@@ -9,7 +9,7 @@ publish = false
 ast = { path = "../ast" }
 colored = "2.0.0"
 hir = { path = "../hir" }
-joinery = "2.1.0"
+joinery = "3.1.0"
 session = { path = "../session" }
 token = { path = "../token" }
 

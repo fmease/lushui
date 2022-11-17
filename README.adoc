@@ -4,12 +4,7 @@
 
 露水 lùshui :: *dew*; ephemeral, transient, of short duration
 
-The reference compiler of the https://lushui.ml/[Lushui programming language].
-Its code is hosted on https://github.com/fmease/lushui.git[GitHub]
-and mirrored on https://gitlab.com/fmease/lushui.git[GitLab].
-
-// @Task somewhere mention Cargo feature flags and workspace-related things
-//       like using `--workspace` for `cargo test` etc, how to use `cargo doc`
+The reference compiler and the standard library of the Lushui programming language and related tooling.
 
 == Stability
 
@@ -19,7 +14,58 @@ The language, the compiler API and its CLI have no stability guarantees whatsoev
 Anything may change in a new version without notice.
 The majority of the language has not been implemented yet in the compiler,
 the latter contains quite a lot of bugs and
-the test suites are not big enough yet.
+the test suites are not that big yet.
+
+== Language Description
+
+The Lushui programming language is dependently typed, purely functional and eagerly evaluated.
+Modules are second-class citizens.
+Allocations are implicit and memory management is automatic.
+
+The final design of the language is very much in flux.
+Currently, there is no universe hierarchy (`Type : Type` holds),
+all functions may be partial and we support next to no type inference.
+However, it's planned to at some point feature a cumulative universe hierarchy,
+to enforce the totality of functions by default (with a way to opt-out on a fine-grained level),
+to type-check bidirectionally and
+to support implicit parameters.
+
+It's planned to support
+
+* dependent case analysis / pattern matching
+* nominal record types
+* side effects via monads or algebraic effects (undecided ^^')
+* “type classes” via implicit record parameters
+* a deriving mechanism through a dependently-typed generics system
+* a coercion system for representationally equal types (in respect to memory layout)
+* C-FFI at run-time and at compile-time
+* opt-in laziness
+* abstract definitions by default (bindings in types that don't reduce / aren't normalized outside of their defining module / defined reach)
+* the option to compile with LLVM or Cranelift
+
+=== Example
+
+```lushui
+@public @transparent
+data Option (A: Type): Type of
+    none 'A: Option A
+    some 'A: A -> Option A
+
+@public
+map 'A 'B (o: Option A) (f: A -> B): B =
+    case o of
+        Option.none => Option.none
+        Option.some \x => Option.some (f x)
+```
+
+For more, check out the source files found in `./test/ui/tests`.
+
+== Contributing
+
+Feel free to open on-topic GitHub issues & discussions.
+You are welcome to contribute patches to this repository.
+However, keep in mind that I am developing this project for personal learning purposes and
+that I intend to further my skills by tackling big and challenging tasks entirely by myself.
 
 == Installation
 
@@ -28,14 +74,14 @@ it uses Rust's official package manager https://doc.rust-lang.org/cargo/[Cargo].
 We require the (latest) _nightly_ version of the Rust compiler `rustc`.
 With https://github.com/rust-lang/rustup/[`rustup`], just execute `rustup install nightly`.
 
-To build the Lushui compiler, run:
+To build the Lushui compiler with all (Cargo) features, run:
 
 [source,sh]
 ----
-cargo +nightly build
+cargo +nightly build --all-features
 ----
 
-To show the help text on Linux, execute:
+To show the help text (on Unix-like systems), execute:
 
 [source,sh]
 ----
@@ -45,13 +91,29 @@ To show the help text on Linux, execute:
 [subs=-replacements]
 On Windows, use `cargo +nightly run -- -h`.
 
-Currently, the shell script `./lushui` also rebuilds the compiler if necessary
+Currently, the bash script `./lushui` also rebuilds the compiler if necessary
 (no status info shown though during building) and
 runs it afterwards.
 
+== Running Lushui Programs With the HIR Interpreter
+
+To execute a Lushui source file, run:
+
+[source,sh]
+----
+./lushui file run file.lushui
+----
+
+To run a Lushui package found in the current or in a parent folder, execute:
+
+[source,sh]
+----
+./lushui run
+----
+
 == Tests
 
-Run the following command (Linux only) to run all test suites:
+Use the following command (Unix-like systems only) to run all test suites:
 
 [source,sh]
 ----
@@ -79,16 +141,16 @@ npm run compile
 ----
 
 Then, copy or symlink the folder to `~/.vscode/extensions/`.
-The compiler currently needs to be built with feature `lsp` and added to the `$PATH` as `lushui-nightly`
+The compiler currently needs to be built with (Cargo) feature `lsp` and added to the `$PATH` as `lushui-nightly`
 for the language server to work.
 
-For Lushui Metadata support, copy or symlink the folder `./project/editor/vscode/fmease.lushui-metadata-syntax-0.0.1`
+For package metadata support (a configuration language), copy or symlink the folder `./project/editor/vscode/fmease.lushui-metadata-syntax-0.0.1`
 to `~/.vscode/extensions/`.
 
 == Compiling With LLVM (Experimental)
 
 The LLVM backend is currently in the earliest of stages.
-You can only compile super simple programs.
+You can only compile _super_ simple programs.
 
 First, compile the runtime system called `boot` (part of `core`).
 This step only needs to be done once (unless you want to modify the system).
@@ -98,9 +160,9 @@ This step only needs to be done once (unless you want to modify the system).
 cargo build --release --package boot
 ----
 
-This should create the file `/target/release/libboot.a` necessary for compiling intrinsic functions.
+This should create the file `/target/release/libboot.a` (on Unix-like systems) necessary for compiling intrinsic functions.
 
-Make sure that you have built / you are executing the compiler with the Cargo feature `llvm` enabled.
+Make sure that you have built / you are executing the compiler with the (Cargo) feature `llvm` enabled.
 Set the backend to `llvm` via the `--backend` option.
 
 === Example Invocation
@@ -125,4 +187,4 @@ available as `asciidoctor` (a custom installation path is not supported at the m
 
 == License
 
-None yet.
+Except as otherwise noted, this contents of this repository are licensed under the http://www.apache.org/licenses/LICENSE-2.0[Apache License, Version 2.0] (see the link:LICENSE[license file]). Some files include explicit license notices.

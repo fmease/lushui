@@ -371,7 +371,7 @@ impl<'a> Lowerer<'a> {
         let mut has_header = false;
 
         for (index, declaration) in declarations.into_iter().enumerate() {
-            if matches!(declaration.bare, ast::BareDeclaration::ModuleHeader) {
+            if declaration.bare == ast::BareDeclaration::ModuleHeader {
                 if index == 0 {
                     // @Bug this sequence may lead to some unnecessary diagnostics being emitted
                     // since the "synergy check" (which filters duplicate attribute) is run too late

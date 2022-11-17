@@ -82,7 +82,7 @@ fn create_package_manifest(
     {
         write!(sink, "name: ")?;
 
-        if name.as_str() == "false" || name.as_str() == "true" {
+        if let "false" | "true" = name.as_str() {
             write!(sink, r#""{name}""#)?;
         } else {
             write!(sink, "{name}")?;

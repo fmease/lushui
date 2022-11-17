@@ -750,7 +750,6 @@ pub struct Package {
 
 impl Package {
     /// Test if this package is the standard library `core`.
-
     fn is_core(&self) -> bool {
         self.path == core_package_path()
     }

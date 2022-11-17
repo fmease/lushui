@@ -1,7 +1,7 @@
 use crate::create::PackageCreationOptions;
 use clap::{
-    builder::{TypedValueParser, ValueParser},
-    Arg, ArgAction, ArgMatches, PossibleValue,
+    builder::{PossibleValue, TypedValueParser, ValueParser},
+    Arg, ArgAction, ArgMatches,
 };
 use colored::Colorize;
 use derivation::{Elements, FromStr, Str};
@@ -11,6 +11,10 @@ use package::ComponentFilter;
 use session::ComponentType;
 use std::{cmp::max, default::default, ffi::OsStr, path::PathBuf};
 use token::Word;
+
+// @Task update the color scheme of the `-Zhelp` output from clap-3-style to clap-4-style
+//       i.e. from upper-case section titles and the use of yellow & green to
+//       bold & underlined section titles and the use of bold letters
 
 pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
     let short_version = format!(
@@ -36,7 +40,7 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
         env!("TARGET"),
     );
 
-    let metadata_subcommand_disclaimer = &*METADATA_SUBCOMMAND_DISCLAIMER.red().to_string();
+    let metadata_subcommand_disclaimer = METADATA_SUBCOMMAND_DISCLAIMER.red().to_string();
 
     let path_argument = Arg::new(argument::PATH).value_parser(ValueParser::path_buf());
 
@@ -67,6 +71,7 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
         Arg::new(option::NO_CORE)
             .long("no-core")
             .short('0')
+            .action(ArgAction::SetTrue)
             .help("Drop the default dependency on the standard library ‘core’"),
         component_type_option.clone().help("Set the component type"),
     ];
@@ -75,23 +80,28 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
         Arg::new(option::OPEN)
             .long("open")
             .short('o')
+            .action(ArgAction::SetTrue)
             .help("Open the documentation in a browser"),
         Arg::new(option::NO_DEPENDENCIES)
             .long("no-deps")
+            .action(ArgAction::SetTrue)
             .help("Prevent the dependencies from being documented"),
     ];
 
     let package_creation_arguments = [
         Arg::new(option::NO_CORE)
             .long("no-core")
+            .action(ArgAction::SetTrue)
             .help("Drop the default dependency on the standard library ‘core’"),
         Arg::new(option::EXECUTABLE)
             .long("executable")
             .visible_alias("exe")
+            .action(ArgAction::SetTrue)
             .help("Create an executable component in the new package"),
         Arg::new(option::LIBRARY)
             .long("library")
             .visible_alias("lib")
+            .action(ArgAction::SetTrue)
             .help("Create a library component in the new package"),
     ];
 
@@ -117,8 +127,8 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
     // @Task use `try_get_matches` (no real block, just def an error type and smh exit with code 2 instead of 1 on error)
     let matches = clap::Command::new("lushui")
         .bin_name("lushui")
-        .version(&*short_version)
-        .long_version(&*long_version)
+        .version(short_version)
+        .long_version(long_version)
         .about("The reference compiler of the Lushui programming language")
         .subcommand_required(true)
         .arg_required_else_help(true)
@@ -127,6 +137,7 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
                 .long("quiet")
                 .short('q')
                 .global(true)
+                .action(ArgAction::SetTrue)
                 .help("Suppress status output from being printed to stdout"),
             Arg::new(option::COLOR)
                 .long("color")
@@ -152,7 +163,7 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
                 .args([&package_path_argument, &backend_option, &unstable_options])
                 .args(&filter_options),
             clap::Command::new(subcommand::DOCUMENT)
-                .visible_aliases(&["doc", "d"])
+                .visible_aliases(["doc", "d"])
                 .about("Document the given or local package")
                 .args([&package_path_argument, &unstable_options])
                 .args(&filter_options)
@@ -179,7 +190,7 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
                         .args(&file_build_arguments)
                         .args([&backend_option, &unstable_options]),
                     clap::Command::new(subcommand::DOCUMENT)
-                        .visible_aliases(&["doc", "d"])
+                        .visible_aliases(["doc", "d"])
                         .about("Document the given source file")
                         .args(file_build_arguments)
                         .arg(unstable_options)
@@ -395,7 +406,7 @@ pub(crate) struct GlobalOptions {
 impl GlobalOptions {
     fn deserialize(matches: &ArgMatches) -> GlobalOptions {
         Self {
-            quiet: matches.contains_id(option::QUIET),
+            quiet: matches.get_flag(option::QUIET),
             color: matches.get_one(option::COLOR).copied().unwrap_or_default(),
         }
     }
@@ -418,8 +429,8 @@ impl TypedValueParser for ColorModeParser {
 
     fn parse_ref(
         &self,
-        _: &clap::Command<'_>,
-        _: Option<&Arg<'_>>,
+        _: &clap::Command,
+        _: Option<&Arg>,
         source: &std::ffi::OsStr,
     ) -> Result<Self::Value, clap::Error> {
         let source = parse_utf8(source)?;
@@ -428,13 +439,13 @@ impl TypedValueParser for ColorModeParser {
             // @Task smh. avoid using `Error::raw` and smh. pass along the context.
             //       https://github.com/clap-rs/clap/discussions/4029
             clap::Error::raw(
-                clap::ErrorKind::InvalidValue,
+                clap::error::ErrorKind::InvalidValue,
                 format!("‘{source}’ is not a valid color mode\n"),
             )
         })
     }
 
-    fn possible_values(&self) -> Option<Box<dyn Iterator<Item = PossibleValue<'static>> + '_>> {
+    fn possible_values(&self) -> Option<Box<dyn Iterator<Item = PossibleValue>>> {
         Some(Box::new(
             ColorMode::elements().map(|mode| PossibleValue::new(mode.name())),
         ))
@@ -496,7 +507,7 @@ impl FileBuildOptions {
         Self {
             path: matches.get_one(argument::PATH).cloned().unwrap(),
             general: BuildOptions::deserialize(unstable_options),
-            no_core: matches.contains_id(option::NO_CORE),
+            no_core: matches.get_flag(option::NO_CORE),
             component_type: matches.get_one(option::COMPONENT_TYPE).copied(),
         }
     }
@@ -631,13 +642,13 @@ pub(crate) enum PackageCreationMode {
 
 impl PackageCreationOptions {
     fn deserialize(matches: &ArgMatches) -> Self {
-        let library = matches.contains_id(option::LIBRARY);
+        let library = matches.get_flag(option::LIBRARY);
 
         Self {
-            no_core: matches.contains_id(option::NO_CORE),
+            no_core: matches.get_flag(option::NO_CORE),
             library,
             // implicitly set when no explicit component type specified
-            executable: matches.contains_id(option::EXECUTABLE) || !library,
+            executable: matches.get_flag(option::EXECUTABLE) || !library,
         }
     }
 }
@@ -655,8 +666,8 @@ impl DocumentationOptions {
         unstable_options: Vec<unstable::DocumentationOption>,
     ) -> Self {
         let mut options = Self {
-            open: matches.contains_id(option::OPEN),
-            no_dependencies: matches.contains_id(option::NO_DEPENDENCIES),
+            open: matches.get_flag(option::OPEN),
+            no_dependencies: matches.get_flag(option::NO_DEPENDENCIES),
             ..default()
         };
 
@@ -681,8 +692,8 @@ impl TypedValueParser for WordParser {
 
     fn parse_ref(
         &self,
-        _: &clap::Command<'_>,
-        _: Option<&Arg<'_>>,
+        _: &clap::Command,
+        _: Option<&Arg>,
         source: &OsStr,
     ) -> Result<Self::Value, clap::Error> {
         let source = parse_utf8(source)?;
@@ -691,7 +702,7 @@ impl TypedValueParser for WordParser {
             // @Task smh. avoid using `Error::raw` and smh. pass along the context.
             //       https://github.com/clap-rs/clap/discussions/4029
             clap::Error::raw(
-                clap::ErrorKind::InvalidValue,
+                clap::error::ErrorKind::InvalidValue,
                 format!("‘{source}’ is not a valid word\n"),
             )
         })
@@ -706,8 +717,8 @@ impl TypedValueParser for ComponentTypeParser {
 
     fn parse_ref(
         &self,
-        _: &clap::Command<'_>,
-        _: Option<&Arg<'_>>,
+        _: &clap::Command,
+        _: Option<&Arg>,
         source: &OsStr,
     ) -> Result<Self::Value, clap::Error> {
         let source = parse_utf8(source)?;
@@ -717,13 +728,13 @@ impl TypedValueParser for ComponentTypeParser {
             // @Task smh. avoid using `Error::raw` and smh. pass along the context.
             //       https://github.com/clap-rs/clap/discussions/4029
             clap::Error::raw(
-                clap::ErrorKind::InvalidValue,
+                clap::error::ErrorKind::InvalidValue,
                 format!("‘{source}’ is not a valid component type\n"),
             )
         })
     }
 
-    fn possible_values(&self) -> Option<Box<dyn Iterator<Item = PossibleValue<'static>> + '_>> {
+    fn possible_values(&self) -> Option<Box<dyn Iterator<Item = PossibleValue>>> {
         Some(Box::new(
             ComponentType::elements().map(|type_| PossibleValue::new(type_.name())),
         ))
@@ -738,8 +749,8 @@ impl TypedValueParser for BackendParser {
 
     fn parse_ref(
         &self,
-        _: &clap::Command<'_>,
-        _: Option<&Arg<'_>>,
+        _: &clap::Command,
+        _: Option<&Arg>,
         source: &OsStr,
     ) -> Result<Self::Value, clap::Error> {
         let source = parse_utf8(source)?;
@@ -748,13 +759,13 @@ impl TypedValueParser for BackendParser {
             // @Task smh. avoid using `Error::raw` and smh. pass along the context.
             //       https://github.com/clap-rs/clap/discussions/4029
             clap::Error::raw(
-                clap::ErrorKind::InvalidValue,
+                clap::error::ErrorKind::InvalidValue,
                 format!("‘{source}’ is not a valid backend\n"),
             )
         })
     }
 
-    fn possible_values(&self) -> Option<Box<dyn Iterator<Item = PossibleValue<'static>> + '_>> {
+    fn possible_values(&self) -> Option<Box<dyn Iterator<Item = PossibleValue>>> {
         Some(Box::new(
             Backend::elements().map(|backend| PossibleValue::new(backend.name())),
         ))
@@ -1063,7 +1074,7 @@ fn parse_utf8(source: &OsStr) -> Result<&str, clap::Error> {
         // @Task smh. avoid using `Error::raw` and smh. pass along the context.
         //       https://github.com/clap-rs/clap/discussions/4029
         clap::Error::raw(
-            clap::ErrorKind::InvalidUtf8,
+            clap::error::ErrorKind::InvalidUtf8,
             format!("‘{}’ is not valid UTF-8\n", source.to_string_lossy()),
         )
     })
