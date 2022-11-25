@@ -66,23 +66,14 @@ pub enum BareToken {
     Symbol(Atom),
     NumberLiteral(Atom),
     TextLiteral(Atom),
-    /// For attributes.
     At,
-    /// For lambda literals and pattern binders.
     Backslash,
-    /// For typed holes.
     QuestionMark,
-    /// For type annotations.
     Colon,
-    /// For record fields.
     DoubleColon,
-    /// For paths.
     Dot,
-    /// For definitions.
     Equals,
-    /// For implicit parameters.
     Apostrophe,
-    /// Delimiter.
     Semicolon(Provenance),
     OpeningRoundBracket,
     OpeningSquareBracket,
@@ -90,46 +81,23 @@ pub enum BareToken {
     ClosingRoundBracket,
     ClosingSquareBracket,
     ClosingCurlyBracket(Provenance),
-    /// For pi type literals.
     ThinArrowRight,
-    /// For monadic binds in do-blocks.
     ThinArrowLeft,
-    /// For value inference and unnameable unique identifiers.
     Underscore,
-    /// For lambda literals and case analyses.
     WideArrowRight,
-    /// For use-declarations.
     As,
-    /// For case analyses / case/of-expressions.
     Case,
-    /// For paths relative to the collection of linked components.
     Extern,
-    /// For data declarations.
     Data,
-    /// For do-blocks.
     Do,
-    /// For let- and use-bindings.
-    ///
-    /// That is let/in-expressions and statements and
-    /// use/in-expressions and statements.
     In,
-    /// For lazy parameters.
     Lazy,
-    /// For let-bindings / let/in-expressions and statements.
     Let,
-    /// For module declarations.
     Module,
-    /// For case analyses / case/of-expressions.
     Of,
-    /// For paths relative to the current namespace.
     Self_,
-    /// For paths relative to the parent namespace.
     Super,
-    /// For paths relative to the root module / the component root.
     Topmost,
-    /// For use-declarations and use-bindings.
-    ///
-    /// The latter being use/in-expressions and statements.
     Use,
     EndOfInput,
 }

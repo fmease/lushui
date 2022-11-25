@@ -2103,7 +2103,7 @@ impl LexerErrorExt for lexer::Error {
                         INDENTATION.0
                     ),
                 }),
-            InvalidlToken(token) => {
+            InvalidToken(token) => {
                 let message = format!("found invalid character U+{:04X} ‘{token}’", token as u32,);
 
                 // @Task code

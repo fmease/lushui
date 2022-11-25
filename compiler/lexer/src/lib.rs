@@ -65,8 +65,7 @@ impl<'a> Lexer<'a> {
 
             match character {
                 '#' if index == default() => self.lex_shebang_candidate(),
-                // @Bug @Beacon if it is SOI, don't lex_whitespace but lex_indentation
-                // (SOI should act as a line break)
+                ' ' if index == default() => self.lex_indentation(),
                 ' ' => self.lex_whitespace(),
                 ';' => {
                     self.take();
@@ -79,7 +78,11 @@ impl<'a> Lexer<'a> {
                     }
                 }
                 character if is_identifier_segment_start(character) => self.lex_identifier(),
-                '\n' if self.sections.current() != Section::Delimited => self.lex_indentation(),
+                '\n' if self.sections.current() != Section::Delimited => {
+                    self.take();
+                    self.advance();
+                    self.lex_indentation();
+                }
                 '\n' => self.advance(),
                 '-' => self.lex_symbol_or_number_literal(),
                 character if character.is_ascii_digit() => {
@@ -90,7 +93,6 @@ impl<'a> Lexer<'a> {
                 character if token::is_symbol(character) => {
                     self.take();
                     self.advance();
-
                     self.lex_symbol();
                 }
                 '"' => self.lex_text_literal(),
@@ -107,7 +109,6 @@ impl<'a> Lexer<'a> {
                     self.add_closing_bracket(BracketKind::Square);
                 }
                 '}' => {
-                    // @Temporary unverified
                     if self.sections.current() == Section::Delimited {
                         self.sections.exit();
                     }
@@ -117,7 +118,7 @@ impl<'a> Lexer<'a> {
                 character => {
                     self.take();
                     self.advance();
-                    self.error(BareError::InvalidlToken(character));
+                    self.error(BareError::InvalidToken(character));
                 }
             }
         }
@@ -286,9 +287,7 @@ impl<'a> Lexer<'a> {
         self.take_while(is_identifier_segment_middle);
     }
 
-    // @Beacon @Bug *very* confusing indentation errors if the file contains tabs \t
-    // which do *not* result in an error in the lexer but "later" in the parser (which is never reached)
-    // @Task treat tabs differently when calculating indentation
+    // @Task recover from tabs (treat them as 4 spaces) and emit a custom error
     fn lex_indentation(&mut self) {
         let is_start_of_indented_section = self
             .tokens
@@ -296,8 +295,6 @@ impl<'a> Lexer<'a> {
             .map_or(false, |token| token.name().introduces_indented_section());
 
         // squash consecutive line breaks into a single one
-        self.take();
-        self.advance();
         self.take_while(|character| character == '\n');
         // might be removed again under certain conditions later on
         self.add(Semicolon(Provenance::Lexer));
@@ -368,7 +365,7 @@ impl<'a> Lexer<'a> {
             for _ in 0..indentation.0 {
                 let section = self.sections.exit();
 
-                // @Beacon @Task handle the case where `!section.brackets.is_empty()`
+                // @Task handle the case where `!section.brackets.is_empty()`
                 if section.is_indented() {
                     self.add(ClosingCurlyBracket(Provenance::Lexer));
                     self.add(Semicolon(Provenance::Lexer));
@@ -710,7 +707,7 @@ pub type Error = Spanned<BareError>;
 #[derive(PartialEq, Eq, Debug)]
 pub enum BareError {
     InvalidIndentation(Spaces, IndentationError),
-    InvalidlToken(char),
+    InvalidToken(char),
     UnbalancedBracket(Bracket),
     UnterminatedTextLiteral,
 }

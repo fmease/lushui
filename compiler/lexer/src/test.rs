@@ -1,7 +1,11 @@
 // @Task add tests for invalid indentation (esp. verifying the recovery logic)
+// @Task smh create a Stack<Section> of the form [TopLevel, Continued, Indented]
+// @Task smh create a Vec<Section> of the form [TopLevel, Indented, Continued]
+// @Task add a lot of tests of the interaction between line breaks, indentation and *comments*!
 
 use crate::{BareError, BareToken::*, Error, Outcome, Provenance, Token};
 use span::span;
+use token::{IndentationError, Spaces};
 use utilities::difference;
 
 fn lex(source: &'static str) -> Outcome {
@@ -201,14 +205,14 @@ fn weird_dashed_identifiers() {
 #[test]
 fn keywords_and_lookalikes() {
     assert_lex_eq!(
-        "       self self_ self-self in _",
+        "    self self_ self-self in _",
         vec![
-            Token::new(span(8, 12), Self_),
-            Token::new(span(13, 18), Word("self_".into())),
-            Token::new(span(19, 28), Word("self-self".into())),
-            Token::new(span(29, 31), In),
-            Token::new(span(32, 33), Underscore),
-            Token::new(span(33, 33), EndOfInput),
+            Token::new(span(5, 9), Self_),
+            Token::new(span(10, 15), Word("self_".into())),
+            Token::new(span(16, 25), Word("self-self".into())),
+            Token::new(span(26, 28), In),
+            Token::new(span(29, 30), Underscore),
+            Token::new(span(30, 30), EndOfInput),
         ],
     );
 }
@@ -397,8 +401,8 @@ fn bare_non_ascii_is_invalid() {
         "函数",
         vec![Token::new(span(7, 7), EndOfInput),],
         vec![
-            Error::new(span(1, 4), BareError::InvalidlToken('\u{51FD}')),
-            Error::new(span(4, 7), BareError::InvalidlToken('\u{6570}')),
+            Error::new(span(1, 4), BareError::InvalidToken('\u{51FD}')),
+            Error::new(span(4, 7), BareError::InvalidToken('\u{6570}')),
         ],
     );
 }
@@ -406,14 +410,14 @@ fn bare_non_ascii_is_invalid() {
 #[test]
 fn bare_non_ascii_are_invalid_but_non_fatal() {
     assert_lex_eq!(
-        " 函数 function",
+        "    函数 function",
         vec![
-            Token::new(span(9, 17), Word("function".into())),
-            Token::new(span(17, 17), EndOfInput),
+            Token::new(span(12, 20), Word("function".into())),
+            Token::new(span(20, 20), EndOfInput),
         ],
         vec![
-            Error::new(span(2, 5), BareError::InvalidlToken('函')),
-            Error::new(span(5, 8), BareError::InvalidlToken('数')),
+            Error::new(span(5, 8), BareError::InvalidToken('函')),
+            Error::new(span(8, 11), BareError::InvalidToken('数')),
         ]
     );
 }
@@ -423,7 +427,7 @@ fn backticks_are_invalid() {
     assert_lex_eq!(
         "`",
         vec![Token::new(span(2, 2), EndOfInput),],
-        vec![Error::new(span(1, 2), BareError::InvalidlToken('`')),]
+        vec![Error::new(span(1, 2), BareError::InvalidToken('`')),]
     );
 }
 
@@ -435,7 +439,7 @@ fn backticks_are_invalid_right_after_number_literal() {
             Token::new(span(1, 2), NumberLiteral("1".into())),
             Token::new(span(3, 3), EndOfInput),
         ],
-        vec![Error::new(span(2, 3), BareError::InvalidlToken('`')),]
+        vec![Error::new(span(2, 3), BareError::InvalidToken('`')),]
     );
 }
 
@@ -445,8 +449,8 @@ fn tabs_are_invalid() {
         "\t\t",
         vec![Token::new(span(3, 3), EndOfInput),],
         vec![
-            Error::new(span(1, 2), BareError::InvalidlToken('\t')),
-            Error::new(span(2, 3), BareError::InvalidlToken('\t')),
+            Error::new(span(1, 2), BareError::InvalidToken('\t')),
+            Error::new(span(2, 3), BareError::InvalidToken('\t')),
         ]
     );
 }
@@ -471,9 +475,6 @@ alpha #?
         ],
     );
 }
-
-// @Beacon @Task add a lot of tests of the interaction between
-// line breaks, indentation and *comments*!
 
 /// Indentation means line continuation unless it follows the keyword `of`
 /// or `do` (in which case it creates a “proper”/reified section, namely an
@@ -646,10 +647,6 @@ of
     )
 }
 
-// @Task smh create a Stack<Section> of the form [TopLevel, Continued, Indented]
-
-// @Task smh create a Vec<Section> of the form [TopLevel, Indented, Continued]
-
 #[test]
 fn keyword_do_and_of_and_no_block_follows() {
     assert_lex_eq!(
@@ -669,12 +666,6 @@ of"it"
         ],
     );
 }
-
-// #[test]
-// fn _() {
-//     let _ = lex("\n    \n");
-//     todo!(); // @Task
-// }
 
 #[test]
 fn round_bracket_closes_indented_section() {
@@ -756,8 +747,8 @@ of
     );
 }
 
-/// Yes, `=>` and `=` are aligned *but* the `)` “outdents” the first indentation and
-/// and such, the `=` should be considered (more) indented relative to the line with
+/// `=>` and `=` are indeed visually aligned *but* the `)` depends the first indentation
+/// and as such, the `=` should be considered (further) indented relative to the line with
 /// the closing bracket.
 #[test]
 fn brackets_reset_indentation() {
@@ -775,10 +766,38 @@ fn brackets_reset_indentation() {
             Token::new(span(11, 12), ClosingCurlyBracket(Provenance::Lexer)),
             Token::new(span(11, 12), ClosingRoundBracket),
             Token::new(span(17, 18), Equals),
-            // @Question should this be a Symbol?
             Token::new(span(19, 20), Dot),
             Token::new(span(20, 21), Semicolon(Provenance::Lexer)),
             Token::new(span(21, 21), EndOfInput),
         ],
     )
+}
+
+#[test]
+fn indentation_at_start_of_input() {
+    assert_lex_eq!(
+        "    data
+data",
+        vec![
+            Token::new(span(5, 9), Data),
+            Token::new(span(9, 10), Semicolon(Provenance::Lexer)),
+            Token::new(span(10, 14), Data),
+            Token::new(span(14, 14), EndOfInput),
+        ]
+    );
+}
+
+#[test]
+fn invalid_indentation_at_start_of_input() {
+    assert_lex_eq!(
+        " !",
+        vec![
+            Token::new(span(2, 3), Symbol("!".into())),
+            Token::new(span(3, 3), EndOfInput),
+        ],
+        vec![Error::new(
+            span(1, 2),
+            BareError::InvalidIndentation(Spaces(1), IndentationError::Misaligned)
+        )]
+    );
 }
