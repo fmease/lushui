@@ -9,8 +9,7 @@
 use ast::Debug;
 use cli::{Backend, BuildMode, ColorMode, Command, PassRestriction};
 use colored::Colorize;
-use diagnostics::{reporter::ErasedReportedError, Diagnostic, ErrorCode, Reporter};
-use error::Result;
+use diagnostics::{error::Result, reporter::ErasedReportedError, Diagnostic, ErrorCode, Reporter};
 use hir_format::Display as _;
 use lowered_ast::Display as _;
 use package::{find_package, resolve_file, resolve_package, MANIFEST_FILE_NAME};

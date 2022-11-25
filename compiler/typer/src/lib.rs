@@ -5,8 +5,11 @@
 // to be able to continue type checking on errors
 
 use ast::Explicitness;
-use diagnostics::{reporter::ErasedReportedError, Diagnostic, ErrorCode};
-use error::{Health, Result, Stain};
+use diagnostics::{
+    error::{Health, Result, Stain},
+    reporter::ErasedReportedError,
+    Diagnostic, ErrorCode,
+};
 use hir::{intrinsic, known, AttributeName, Declaration, EntityKind, Expression, Identifier};
 use hir_format::{DefaultContext, Display};
 use interpreter::{BareBindingRegistration, BindingRegistration, FunctionScope, Interpreter};
@@ -135,7 +138,7 @@ impl<'a> Typer<'a> {
 
                 return Result::from(*health);
             }
-            Use(_) | Error => {}
+            Use(_) | Error(_) => {}
         }
 
         Ok(())
@@ -423,7 +426,7 @@ expected type ‘{}’
             }
 
             if previous_amount == self.out_of_order_bindings.len() {
-                if self.health.is_tainted() {
+                if let Health::Tainted(_) = self.health {
                     return Ok(());
                 }
 
@@ -738,10 +741,10 @@ expected type ‘_ -> _’
                                         .into());
                                 }
                                 (Application(_), _argument) => todo!(),
-                                (Error, _) => unreachable!(),
+                                (Error(_), _) => unreachable!(),
                             };
                         }
-                        Error => unreachable!(),
+                        Error(_) => unreachable!(),
                     }
 
                     let body_type = self.infer_type_of_expression(
@@ -767,7 +770,7 @@ expected type ‘_ -> _’
             IO(_) => self
                 .session
                 .look_up_intrinsic_type(intrinsic::Type::IO, Some(expression.span))?,
-            Error => expression,
+            Error(_) => expression,
         })
     }
 

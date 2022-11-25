@@ -7,7 +7,6 @@ publish = false
 
 [dependencies]
 diagnostics = { path = "../diagnostics" }
-error = { path = "../error" }
 hir = { path = "../hir" }
 hir_format = { path = "../hir_format" }
 resolver = { path = "../resolver" }

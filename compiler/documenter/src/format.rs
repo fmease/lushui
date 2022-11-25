@@ -196,7 +196,7 @@ impl<'a> Formatter<'a> {
                 self.format_expression(&substituted.expression);
                 self.write(")");
             }
-            Error => self.write("?(error)"),
+            Error(_) => self.write("?(error)"),
             _ => {
                 self.write("(");
                 self.format_expression(expression);
@@ -225,7 +225,7 @@ impl<'a> Formatter<'a> {
                 self.format_pattern(&application.argument);
                 self.write(")"); // @Temporary
             }
-            Error => self.write("?(error)"),
+            Error(_) => self.write("?(error)"),
         }
     }
 

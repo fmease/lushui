@@ -11,12 +11,14 @@
 
 pub use code::{Code, ErrorCode, LintCode};
 use derivation::Str;
+use reporter::Report;
 pub use reporter::Reporter;
 use span::{SourceMap, Span, Spanning};
 use std::{collections::BTreeSet, fmt::Debug, ops::Deref, path::PathBuf};
 use utilities::Str;
 
 mod code;
+pub mod error;
 mod format;
 pub mod reporter;
 
@@ -150,9 +152,9 @@ impl<const S: Severity> Diagnostic<S> {
     }
 
     /// Report the diagnostic.
-    pub fn report(self, reporter: &Reporter) -> reporter::report::ReportOutput<S>
+    pub fn report(self, reporter: &Reporter) -> <Diagnostic<S> as Report>::Output
     where
-        Diagnostic<S>: reporter::report::Report,
+        Diagnostic<S>: Report,
     {
         reporter.report(self)
     }
@@ -165,7 +167,7 @@ impl Diagnostic<{ Severity::Bug }> {
     }
 }
 
-impl Diagnostic<{ Severity::Error }> {
+impl Diagnostic {
     /// Create a diagnostic for a user error.
     pub fn error() -> Self {
         Self::new()
@@ -174,6 +176,11 @@ impl Diagnostic<{ Severity::Error }> {
     pub fn code(mut self, code: ErrorCode) -> Self {
         self.untagged.code = Some(Code::Error(code));
         self
+    }
+
+    // Handle the diagnostic.
+    pub fn handle<T: error::PossiblyErroneous, H: error::Handler>(self, handler: H) -> T {
+        handler.handle(self)
     }
 }
 

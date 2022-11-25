@@ -34,10 +34,8 @@ version = "0.0.0"
 dependencies = [
  "colored",
  "diagnostics",
- "error",
  "index_map",
- "item",
- "joinery 2.1.0",
+ "joinery",
  "smallvec",
  "span",
  "token",
@@ -163,7 +161,6 @@ dependencies = [
  "cranelift-native",
  "cranelift-object",
  "diagnostics",
- "error",
  "hir",
  "session",
 ]
@@ -173,7 +170,6 @@ name = "codegen_llvm"
 version = "0.0.0"
 dependencies = [
  "diagnostics",
- "error",
  "hir",
  "hir_format",
  "inkwell",
@@ -432,11 +428,11 @@ version = "0.0.0"
 dependencies = [
  "crossbeam",
  "derivation",
- "error",
+ "diagnostics",
  "hir",
  "hir_format",
  "html-escape",
- "joinery 3.1.0",
+ "joinery",
  "minifier",
  "resolver",
  "session",
@@ -459,7 +455,6 @@ dependencies = [
  "derivation",
  "diagnostics",
  "documenter",
- "error",
  "hir_format",
  "lexer",
  "lowered_ast",
@@ -503,14 +498,6 @@ checksum = "aa68f1b12764fab894d2755d2518754e71b4fd80ecfb822714a1206c2aab39bf"
 dependencies = [
  "cc",
  "libc",
-]
-
-[[package]]
-name = "error"
-version = "0.0.0"
-dependencies = [
- "diagnostics",
- "utilities",
 ]
 
 [[package]]
@@ -628,7 +615,7 @@ dependencies = [
  "derivation",
  "diagnostics",
  "difference",
- "joinery 3.1.0",
+ "joinery",
  "lexer",
  "metadata",
  "pathdiff",
@@ -675,9 +662,9 @@ name = "hir"
 version = "0.0.0"
 dependencies = [
  "ast",
- "error",
+ "diagnostics",
  "index_map",
- "joinery 3.1.0",
+ "joinery",
  "lowered_ast",
  "num-traits",
  "span",
@@ -691,7 +678,7 @@ dependencies = [
  "ast",
  "colored",
  "hir",
- "joinery 3.1.0",
+ "joinery",
  "session",
  "span",
  "token",
@@ -778,24 +765,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "59ce5ef949d49ee85593fc4d3f3f95ad61657076395cbbce23e2121fc5542074"
 
 [[package]]
-name = "item"
-version = "0.0.0"
-dependencies = [
- "error",
- "span",
-]
-
-[[package]]
 name = "itoa"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4217ad341ebadf8d8e724e264f13e593e0648f5b3e94b3896a5df283be015ecc"
-
-[[package]]
-name = "joinery"
-version = "2.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72167d68f5fce3b8655487b8038691a3c9984ee769590f93f2a631f4ad64e4f5"
 
 [[package]]
 name = "joinery"
@@ -870,8 +843,7 @@ dependencies = [
  "bitflags",
  "colored",
  "derivation",
- "error",
- "item",
+ "diagnostics",
  "span",
  "token",
  "utilities",
@@ -883,7 +855,6 @@ version = "0.0.0"
 dependencies = [
  "ast",
  "diagnostics",
- "error",
  "lowered_ast",
  "session",
  "smallvec",
@@ -933,7 +904,6 @@ version = "0.0.0"
 dependencies = [
  "derivation",
  "diagnostics",
- "error",
  "span",
  "utilities",
 ]
@@ -1030,7 +1000,6 @@ version = "0.0.0"
 dependencies = [
  "derivation",
  "diagnostics",
- "error",
  "index_map",
  "lexer",
  "metadata",
@@ -1071,7 +1040,6 @@ dependencies = [
  "colored",
  "diagnostics",
  "difference",
- "error",
  "index_map",
  "lexer",
  "smallvec",
@@ -1227,7 +1195,6 @@ dependencies = [
  "colored",
  "diagnostics",
  "difference",
- "error",
  "hir",
  "hir_format",
  "lowered_ast",
@@ -1334,7 +1301,6 @@ name = "server"
 version = "0.0.0"
 dependencies = [
  "diagnostics",
- "error",
  "hir",
  "lowerer",
  "package",
@@ -1355,7 +1321,6 @@ dependencies = [
  "ast",
  "derivation",
  "diagnostics",
- "error",
  "hir",
  "index_map",
  "lexer",
@@ -1435,7 +1400,7 @@ name = "syntax"
 version = "0.0.0"
 dependencies = [
  "ast",
- "error",
+ "diagnostics",
  "lexer",
  "parser",
  "session",
@@ -1602,10 +1567,9 @@ version = "0.0.0"
 dependencies = [
  "ast",
  "diagnostics",
- "error",
  "hir",
  "hir_format",
- "joinery 3.1.0",
+ "joinery",
  "resolver",
  "session",
  "utilities",

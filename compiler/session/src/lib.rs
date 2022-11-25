@@ -2,8 +2,7 @@
 
 use ast::Explicitness;
 use derivation::{Elements, FromStr, Str};
-use diagnostics::{Diagnostic, ErrorCode, Reporter};
-use error::Result;
+use diagnostics::{error::Result, Diagnostic, ErrorCode, Reporter};
 use hir::{
     interfaceable, intrinsic, known, DeclarationIndex, Entity, EntityKind, Expression, Identifier,
     LocalDeclarationIndex,

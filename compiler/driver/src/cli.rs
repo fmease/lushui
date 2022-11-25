@@ -5,7 +5,7 @@ use clap::{
 };
 use colored::Colorize;
 use derivation::{Elements, FromStr, Str};
-use error::Result;
+use diagnostics::error::Result;
 use lexer::word::WordExt;
 use package::ComponentFilter;
 use session::ComponentType;
@@ -776,8 +776,7 @@ mod unstable {
     use clap::ArgMatches;
     use colored::Colorize;
     use derivation::{Elements, FromStr, Str};
-    use diagnostics::{Diagnostic, Reporter};
-    use error::Result;
+    use diagnostics::{error::Result, Diagnostic, Reporter};
     use std::{fmt::Write, iter::once, str::FromStr};
     use utilities::{pluralize, Conjunction, ListingExt, QuoteExt};
 

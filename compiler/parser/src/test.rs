@@ -9,8 +9,7 @@ use ast::{
     Explicitness::{Explicit, Implicit},
     Expression, Format, Identifier, Item, Parameter, Parameters, Path, Pattern, UsePathTree,
 };
-use diagnostics::Reporter;
-use error::Result;
+use diagnostics::{error::Result, Reporter};
 use index_map::Index as _;
 use lexer::lex;
 use smallvec::smallvec;

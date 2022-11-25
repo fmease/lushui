@@ -8,7 +8,7 @@ publish = false
 [dependencies]
 crossbeam = "0.8.1"
 derivation = { path = "../../project/library/derivation" }
-error = { path = "../error" }
+diagnostics = { path = "../diagnostics" }
 hir = { path = "../hir" }
 hir_format = { path = "../hir_format" }
 html-escape = "0.2.9"

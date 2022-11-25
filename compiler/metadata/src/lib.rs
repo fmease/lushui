@@ -9,8 +9,7 @@
 #![feature(default_free_fn)]
 
 use derivation::Discriminant;
-use diagnostics::{reporter::ErasedReportedError, Diagnostic, ErrorCode, Reporter};
-use error::Result;
+use diagnostics::{error::Result, reporter::ErasedReportedError, Diagnostic, ErrorCode, Reporter};
 use span::{SourceFileIndex, SourceMap, Span, Spanned, Spanning, WeaklySpanned};
 use std::{fmt, sync::RwLock};
 use utilities::{obtain, HashMap};

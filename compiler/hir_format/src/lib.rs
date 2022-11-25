@@ -79,7 +79,7 @@ fn write_declaration(
             Some(binder) => writeln!(f, "use {} as {binder}", use_.target),
             None => writeln!(f, "use {}", use_.target),
         },
-        Error => writeln!(f, "?(error)"),
+        Error(_) => writeln!(f, "?(error)"),
     }
 }
 
@@ -248,7 +248,7 @@ fn write_lower_expression(
             substituted.expression.write(context, f)?;
             write!(f, ")")
         }
-        Error => write!(f, "?(error)"),
+        Error(_) => write!(f, "?(error)"),
         _ => {
             write!(f, "(")?;
             expression.write(context, f)?;
@@ -278,7 +278,7 @@ impl Display for hir::Pattern {
                 application.argument.write(context, f)?;
                 write!(f, ")")
             }
-            Error => write!(f, "?(error)"),
+            Error(_) => write!(f, "?(error)"),
         }
     }
 }

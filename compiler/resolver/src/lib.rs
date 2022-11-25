@@ -6,13 +6,19 @@
 //! expressions and patterns to [(resolved) identifiers](Identifier) which
 //! contain a [declaration index](DeclarationIndex) or a [de Bruijn index](DeBruijnIndex)
 //! respectively.
-// @Task improve docs above!
-// @Task get rid of "register" terminology
 #![feature(default_free_fn, let_chains)]
 
+// @Task improve docs above!
+// @Task get rid of "register" terminology
+// @Task transform all Result-returning functions into ()-returning ones modifying self.health
+//       and use the new Handler API and get rid of the Stain API
+
 use colored::Colorize;
-use diagnostics::{reporter::ErasedReportedError, Diagnostic, ErrorCode, LintCode};
-use error::{Health, OkIfUntaintedExt, PossiblyErroneous, ReportedExt, Result, Stain};
+use diagnostics::{
+    error::{Health, Outcome, PossiblyErroneous, Result, Stain},
+    reporter::ErasedReportedError,
+    Diagnostic, ErrorCode, LintCode,
+};
 use hir::{
     intrinsic, AttributeName, Attributes, DeBruijnIndex, DeclarationIndex, Entity, EntityKind,
     Exposure, ExposureReach, Identifier, Index, LocalDeclarationIndex, PartiallyResolvedPath,
@@ -73,7 +79,7 @@ pub fn resolve_declarations(
 
     let declaration = resolver.finish_resolve_declaration(root_module, None, default());
 
-    Result::ok_if_untainted(declaration, resolver.health)
+    Outcome::new(declaration, resolver.health).into()
 }
 
 // @Task docs: mention that the current component should be pre-populated before calling this
@@ -312,7 +318,7 @@ impl<'a> ResolverMut<'a> {
                     debug_assert!(previous.is_none());
                 };
             }
-            Error => {}
+            Error(_) => {}
         }
 
         Ok(())
@@ -536,7 +542,7 @@ impl<'a> ResolverMut<'a> {
                     .into(),
                 )
             }
-            Error => PossiblyErroneous::error(),
+            Error(error) => PossiblyErroneous::error(error),
         }
     }
 
@@ -567,9 +573,10 @@ impl<'a> ResolverMut<'a> {
                         self.component.bindings[index].kind = EntityKind::Use { target };
                     }
                     Err(error @ (UnresolvedBinding { .. } | Erased(_))) => {
-                        self.component.bindings[index].mark_as_error();
-                        self.as_ref().report_resolution_error(error);
-                        self.health.taint();
+                        self.component.bindings[index].kind =
+                            PossiblyErroneous::error(ErasedReportedError::new_unchecked());
+                        let error = self.as_ref().report_resolution_error(error);
+                        self.health.taint(error);
                     }
                     Err(UnresolvedUseBinding {
                         binder,
@@ -591,7 +598,9 @@ impl<'a> ResolverMut<'a> {
             // resolution stalled; therefore there are circular bindings
             if partially_resolved_use_bindings.len() == self.partially_resolved_use_bindings.len() {
                 for &index in partially_resolved_use_bindings.keys() {
-                    self.component[index].mark_as_error();
+                    // @Beacon @Beacon @Beacon @Task don't use new_unchecked here!
+                    self.component[index].kind =
+                        PossiblyErroneous::error(ErasedReportedError::new_unchecked());
                 }
 
                 for cycle in find_cycles(
@@ -623,7 +632,8 @@ impl<'a> ResolverMut<'a> {
                         .report(self.session.reporter());
                 }
 
-                self.health.taint();
+                // the loop above *has* to run at least once and report an error
+                self.health.taint(ErasedReportedError::new_unchecked());
                 break;
             }
 
@@ -639,12 +649,11 @@ impl<'a> ResolverMut<'a> {
                 // unwrap: root always has Exposure::Unrestricted, it won't reach this branch
                 let definition_site_namespace = entity.parent.unwrap().global(self.component);
 
-                if self
+                if let Err(error) = self
                     .as_ref()
                     .resolve_restricted_exposure(exposure, definition_site_namespace)
-                    .is_err()
                 {
-                    self.health.taint();
+                    self.health.taint(error);
                     continue;
                 };
             }
@@ -658,7 +667,7 @@ impl<'a> ResolverMut<'a> {
                 if entity.exposure.compare(&target.exposure, self.component)
                     == Some(Ordering::Greater)
                 {
-                    Diagnostic::error()
+                    let error = Diagnostic::error()
                         .code(ErrorCode::E009)
                         .message(format!(
                             "re-export of the more private binding ‘{}’",
@@ -683,7 +692,7 @@ expected the exposure of ‘{}’
                             self.as_ref().display(&entity.exposure),
                         ))
                         .report(self.session.reporter());
-                    self.health.taint();
+                    self.health.taint(error);
                 }
             }
         }
@@ -700,7 +709,6 @@ impl<'a> Resolver<'a> {
         Self { component, session }
     }
 
-    // @Task use the Stain::stain instead of moving the try operator below resolve calls
     fn resolve_expression(
         &self,
         expression: lowered_ast::Expression,
@@ -842,7 +850,7 @@ impl<'a> Resolver<'a> {
                     scope,
                 )?
             }
-            Error => PossiblyErroneous::error(),
+            Error(error) => PossiblyErroneous::error(error),
         };
 
         Ok(expression)
@@ -925,7 +933,7 @@ impl<'a> Resolver<'a> {
                     scope,
                 )?
             }
-            Error => PossiblyErroneous::error(),
+            Error(error) => PossiblyErroneous::error(error),
         };
 
         Ok((pattern, binders))
@@ -1185,8 +1193,7 @@ impl<'a> Resolver<'a> {
 
             return if path.segments.is_empty() {
                 Target::output_bare_path_hanger(hanger, namespace)
-                    .reported(self.session.reporter())
-                    .map_err(Into::into)
+                    .map_err(|error| error.report(self.session.reporter()).into())
             } else {
                 self.resolve_path::<Target>(
                     &ast::Path::with_segments(path.segments.clone()),
@@ -1201,7 +1208,7 @@ impl<'a> Resolver<'a> {
         match &*path.segments {
             [identifier] => {
                 Target::validate_identifier(identifier, entity)
-                    .reported(self.session.reporter())?;
+                    .map_err(|error| error.report(self.session.reporter()))?;
                 Ok(Target::output(index, identifier))
             }
             [identifier, identifiers @ ..] => {

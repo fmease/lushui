@@ -10,7 +10,6 @@ ast = { path = "../ast" }
 colored = "2.0.0"
 diagnostics = { path = "../diagnostics" }
 difference = "2.0.0"
-error = { path = "../error" }
 hir = { path = "../hir" }
 hir_format = { path = "../hir_format" }
 lowered_ast = { path = "../lowered_ast" }

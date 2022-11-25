@@ -1,7 +1,6 @@
 //! Package creation.
 
-use diagnostics::{Diagnostic, Reporter};
-use error::Result;
+use diagnostics::{error::Result, Diagnostic, Reporter};
 use package::MANIFEST_FILE_NAME;
 use std::{fs, io, path::PathBuf};
 use token::Word;

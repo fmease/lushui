@@ -4,14 +4,14 @@
 
 use ast::{Explicitness, Identifier, NumberLiteral, Path, SequenceLiteral, TextLiteral};
 pub use attribute::{Attribute, AttributeName, Attributes, BareAttribute};
-use error::PossiblyErroneous;
+use diagnostics::{error::PossiblyErroneous, reporter::ErasedReportedError};
 pub use format::Display;
 use span::{SourceFileIndex, Span};
 
 pub mod attribute;
 mod format;
 
-pub type Item<Bare> = item::Item<Bare, attribute::Attributes>;
+pub type Item<Bare> = span::item::Item<Bare, attribute::Attributes>;
 
 pub type Declaration = Item<BareDeclaration>;
 
@@ -21,12 +21,12 @@ pub enum BareDeclaration {
     Constructor(Box<Constructor>),
     Module(Box<Module>),
     Use(Box<Use>),
-    Error,
+    Error(ErasedReportedError),
 }
 
 impl PossiblyErroneous for BareDeclaration {
-    fn error() -> Self {
-        Self::Error
+    fn error(error: ErasedReportedError) -> Self {
+        Self::Error(error)
     }
 }
 
@@ -101,12 +101,12 @@ pub enum BareExpression {
     Lambda(Box<Lambda>),
     CaseAnalysis(Box<CaseAnalysis>),
     UseIn,
-    Error,
+    Error(ErasedReportedError),
 }
 
 impl PossiblyErroneous for BareExpression {
-    fn error() -> Self {
-        Self::Error
+    fn error(error: ErasedReportedError) -> Self {
+        Self::Error(error)
     }
 }
 
@@ -199,12 +199,12 @@ pub enum BarePattern {
     Binder(Box<Identifier>),
     Application(Box<Application<Pattern>>),
     SequenceLiteral(Box<SequenceLiteral<Pattern>>),
-    Error,
+    Error(ErasedReportedError),
 }
 
 impl PossiblyErroneous for BarePattern {
-    fn error() -> Self {
-        Self::Error
+    fn error(error: ErasedReportedError) -> Self {
+        Self::Error(error)
     }
 }
 

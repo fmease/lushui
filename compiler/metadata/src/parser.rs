@@ -5,8 +5,10 @@ use crate::{
     },
     BareValue, Record, Value,
 };
-use diagnostics::{Diagnostic, ErrorCode, Reporter};
-use error::{Health, OkIfUntaintedExt, Result};
+use diagnostics::{
+    error::{Health, Outcome, Result},
+    Diagnostic, ErrorCode, Reporter,
+};
 use span::{SourceFileIndex, SourceMap, Span, Spanning, WeaklySpanned};
 use std::sync::RwLock;
 
@@ -105,7 +107,7 @@ impl<'a> Parser<'a> {
         // @Task mention `:` if previous token was a record key
         self.consume(EndOfInput)?;
 
-        Result::ok_if_untainted(value, self.health)
+        Outcome::new(value, self.health).into()
     }
 
     fn has_top_level_record_entries(&self) -> bool {
@@ -246,13 +248,13 @@ impl<'a> Parser<'a> {
 
             if let Some(previous_key) = record.keys().find(|&some_key| some_key == &key) {
                 // @Task make *all* duplicate entries *primary* highlights
-                Diagnostic::error()
+                let error = Diagnostic::error()
                     .code(ErrorCode::E803)
                     .message(format!("the entry ‘{key}’ is defined multiple times"))
                     .labeled_primary_span(key.span, "redefinition")
                     .labeled_secondary_span(previous_key.span, "previous definition")
                     .report(self.reporter);
-                self.health.taint();
+                self.health.taint(error);
             } else {
                 record.insert(key, value);
             }

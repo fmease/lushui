@@ -1,5 +1,11 @@
 //! Data structures and procedures for handling source locations.
-#![feature(adt_const_params, decl_macro, default_free_fn, min_specialization)]
+#![feature(
+    adt_const_params,
+    decl_macro,
+    default_free_fn,
+    min_specialization,
+    type_changing_struct_update
+)]
 #![allow(incomplete_features)] // adt_const_params
 
 // @Task handle overflows showing errors like "file too big" to the user
@@ -12,6 +18,7 @@ pub use spanning::{PossiblySpanning, Spanning};
 use std::ops::{Add, Range, Sub};
 pub use weakly_spanned::WeaklySpanned;
 
+pub mod item;
 pub mod source_map;
 
 mod generic {

@@ -8,7 +8,6 @@ publish = false
 [dependencies]
 ast = { path = "../ast" }
 diagnostics = { path = "../diagnostics" }
-error = { path = "../error" }
 lowered_ast = { path = "../lowered_ast" }
 session = { path = "../session" }
 smallvec = { version = "1.8.0", features = ["const_generics"] }

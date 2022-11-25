@@ -1,7 +1,6 @@
 //! The diagnostic reporter.
 
 use super::{Diagnostic, ErrorCode, Severity, UntaggedDiagnostic};
-use report::{Report, ReportOutput};
 use span::SourceMap;
 use std::{
     collections::BTreeSet,
@@ -37,7 +36,6 @@ impl Reporter {
         Self::new(ReporterKind::Stderr)
     }
 
-    // @Task wrap the Arc<AtomicBool> so it cannot be modified from outside this module
     pub fn buffered_stderr(reported_any_errors: Arc<AtomicBool>) -> Self {
         Self::new(ReporterKind::BufferedStderr(StderrBuffer {
             errors: default(),
@@ -57,7 +55,10 @@ impl Reporter {
     }
 
     // @Task only return ErasedReportedError for non-silent reporters (@Bug)
-    pub(super) fn report<const S: Severity>(&self, diagnostic: Diagnostic<S>) -> ReportOutput<S>
+    pub(super) fn report<const S: Severity>(
+        &self,
+        diagnostic: Diagnostic<S>,
+    ) -> <Diagnostic<S> as Report>::Output
     where
         Diagnostic<S>: Report,
     {
@@ -156,7 +157,7 @@ impl StderrBuffer {
                             codes = explained_codes.iter().list(Conjunction::And),
                             have = pluralize!(explained_codes.len(), "has", "have"),
                         ))
-                        // @Task don't use the CLI syntax in the lib, only in the bin (sep. of concerns)
+                        // @Task don't use the CLI syntax outside of the driver (separation of concerns)
                         .help(pluralize!(
                             explained_codes.len(),
                             format!(
@@ -192,40 +193,29 @@ fn stderr_print(message: &impl std::fmt::Display) {
     eprintln!();
 }
 
-pub(super) mod report {
-    use super::{Diagnostic, ErasedReportedError, Severity};
+pub trait Report {
+    type Output;
+    const OUTPUT: Self::Output;
+}
 
-    pub type ReportOutput<const S: Severity> = <Diagnostic<S> as Report>::Output;
+impl Report for Diagnostic<{ Severity::Bug }> {
+    type Output = ErasedReportedError;
+    const OUTPUT: Self::Output = ErasedReportedError::new();
+}
 
-    pub trait Report {
-        type Output;
+impl Report for Diagnostic<{ Severity::Error }> {
+    type Output = ErasedReportedError;
+    const OUTPUT: Self::Output = ErasedReportedError::new();
+}
 
-        const OUTPUT: Self::Output;
-    }
+impl Report for Diagnostic<{ Severity::Warning }> {
+    type Output = ();
+    const OUTPUT: Self::Output = ();
+}
 
-    impl Report for Diagnostic<{ Severity::Bug }> {
-        type Output = ErasedReportedError;
-
-        const OUTPUT: Self::Output = ErasedReportedError(());
-    }
-
-    impl Report for Diagnostic<{ Severity::Error }> {
-        type Output = ErasedReportedError;
-
-        const OUTPUT: Self::Output = ErasedReportedError(());
-    }
-
-    impl Report for Diagnostic<{ Severity::Warning }> {
-        type Output = ();
-
-        const OUTPUT: Self::Output = ();
-    }
-
-    impl Report for Diagnostic<{ Severity::Debug }> {
-        type Output = ();
-
-        const OUTPUT: Self::Output = ();
-    }
+impl Report for Diagnostic<{ Severity::Debug }> {
+    type Output = ();
+    const OUTPUT: Self::Output = ();
 }
 
 /// A witness to / token for a [reported](Diagnostic::report) error.
@@ -255,13 +245,16 @@ pub(super) mod report {
 /// few soundness holes: Values of this type can be obtained
 ///
 /// * from a silent reporter
-#[derive(Clone, Copy, Debug)]
-#[cfg_attr(test, derive(PartialEq, Eq))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ErasedReportedError(());
 
 impl ErasedReportedError {
-    // @Task docs
-    pub fn new_unchecked() -> Self {
+    const fn new() -> Self {
         Self(())
+    }
+
+    // @Task add documentation
+    pub const fn new_unchecked() -> Self {
+        Self::new()
     }
 }

@@ -9,8 +9,7 @@ use cranelift::{
 };
 use cranelift_module::{Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule};
-use diagnostics::Diagnostic;
-use error::Result;
+use diagnostics::{error::Result, Diagnostic};
 use session::{BuildSession, Component};
 use std::{
     path::{Path, PathBuf},

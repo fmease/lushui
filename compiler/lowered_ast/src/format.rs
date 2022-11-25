@@ -112,7 +112,7 @@ fn write_declaration(
             as_ = "as".color(KEYWORD_COLOR),
             binder = use_.binder,
         ),
-        Error => write!(f, "{}", "?(error)".red()),
+        Error(_) => write!(f, "{}", "?(error)".red()),
     }
 }
 
@@ -260,7 +260,7 @@ fn format_lower_expression(
         NumberLiteral(number) => write!(f, "{number}"),
         TextLiteral(text) => write!(f, "{text}"),
         Path(path) => write!(f, "{path}"),
-        Error => write!(f, "{}", "?(error)".red()),
+        Error(_) => write!(f, "{}", "?(error)".red()),
         _ => {
             write!(f, "(")?;
             expression.write(f)?;
@@ -307,7 +307,7 @@ impl Display for super::Pattern {
                 }
                 write!(f, "]")
             }
-            Error => write!(f, "{}", "?(error)".red()),
+            Error(_) => write!(f, "{}", "?(error)".red()),
         }
     }
 }

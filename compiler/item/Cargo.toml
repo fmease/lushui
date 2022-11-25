@@ -1,9 +1,0 @@
-[package]
-name = "item"
-version = "0.0.0"
-edition = "2021"
-publish = false
-
-[dependencies]
-error = { path = "../error" }
-span = { path = "../span" }

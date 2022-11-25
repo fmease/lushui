@@ -9,7 +9,7 @@
 
 use crossbeam::thread::Scope;
 use derivation::Elements;
-use error::Result;
+use diagnostics::error::Result;
 use hir::{Attribute, AttributeName, Attributes, BareAttribute};
 use hir_format::ComponentExt;
 use joinery::JoinableIterator;

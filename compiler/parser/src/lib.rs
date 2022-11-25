@@ -37,8 +37,7 @@ use ast::{
     Expression, Identifier, LetStatement, Parameter, Parameters, Path, Pattern,
     SpannedExplicitness, Statement, UsePathTree,
 };
-use diagnostics::{reporter::ErasedReportedError, Diagnostic, ErrorCode, Reporter};
-use error::Result;
+use diagnostics::{error::Result, reporter::ErasedReportedError, Diagnostic, ErrorCode, Reporter};
 use lexer::word::WordExt;
 use span::{SourceFileIndex, SourceMap, Span, Spanned, Spanning};
 use std::{any::TypeId, default::default};

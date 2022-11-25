@@ -14,8 +14,11 @@
 
 use super::{missing_annotation_error, Expression};
 use ast::Explicit;
-use diagnostics::Diagnostic;
-use error::{PossiblyErroneous, Result};
+use diagnostics::{
+    error::{PossiblyErroneous, Result},
+    reporter::ErasedReportedError,
+    Diagnostic,
+};
 use hir::{
     interfaceable, known, Attributes, DeBruijnIndex, DeclarationIndex, Entity, Identifier,
     Substitution::Shift, ValueView,
@@ -292,7 +295,7 @@ impl<'a> Interpreter<'a> {
                                     }
                                 }
                                 Number(_) | Text(_) | Binder(_) | Application(_) => todo!(),
-                                Error => unreachable!(),
+                                Error(_) => unreachable!(),
                             }
                         }
 
@@ -316,16 +319,19 @@ impl<'a> Interpreter<'a> {
                                 }
                                 Binder(_) => {
                                     // @Beacon @Question whyy do we need type information here in *evaluate*???
-                                    let scope = context
-                                        .scope
-                                        .extend_with_parameter(PossiblyErroneous::error());
+                                    // @Task get rid of it as well as the call to new_unchecked
+                                    let scope = context.scope.extend_with_parameter(
+                                        PossiblyErroneous::error(
+                                            ErasedReportedError::new_unchecked(),
+                                        ),
+                                    );
                                     return self.evaluate_expression(
                                         case.body.clone(),
                                         context.with_scope(&scope),
                                     );
                                 }
                                 Text(_) | Binding(_) | Application(_) => todo!(),
-                                Error => unreachable!(),
+                                Error(_) => unreachable!(),
                             }
                         }
                         // we should not be here
@@ -357,7 +363,7 @@ impl<'a> Interpreter<'a> {
                         )
                     })
             }
-            Error => PossiblyErroneous::error(),
+            Error(error) => PossiblyErroneous::error(error),
         })
     }
 
@@ -500,7 +506,9 @@ impl<'a> Interpreter<'a> {
                     .report(self.session.reporter()));
             }
             // @Task probably should just be `true` once we support errors in subexpressions
-            (Error, _) | (_, Error) => panic!("trying to check equality on erroneous expressions"),
+            (Error(_), _) | (_, Error(_)) => {
+                panic!("trying to check equality on erroneous expressions")
+            }
             _ => false,
         })
     }
@@ -778,7 +786,7 @@ impl Substitute for Expression {
                 }
                 .into(),
             ),
-            (Error, _) => PossiblyErroneous::error(),
+            (&Error(error), _) => PossiblyErroneous::error(error),
         }
     }
 }

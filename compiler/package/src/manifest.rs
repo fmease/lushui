@@ -1,7 +1,10 @@
 use super::BuildQueue;
 use derivation::{Elements, FromStr, Str};
-use diagnostics::{reporter::ErasedReportedError, Diagnostic, ErrorCode, Reporter};
-use error::{AndThenMapExt, Health, OkIfUntaintedExt, Result};
+use diagnostics::{
+    error::{Health, Outcome, Result},
+    reporter::ErasedReportedError,
+    Diagnostic, ErrorCode, Reporter,
+};
 use lexer::word::WordExt;
 use metadata::{convert, Record, RecordWalker, WithTextContentSpanExt};
 use session::{ComponentType, Version};
@@ -9,7 +12,7 @@ use session::{ComponentType, Version};
 use span::{SourceFileIndex, SourceMap, Spanned, WeaklySpanned};
 use std::{fmt, path::PathBuf, str::FromStr};
 use token::Word;
-use utilities::{try_all, Conjunction, HashMap, ListingExt, QuoteExt};
+use utilities::{try_all, AndThenMapExt, Conjunction, HashMap, ListingExt, QuoteExt};
 
 pub const FILE_NAME: &str = "package.metadata";
 
@@ -96,9 +99,12 @@ fn parse_components(
     let mut health = Health::Untainted;
 
     for (name, untyped_component) in untyped_components.bare {
-        let Ok(component) = convert(untyped_component, reporter) else {
-            health.taint();
-            continue;
+        let component = match convert(untyped_component, reporter) {
+            Ok(component) => component,
+            Err(error) => {
+                health.taint(error);
+                continue;
+            }
         };
         let mut component = RecordWalker::new(component, reporter);
 
@@ -123,7 +129,7 @@ fn parse_components(
 
         try_all! {
             name, public, type_, path, dependencies, span;
-            health.taint();
+            health.taint(ErasedReportedError::new_unchecked()); // @Task don't call new_unchecked here!
             continue
         };
 
@@ -141,7 +147,7 @@ fn parse_components(
         );
     }
 
-    Result::ok_if_untainted(Spanned::new(untyped_components.span, components), health)
+    Outcome::new(Spanned::new(untyped_components.span, components), health).into()
 }
 
 fn parse_component_type(
@@ -180,9 +186,12 @@ fn parse_dependencies(
         let component_exonym = component_exonym.strong().with_text_content_span(map);
         let exonym = parse_name(component_exonym, NameKind::Component, reporter).map(Spanned::weak);
 
-        let Ok(declaration) = convert(declaration, reporter) else {
-            health.taint();
-            continue;
+        let declaration = match convert(declaration, reporter) {
+            Ok(declaration) => declaration,
+            Err(error) => {
+                health.taint(error);
+                continue;
+            }
         };
         let mut declaration = RecordWalker::new(declaration, reporter);
 
@@ -232,7 +241,7 @@ fn parse_dependencies(
 
         try_all! {
             exonym, component_endonym, package, provider, version, path, span;
-            health.taint();
+            health.taint(ErasedReportedError::new_unchecked()); // @Task don't call new_unchecked here!
             continue
         };
 
@@ -251,10 +260,11 @@ fn parse_dependencies(
         );
     }
 
-    Result::ok_if_untainted(
+    Outcome::new(
         Spanned::new(untyped_dependencies.span, dependencies),
         health,
     )
+    .into()
 }
 
 pub(super) struct PackageProfile {
