@@ -3,9 +3,10 @@
 
 use self::diagnostics::DiagnosticExt;
 use self::span::{FromPositionExt, ToLocationExt};
-use ::diagnostics::{reporter::Buffer, Diagnostic, ErrorCode, Reporter, UntaggedDiagnostic};
+use ::diagnostics::{
+    error::Result, reporter::Buffer, Diagnostic, ErrorCode, Reporter, UntaggedDiagnostic,
+};
 use ::span::{ByteIndex, SourceMap, Spanning};
-use error::Result;
 use package::resolve_file;
 use resolver::ProgramEntryExt;
 use session::{BuildSession, Component, ComponentType, Components};
@@ -87,7 +88,7 @@ impl Server {
         self.reset_source_map();
 
         // @Temporary, @Question what type (apart from Reporter) impls Drop?
-        #[allow(clippy::let_underscore_drop)]
+        #[allow(let_underscore_drop)]
         let _ = check_file(
             path,
             content,
@@ -408,7 +409,7 @@ impl FindBinding for hir::Declaration {
                     None
                 }
             }
-            Error => None,          // @Task
+            Error(_) => None, // @Task
         }
     }
 }
@@ -476,7 +477,7 @@ impl FindBinding for hir::Expression {
             IntrinsicApplication(_) => None, // @Task
             Projection(_) => None,           // @Task
             IO(_) => None,                   // @Task
-            Error => None,                   // @Task
+            Error(_) => None,                // @Task
         }
     }
 }

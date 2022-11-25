@@ -8,7 +8,6 @@ publish = false
 [dependencies]
 ast = { path = "../ast" }
 diagnostics = { path = "../diagnostics" }
-error = { path = "../error" }
 lexer = { path = "../lexer" }
 span = { path = "../span" }
 token = { path = "../token" }

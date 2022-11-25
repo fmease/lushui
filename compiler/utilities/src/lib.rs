@@ -36,6 +36,19 @@ pub macro obtain($expr:expr, $( $pat:pat_param )|+ $( if $guard:expr )? $(,)? =>
     }
 }
 
+// This can theoretically be generalized using GATs to support the implementors
+// R<O<T>, E> and O<R<T, E>>. However, rustc's type inference engine sucks and
+// cannot handle the use sites in the simplest of cases 😭.
+pub trait AndThenMapExt<T, E> {
+    fn and_then_map<U, F: FnOnce(T) -> Result<U, E>>(self, mapper: F) -> Result<Option<U>, E>;
+}
+
+impl<T, E> AndThenMapExt<T, E> for Result<Option<T>, E> {
+    fn and_then_map<U, F: FnOnce(T) -> Result<U, E>>(self, mapper: F) -> Result<Option<U>, E> {
+        self.and_then(|value| value.map(mapper).transpose())
+    }
+}
+
 pub trait GetFromEndExt {
     type Item;
 

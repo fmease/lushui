@@ -19,7 +19,6 @@ colored = "2.0.0"
 derivation = { path = "../../project/library/derivation" }
 diagnostics = { path = "../diagnostics" }
 documenter = { path = "../documenter" }
-error = { path = "../error" }
 hir_format = { path = "../hir_format" }
 lexer = { path = "../lexer" }
 lowered_ast = { path = "../lowered_ast" }

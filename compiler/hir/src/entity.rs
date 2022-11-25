@@ -2,7 +2,7 @@ use crate::{
     intrinsic, Attributes, DeclarationIndex, Exposure, Expression, Identifier,
     LocalDeclarationIndex, Namespace, ValueView,
 };
-use error::PossiblyErroneous;
+use diagnostics::{error::PossiblyErroneous, reporter::ErasedReportedError};
 use std::default::default;
 use utilities::obtain;
 
@@ -63,7 +63,7 @@ impl Entity {
     }
 
     pub const fn is_error(&self) -> bool {
-        matches!(self.kind, Error)
+        matches!(self.kind, Error(_))
     }
 
     pub const fn is_namespace(&self) -> bool {
@@ -124,7 +124,7 @@ impl Entity {
             Function {
                 expression: None, ..
             }
-            | Error
+            | Error(_)
             | DataType { .. }
             | Constructor { .. }
             | IntrinsicFunction { .. } => ValueView::Neutral,
@@ -135,10 +135,6 @@ impl Entity {
             | Use { .. }
             | UnresolvedUse => unreachable!(),
         }
-    }
-
-    pub fn mark_as_error(&mut self) {
-        self.kind = Error;
     }
 }
 
@@ -180,8 +176,7 @@ pub enum EntityKind {
         function: intrinsic::Function,
         type_: Expression,
     },
-    // @Task explain why we want entities to be possibly erroneous
-    Error,
+    Error(ErasedReportedError),
 }
 
 impl EntityKind {
@@ -205,8 +200,7 @@ impl EntityKind {
             UntypedDataType { .. } | DataType { .. } => "data type",
             UntypedConstructor | Constructor { .. } => "constructor",
             Use { .. } | UnresolvedUse => "use-binding",
-            // ideally, should not be reachable
-            Error => "error",
+            Error(_) => "error",
         }
     }
 
@@ -224,13 +218,13 @@ impl EntityKind {
             DataType { .. } => "data type",
             Constructor { .. } => "constructor",
             IntrinsicFunction { .. } => "intrinsic function",
-            Error => "error",
+            Error(_) => "error",
         }
     }
 }
 
 impl PossiblyErroneous for EntityKind {
-    fn error() -> Self {
-        Self::Error
+    fn error(error: ErasedReportedError) -> Self {
+        Self::Error(error)
     }
 }

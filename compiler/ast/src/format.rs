@@ -366,7 +366,7 @@ impl Format for super::BareExpression {
             Self::CaseAnalysis(analysis) => analysis.format(f, indentation),
             Self::DoBlock(do_) => do_.format(f, indentation),
             Self::SequenceLiteral(sequence) => sequence.format(f, indentation),
-            Self::Error => write!(f, "{}", "invalid".color(color_palette::INVALID)),
+            Self::Error(_) => write!(f, "{}", "invalid".color(color_palette::INVALID)),
         }
     }
 }

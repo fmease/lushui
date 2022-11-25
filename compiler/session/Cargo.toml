@@ -9,7 +9,6 @@ derivation = { path = "../../project/library/derivation" }
 index_map = { path = "../../project/library/index_map" }
 ast = { path = "../ast" }
 diagnostics = { path = "../diagnostics" }
-error = { path = "../error" }
 hir = { path = "../hir" }
 lexer = { path = "../lexer" }
 span = { path = "../span" }

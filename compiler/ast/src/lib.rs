@@ -1,10 +1,9 @@
 //! The abstract syntax tree (AST).
 //!
 //! The most important definitions are [`Declaration`], [`Expression`] and [`Pattern`].
-#![feature(default_free_fn)]
+#![feature(default_free_fn, let_chains)]
 
-use diagnostics::{Diagnostic, ErrorCode};
-use error::PossiblyErroneous;
+use diagnostics::{error::PossiblyErroneous, reporter::ErasedReportedError};
 pub use format::{Debug, Format};
 use smallvec::smallvec;
 use span::{PossiblySpanning, SourceFileIndex, Span, Spanned, Spanning};
@@ -14,7 +13,7 @@ use utilities::{obtain, Atom, SmallVec};
 
 mod format;
 
-pub type Item<Bare> = item::Item<Bare, Attributes>;
+pub type Item<Bare> = span::item::Item<Bare, Attributes>;
 
 pub type Declaration = Item<BareDeclaration>;
 
@@ -194,12 +193,12 @@ pub enum BareExpression {
     CaseAnalysis(Box<CaseAnalysis>),
     DoBlock(Box<DoBlock>),
     SequenceLiteral(Box<SequenceLiteral<Expression>>),
-    Error,
+    Error(ErasedReportedError),
 }
 
 impl PossiblyErroneous for BareExpression {
-    fn error() -> Self {
-        Self::Error
+    fn error(error: ErasedReportedError) -> Self {
+        Self::Error(error)
     }
 }
 
@@ -481,16 +480,9 @@ impl Path {
         }
     }
 
-    // @Task make this Option<Self> and move diagnostic construction into lowerer
-    pub fn join(mut self, other: Self) -> Result<Self, Diagnostic> {
-        if let Some(hanger) = other.hanger {
-            if !matches!(hanger.bare, BareHanger::Self_) {
-                return Err(Diagnostic::error()
-                    .code(ErrorCode::E026)
-                    .message(format!("path ‘{hanger}’ not allowed in this position"))
-                    .primary_span(hanger)
-                    .help("consider moving this path to a separate use-declaration"));
-            }
+    pub fn join(mut self, other: Self) -> Result<Self, Hanger> {
+        if let Some(hanger) = other.hanger && !matches!(hanger.bare, BareHanger::Self_) {
+            return Err(hanger);
         }
         self.segments.extend(other.segments);
         Ok(self)

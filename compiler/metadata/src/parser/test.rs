@@ -3,8 +3,7 @@
 //! Negative behavior tests are UI tests and found in `/test/ui/tests/metadata/`.
 
 use super::{Record, Value};
-use diagnostics::Reporter;
-use error::Result;
+use diagnostics::{error::Result, Reporter};
 use span::{span, SourceMap, WeaklySpanned};
 use std::{
     default::default,

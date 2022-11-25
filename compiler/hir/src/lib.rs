@@ -2,8 +2,8 @@
 #![feature(decl_macro, default_free_fn)]
 
 use ast::Explicitness;
+use diagnostics::{error::PossiblyErroneous, reporter::ErasedReportedError};
 pub use entity::{Entity, EntityKind};
-use error::PossiblyErroneous;
 pub use identifier::{DeBruijnIndex, DeclarationIndex, Identifier, Index, LocalDeclarationIndex};
 use joinery::JoinableIterator;
 pub use lowered_ast::{attribute, Attribute, AttributeName, Attributes, BareAttribute, Item};
@@ -28,7 +28,7 @@ pub enum BareDeclaration {
     Constructor(Box<Constructor>),
     Module(Box<Module>),
     Use(Box<Use>),
-    Error,
+    Error(ErasedReportedError),
 }
 
 impl BareDeclaration {
@@ -39,8 +39,8 @@ impl BareDeclaration {
 }
 
 impl PossiblyErroneous for BareDeclaration {
-    fn error() -> Self {
-        Self::Error
+    fn error(error: ErasedReportedError) -> Self {
+        Self::Error(error)
     }
 }
 
@@ -117,12 +117,12 @@ pub enum BareExpression {
     IntrinsicApplication(Box<IntrinsicApplication>),
     Projection(Box<Projection>),
     IO(Box<IO>),
-    Error,
+    Error(ErasedReportedError),
 }
 
 impl PossiblyErroneous for BareExpression {
-    fn error() -> Self {
-        Self::Error
+    fn error(error: ErasedReportedError) -> Self {
+        Self::Error(error)
     }
 }
 
@@ -263,12 +263,12 @@ pub enum BarePattern {
     Binding(Box<Binding>),
     Binder(Box<Binder>),
     Application(Box<Application<Pattern>>),
-    Error,
+    Error(ErasedReportedError),
 }
 
 impl PossiblyErroneous for BarePattern {
-    fn error() -> Self {
-        Self::Error
+    fn error(error: ErasedReportedError) -> Self {
+        Self::Error(error)
     }
 }
 

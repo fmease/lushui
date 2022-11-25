@@ -1,8 +1,11 @@
 //! The package and component resolver.
 #![feature(default_free_fn, let_chains, try_trait_v2)]
 
-use diagnostics::{reporter::ErasedReportedError, Diagnostic, ErrorCode, Reporter};
-use error::Result;
+use diagnostics::{
+    error::{Health, Outcome, Result},
+    reporter::ErasedReportedError,
+    Diagnostic, ErrorCode, Reporter,
+};
 use index_map::IndexMap;
 use lexer::word::WordExt;
 pub use manifest::FILE_NAME as MANIFEST_FILE_NAME;
@@ -30,6 +33,7 @@ mod manifest;
 pub fn find_package(path: &Path) -> Option<&Path> {
     let manifest_path = path.join(manifest::FILE_NAME);
 
+    // @Task use try_exists
     if manifest_path.exists() {
         Some(path)
     } else {
@@ -148,10 +152,8 @@ impl BuildQueue {
         let package = Package::from_manifest(manifest.profile, package_path.to_owned());
         let package = self.packages.insert(package);
 
-        // @Task use Health "2.0" instead
-        let mut health = None::<ErasedReportedError> /* Untainted */;
+        let mut health = Health::Untainted;
 
-        // @Temporary
         if !filter.is_empty() {
             return Err(Diagnostic::error()
                 .message("component filters are not supported yet")
@@ -193,8 +195,7 @@ impl BuildQueue {
                             continue;
                         }
                         Err(ErasedFatal(error) | ErasedNonFatal(error)) => {
-                            // @Task use taint() "2.0" instead
-                            health = Some(error);
+                            health.taint(error);
                             continue;
                         }
                     };
@@ -204,15 +205,11 @@ impl BuildQueue {
                     if type_.bare != ComponentType::Library
                         && type_.bare != ComponentType::Executable
                     {
-                        // @Task use health.taint(...) "2.0" instead
-                        health = Some(
-                            Diagnostic::error()
-                                .message(format!(
-                                    "the component type ‘{type_}’ is not supported yet",
-                                ))
-                                .primary_span(type_)
-                                .report(&self.reporter),
-                        );
+                        let error = Diagnostic::error()
+                            .message(format!("the component type ‘{type_}’ is not supported yet",))
+                            .primary_span(type_)
+                            .report(&self.reporter);
+                        health.taint(error);
                     }
 
                     let component = self.components.insert_with(|index| {
@@ -269,11 +266,7 @@ impl BuildQueue {
             }
         }
 
-        // @Task use Result::ok_if_untainted "2.0" instead
-        match health {
-            None => Ok(()),
-            Some(error) => Err(error),
-        }
+        health.into()
     }
 
     fn resolve_file(
@@ -391,8 +384,7 @@ impl BuildQueue {
         };
 
         let mut resolved_dependencies = HashMap::default();
-        // @Task use Health once its API allows this
-        let mut health = None::<ErasedReportedError> /* Untainted */;
+        let mut health = Health::Untainted;
 
         for (dependency_exonym, dependency_declaration) in &dependencies.bare {
             match self.resolve_dependency(
@@ -406,18 +398,14 @@ impl BuildQueue {
                     resolved_dependencies.insert(dependency_exonym.bare.clone(), dependency);
                 }
                 Err(DependencyResolutionError::ErasedNonFatal(error)) => {
-                    // @Task use health.taint() once it can accept ErasedReportedErrors
-                    health = Some(error);
+                    health.taint(error);
                 }
                 Err(error) => return Err(error),
             }
         }
 
-        // @Task use Result::ok_if_untainted once the API is modernized
-        match health {
-            None => Ok(resolved_dependencies),
-            Some(error) => Err(DependencyResolutionError::ErasedFatal(error)),
-        }
+        Result::from(Outcome::new(resolved_dependencies, health))
+            .map_err(DependencyResolutionError::ErasedFatal)
     }
 
     fn resolve_dependency(
@@ -558,7 +546,7 @@ impl BuildQueue {
             // @Task message, @Task test
             return Err(
                 Diagnostic::error()
-                    .message("[declared package name does not match actual one]")
+                    .message("declared package name does not match actual one")
                     .primary_span(package_name)
                     .report(&self.reporter)
                     .into()
@@ -760,7 +748,7 @@ fn parse_component_name_from_file_path(path: &Path, reporter: &Reporter) -> Resu
 
     // @Question can the file stem ever be empty in our case?
     let name = path.file_stem().unwrap();
-    // @Beacon @Task do not unwrap! provide custom error
+    // @Task do not unwrap! provide custom error
     let name = name.to_str().unwrap();
 
     Word::parse(name.into()).map_err(|_| {

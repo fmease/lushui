@@ -1,9 +1,4 @@
-//! Abstractions for working with things that have a source location and can have attributes.
-#![feature(default_free_fn, type_changing_struct_update)]
-
-use error::PossiblyErroneous;
-use span::{Span, Spanning};
-use std::default::default;
+use crate::{Span, Spanning};
 
 /// Something with a source location and attributes.
 #[derive(Clone, PartialEq, Eq)]
@@ -33,15 +28,5 @@ impl<Bare, Attributes> Item<Bare, Attributes> {
 impl<Bare, Attribute> Spanning for Item<Bare, Attribute> {
     fn span(&self) -> Span {
         self.span
-    }
-}
-
-impl<Bare: PossiblyErroneous, Attributes: Default> PossiblyErroneous for Item<Bare, Attributes> {
-    fn error() -> Self {
-        Self {
-            bare: Bare::error(),
-            span: default(),
-            attributes: default(),
-        }
     }
 }

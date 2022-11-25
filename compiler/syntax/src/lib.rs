@@ -1,7 +1,7 @@
 //! The front-end concerned with lexing, parsing and lowering.
 #![feature(default_free_fn)]
 
-use error::Result;
+use diagnostics::error::Result;
 use session::BuildSession;
 use span::SourceFileIndex;
 use std::default::default;

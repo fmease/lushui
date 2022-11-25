@@ -26,8 +26,11 @@
 // @Task ungate named arguments but validate them in the resolver (and/or typer)
 
 use ast::{BareHanger, Explicit, Parameter, Path};
-use diagnostics::{reporter::ErasedReportedError, Diagnostic, ErrorCode, Reporter};
-use error::{Health, OkIfUntaintedExt, PossiblyErroneous, Result, Stain};
+use diagnostics::{
+    error::{Handler, Health, Outcome, PossiblyErroneous, Result},
+    reporter::ErasedReportedError,
+    Diagnostic, ErrorCode, Reporter,
+};
 use lowered_ast::{
     attribute::{Predicate, Public, Query, Target},
     AttributeName, Attributes, BareAttribute,
@@ -50,7 +53,7 @@ pub fn lower_file(
     let mut lowerer = Lowerer::new(options, component, session);
     let mut declaration = lowerer.lower_declaration(declaration);
     let root = declaration.pop().unwrap();
-    Result::ok_if_untainted(root, lowerer.health)
+    Outcome::new(root, lowerer.health).into()
 }
 
 /// The state of the lowering pass.
@@ -138,15 +141,11 @@ impl<'a> Lowerer<'a> {
     fn lower_function_declaration(&mut self, function: ast::Function) -> lowered_ast::Function {
         let declaration_type_annotation = match function.type_annotation {
             Some(type_annotation) => type_annotation,
-            None => {
-                missing_mandatory_type_annotation_error(
-                    function.binder.span().fit_end(&function.parameters).end(),
-                    AnnotationTarget::Declaration(&function.binder),
-                )
-                .report(self.session.reporter());
-                self.health.taint();
-                PossiblyErroneous::error()
-            }
+            None => missing_mandatory_type_annotation_error(
+                function.binder.span().fit_end(&function.parameters).end(),
+                AnnotationTarget::Declaration(&function.binder),
+            )
+            .handle(&mut *self),
         };
 
         // @Note type_annotation is currently lowered twice @Task remove duplicate work
@@ -163,15 +162,11 @@ impl<'a> Lowerer<'a> {
                     for parameter in function.parameters.iter().rev() {
                         let parameter_type_annotation = match &parameter.bare.type_annotation {
                             Some(type_annotation) => type_annotation.clone(),
-                            None => {
-                                missing_mandatory_type_annotation_error(
-                                    parameter,
-                                    AnnotationTarget::Parameter(parameter),
-                                )
-                                .report(self.session.reporter());
-                                self.health.taint();
-                                PossiblyErroneous::error()
-                            }
+                            None => missing_mandatory_type_annotation_error(
+                                parameter,
+                                AnnotationTarget::Parameter(parameter),
+                            )
+                            .handle(&mut *self),
                         };
 
                         let parameter_type_annotation =
@@ -210,15 +205,11 @@ impl<'a> Lowerer<'a> {
     fn lower_data_declaration(&mut self, type_: ast::Data) -> lowered_ast::Data {
         let data_type_annotation = match type_.type_annotation {
             Some(type_annotation) => type_annotation,
-            None => {
-                missing_mandatory_type_annotation_error(
-                    type_.binder.span().fit_end(&type_.parameters).end(),
-                    AnnotationTarget::Declaration(&type_.binder),
-                )
-                .report(self.session.reporter());
-                self.health.taint();
-                PossiblyErroneous::error()
-            }
+            None => missing_mandatory_type_annotation_error(
+                type_.binder.span().fit_end(&type_.parameters).end(),
+                AnnotationTarget::Declaration(&type_.binder),
+            )
+            .handle(&mut *self),
         };
 
         let type_annotation =
@@ -244,20 +235,15 @@ impl<'a> Lowerer<'a> {
     ) -> lowered_ast::Constructor {
         let constructor_type_annotation = match constructor.type_annotation {
             Some(type_annotation) => type_annotation,
-            None => {
-                // @Note awkward API!
-                missing_mandatory_type_annotation_error(
-                    constructor
-                        .binder
-                        .span()
-                        .fit_end(&constructor.parameters)
-                        .end(),
-                    AnnotationTarget::Declaration(&constructor.binder),
-                )
-                .report(self.session.reporter());
-                self.health.taint();
-                PossiblyErroneous::error()
-            }
+            None => missing_mandatory_type_annotation_error(
+                constructor
+                    .binder
+                    .span()
+                    .fit_end(&constructor.parameters)
+                    .end(),
+                AnnotationTarget::Declaration(&constructor.binder),
+            )
+            .handle(&mut *self),
         };
 
         let type_annotation = self.lower_parameters_to_annotated_ones(
@@ -270,7 +256,7 @@ impl<'a> Lowerer<'a> {
 
             // @Task improve the labels etc, don't say "conflicting definition"
             // it's technically true, but we can do so much better!
-            Diagnostic::error()
+            let _: ErasedReportedError = Diagnostic::error()
                 .code(ErrorCode::E020)
                 .message(format!(
                     "‘{}’ is defined multiple times in this scope",
@@ -279,8 +265,7 @@ impl<'a> Lowerer<'a> {
                 .labeled_primary_span(&body, "conflicting definition")
                 .note(
                     "the body of the constructor is implied but it also has a body introduced by ‘= ?value’",
-                ).report(self.session.reporter());
-            self.health.taint();
+                ).handle(&mut *self);
         }
 
         lowered_ast::Constructor {
@@ -333,23 +318,24 @@ impl<'a> Lowerer<'a> {
                     Err(error) => {
                         // @Task instead of a note saying the error, print a help message
                         // saying to create the missing file or change the access rights etc.
-                        // @Note awkward API!
-                        Diagnostic::error()
+                        return Diagnostic::error()
                             .code(ErrorCode::E016)
                             .message(format!("could not load the module ‘{}’", module.binder))
                             .path(path)
                             .primary_span(span)
                             .note(error.format())
-                            .report(self.session.reporter());
-                        self.health.taint();
-                        return PossiblyErroneous::error();
+                            .handle(&mut *self);
                     }
                 };
 
-                let Ok(declaration) = syntax::parse_module_file(file, module.binder.clone(), self.session) else {
-                    self.health.taint();
-                    return PossiblyErroneous::error();
-                };
+                let declaration =
+                    match syntax::parse_module_file(file, module.binder.clone(), self.session) {
+                        Ok(declaration) => declaration,
+                        Err(error) => {
+                            self.health.taint(error);
+                            return PossiblyErroneous::error(error);
+                        }
+                    };
 
                 // at this point in time, they are still on the module header if at all
                 assert!(declaration.attributes.is_empty());
@@ -381,7 +367,7 @@ impl<'a> Lowerer<'a> {
                     attributes.0.extend(module_header_attributes.0);
                     attributes = self.check_attribute_synergy(attributes);
                 } else {
-                    Diagnostic::error()
+                    let _: ErasedReportedError = Diagnostic::error()
                         .code(ErrorCode::E041)
                         .message("the module header has to be the first declaration of the module")
                         .primary_span(&declaration)
@@ -394,8 +380,7 @@ impl<'a> Lowerer<'a> {
                                 error
                             }
                         })
-                        .report(self.session.reporter());
-                    self.health.taint();
+                        .handle(&mut *self);
                 }
 
                 has_header = true;
@@ -418,98 +403,18 @@ impl<'a> Lowerer<'a> {
         )
     }
 
+    // @Task verify that the resulting spans are correct
     fn lower_use_declaration(
         &mut self,
         use_: ast::Use,
         attributes: Attributes,
         span: Span,
     ) -> SmallVec<lowered_ast::Declaration, 1> {
-        // @Task verify that the resulting spans are correct
-
-        use ast::{BareUsePathTree::*, UsePathTree};
-
         let mut declarations = SmallVec::new();
-
-        // @Beacon @Task we should improve this error handling here!!!!
-        fn lower_use_path_tree(
-            path: Path,
-            bindings: Vec<UsePathTree>,
-            span: Span,
-            attributes: Attributes,
-            declarations: &mut SmallVec<lowered_ast::Declaration, 1>,
-            reporter: &Reporter,
-        ) -> Result {
-            let mut health = Health::Untainted;
-
-            // @Note awkward API!
-            macro try_($subject:expr) {
-                match $subject {
-                    Ok(subject) => subject,
-                    Err(error) => {
-                        error.report(reporter); // @Temporary (upstream should return () in the future)
-                        health.taint();
-                        continue;
-                    }
-                }
-            }
-
-            for binding in bindings {
-                match binding.bare {
-                    Single { target, binder } => {
-                        let combined_target = try_!(path.clone().join(target.clone()));
-
-                        // if the binder is not explicitly set, look for the most-specific/last/right-most
-                        // identifier of the target but if that one is `self`, look up the last identifier of
-                        // the parent path
-                        let binder = binder
-                            .or_else(|| {
-                                if target.bare_hanger(BareHanger::Self_).is_some() {
-                                    &path
-                                } else {
-                                    &target
-                                }
-                                .last_identifier()
-                                .cloned()
-                            })
-                            .ok_or_else(|| {
-                                // @Task improve the message for `use topmost.(self)`: hint that `self`
-                                // is effectively unnamed because `topmost` is unnamed
-                                invalid_unnamed_path_hanger_error(target.hanger.unwrap())
-                            });
-                        let binder = try_!(binder);
-
-                        declarations.push(lowered_ast::Declaration::new(
-                            attributes.clone(),
-                            span,
-                            lowered_ast::Use {
-                                binder,
-                                target: combined_target,
-                            }
-                            .into(),
-                        ));
-                    }
-                    Multiple {
-                        path: inner_path,
-                        bindings,
-                    } => {
-                        lower_use_path_tree(
-                            try_!(path.clone().join(inner_path)),
-                            bindings,
-                            span,
-                            attributes.clone(),
-                            declarations,
-                            reporter,
-                        )?;
-                    }
-                }
-            }
-
-            health.into()
-        }
 
         'discriminate: {
             match use_.bindings.bare {
-                Single { target, binder } => {
+                ast::BareUsePathTree::Single { target, binder } => {
                     let binder = binder.or_else(|| target.last_identifier().cloned());
                     let Some(binder) = binder else {
                                 // @Task improve the message for `use topmost.(self)`: hint that `self`
@@ -517,9 +422,8 @@ impl<'a> Lowerer<'a> {
                                 // @Task the message is even worse (it is misleading!) with `use extern.(self)`
                                 // currently leads to the suggestion to bind `self` to an identifier but
                                 // for `extern` that is invalid, too
-                                invalid_unnamed_path_hanger_error(target.hanger.unwrap())
-                                    .report(self.session.reporter());
-                                self.health.taint();
+                                let _: ErasedReportedError = invalid_unnamed_path_hanger(target.hanger.unwrap())
+                                    .handle(&mut *self);
                                 break 'discriminate;
                             };
 
@@ -529,19 +433,87 @@ impl<'a> Lowerer<'a> {
                         lowered_ast::Use { binder, target }.into(),
                     ));
                 }
-                Multiple { path, bindings } => lower_use_path_tree(
-                    path,
-                    bindings,
-                    span,
-                    attributes,
-                    &mut declarations,
-                    self.session.reporter(),
-                )
-                .stain(&mut self.health),
+                ast::BareUsePathTree::Multiple { path, bindings } => {
+                    self.lower_use_path_tree(path, bindings, span, attributes, &mut declarations);
+                }
             }
         }
 
         declarations
+    }
+
+    fn lower_use_path_tree(
+        &mut self,
+        path: Path,
+        bindings: Vec<ast::UsePathTree>,
+        span: Span,
+        attributes: Attributes,
+        declarations: &mut SmallVec<lowered_ast::Declaration, 1>,
+    ) {
+        for binding in bindings {
+            match binding.bare {
+                ast::BareUsePathTree::Single { target, binder } => {
+                    let combined_target = match path.clone().join(target.clone()) {
+                        Ok(target) => target,
+                        Err(hanger) => {
+                            let _: ErasedReportedError =
+                                incorrectly_positioned_path_hanger(hanger).handle(&mut *self);
+                            continue;
+                        }
+                    };
+
+                    // if the binder is not explicitly set, look for the most-specific/last/right-most
+                    // identifier of the target but if that one is `self`, look up the last identifier of
+                    // the parent path
+                    let Some(binder) = binder.or_else(|| {
+                        if target.bare_hanger(BareHanger::Self_).is_some() {
+                            &path
+                        } else {
+                            &target
+                        }
+                        .last_identifier()
+                        .cloned()
+                    }) else {
+                        // @Task improve the message for `use topmost.(self)`: hint that `self`
+                        // is effectively unnamed because `topmost` is unnamed
+                        let _: ErasedReportedError = invalid_unnamed_path_hanger(target.hanger.unwrap())
+                                .handle(&mut *self);
+                        continue
+                    };
+
+                    declarations.push(lowered_ast::Declaration::new(
+                        attributes.clone(),
+                        span,
+                        lowered_ast::Use {
+                            binder,
+                            target: combined_target,
+                        }
+                        .into(),
+                    ));
+                }
+                ast::BareUsePathTree::Multiple {
+                    path: inner_path,
+                    bindings,
+                } => {
+                    let path = match path.clone().join(inner_path) {
+                        Ok(path) => path,
+                        Err(hanger) => {
+                            let _: ErasedReportedError =
+                                incorrectly_positioned_path_hanger(hanger).handle(&mut *self);
+                            continue;
+                        }
+                    };
+
+                    self.lower_use_path_tree(
+                        path,
+                        bindings,
+                        span,
+                        attributes.clone(),
+                        declarations,
+                    );
+                }
+            }
+        }
     }
 
     /// Lower an expression.
@@ -570,11 +542,10 @@ impl<'a> Lowerer<'a> {
             }
             Application(application) => {
                 if let Some(binder) = &application.binder {
-                    Diagnostic::error()
+                    let _: ErasedReportedError = Diagnostic::error()
                         .message("named arguments are not supported yet")
                         .primary_span(binder)
-                        .report(self.session.reporter());
-                    self.health.taint();
+                        .handle(&mut *self);
                 }
 
                 let callee = self.lower_expression(application.callee);
@@ -599,24 +570,16 @@ impl<'a> Lowerer<'a> {
             TextLiteral(text) => {
                 lowered_ast::Expression::new(attributes, expression.span, (*text).into())
             }
-            TypedHole(_hole) => {
-                Diagnostic::error()
-                    .message("typed holes are not supported yet")
-                    .primary_span(expression.span)
-                    .report(self.session.reporter());
-                self.health.taint();
-                PossiblyErroneous::error()
-            }
+            TypedHole(_hole) => Diagnostic::error()
+                .message("typed holes are not supported yet")
+                .primary_span(expression.span)
+                .handle(&mut *self),
             // @Task avoid re-boxing!
             Path(path) => lowered_ast::Expression::new(attributes, expression.span, (*path).into()),
-            Field(_field) => {
-                Diagnostic::error()
-                    .message("record fields are not supported yet")
-                    .primary_span(expression.span)
-                    .report(self.session.reporter());
-                self.health.taint();
-                PossiblyErroneous::error()
-            }
+            Field(_field) => Diagnostic::error()
+                .message("record fields are not supported yet")
+                .primary_span(expression.span)
+                .handle(&mut *self),
             LambdaLiteral(lambda) => {
                 let mut expression = self.lower_expression(lambda.body);
 
@@ -655,23 +618,19 @@ impl<'a> Lowerer<'a> {
 
                     match let_in.expression {
                         Some(expression) => expression,
-                        None => {
-                            Diagnostic::error()
-                                .code(ErrorCode::E012)
-                                .message(format!("the let-binding ‘{binder}’ has no definition"))
-                                .primary_span(
-                                    let_in
-                                        .binder
-                                        .span()
-                                        .fit_end(&let_in.parameters)
-                                        .fit_end(&let_in.type_annotation)
-                                        .end(),
-                                )
-                                .help("provide a definition with ‘= ?value’")
-                                .report(self.session.reporter());
-                            self.health.taint();
-                            PossiblyErroneous::error()
-                        }
+                        None => Diagnostic::error()
+                            .code(ErrorCode::E012)
+                            .message(format!("the let-binding ‘{binder}’ has no definition"))
+                            .primary_span(
+                                let_in
+                                    .binder
+                                    .span()
+                                    .fit_end(&let_in.parameters)
+                                    .fit_end(&let_in.type_annotation)
+                                    .end(),
+                            )
+                            .help("provide a definition with ‘= ?value’")
+                            .handle(&mut *self),
                     }
                 };
 
@@ -734,14 +693,10 @@ impl<'a> Lowerer<'a> {
                     .into(),
                 )
             }
-            UseIn(_use_in) => {
-                Diagnostic::error()
-                    .message("use/in-expressions are not supported yet")
-                    .primary_span(expression.span)
-                    .report(self.session.reporter());
-                self.health.taint();
-                PossiblyErroneous::error()
-            }
+            UseIn(_use_in) => Diagnostic::error()
+                .message("use/in-expressions are not supported yet")
+                .primary_span(expression.span)
+                .handle(&mut *self),
             CaseAnalysis(analysis) => {
                 let mut cases = Vec::new();
 
@@ -760,14 +715,10 @@ impl<'a> Lowerer<'a> {
                     lowered_ast::CaseAnalysis { scrutinee, cases }.into(),
                 )
             }
-            DoBlock(_block) => {
-                Diagnostic::error()
-                    .message("do blocks are not supported yet")
-                    .primary_span(expression.span)
-                    .report(self.session.reporter());
-                self.health.taint();
-                PossiblyErroneous::error()
-            }
+            DoBlock(_block) => Diagnostic::error()
+                .message("do blocks are not supported yet")
+                .primary_span(expression.span)
+                .handle(&mut *self),
             SequenceLiteral(sequence) => lowered_ast::Expression::new(
                 attributes,
                 expression.span,
@@ -782,7 +733,7 @@ impl<'a> Lowerer<'a> {
                 }
                 .into(),
             ),
-            Error => PossiblyErroneous::error(),
+            Error(error) => PossiblyErroneous::error(error),
         };
 
         expression
@@ -795,25 +746,20 @@ impl<'a> Lowerer<'a> {
         let attributes = self.lower_attributes(&pattern.attributes, &pattern);
 
         match pattern.bare {
-            // @Task avoid re-boxing!
             NumberLiteral(literal) => {
                 lowered_ast::Pattern::new(attributes, pattern.span, (*literal).into())
             }
-            // @Task avoid re-boxing!
             TextLiteral(literal) => {
                 lowered_ast::Pattern::new(attributes, pattern.span, (*literal).into())
             }
-            // @Task avoid re-boxing!
             Path(path) => lowered_ast::Pattern::new(attributes, pattern.span, (*path).into()),
-            // @Task avoid re-boxing!
             Binder(binder) => lowered_ast::Pattern::new(attributes, pattern.span, (*binder).into()),
             Application(application) => {
                 if let Some(binder) = &application.binder {
-                    Diagnostic::error()
+                    let _: ErasedReportedError = Diagnostic::error()
                         .message("named arguments are not supported yet")
                         .primary_span(binder)
-                        .report(self.session.reporter());
-                    self.health.taint();
+                        .handle(&mut *self);
                 }
 
                 let callee = self.lower_pattern(application.callee);
@@ -860,18 +806,20 @@ impl<'a> Lowerer<'a> {
         let mut conforming_attributes = Attributes::default();
 
         for attribute in unchecked_attributes {
-            let Ok(attribute) = Attribute::parse(attribute, &self.options, self.session) else {
-                self.health.taint();
-                continue;
+            let attribute = match Attribute::parse(attribute, &self.options, self.session) {
+                Ok(attribute) => attribute,
+                Err(error) => {
+                    self.health.taint(error);
+                    continue;
+                }
             };
 
             // search for non-conforming attributes
             {
                 let expected_targets = attribute.bare.targets();
-
                 if !expected_targets.contains(actual_targets) {
                     // @Question wording: "cannot be ascribed to"?
-                    Diagnostic::error()
+                    let _: ErasedReportedError = Diagnostic::error()
                         .code(ErrorCode::E013)
                         .message(format!(
                             "attribute ‘{}’ is ascribed to {}",
@@ -885,8 +833,7 @@ impl<'a> Lowerer<'a> {
                             attribute.bare.name(),
                             expected_targets.description(),
                         ))
-                        .report(self.session.reporter());
-                    self.health.taint();
+                        .handle(&mut *self);
                     continue;
                 }
             }
@@ -895,11 +842,7 @@ impl<'a> Lowerer<'a> {
         }
 
         let attributes = self.check_attribute_synergy(conforming_attributes);
-
-        target
-            .check_attributes(&attributes, self.session)
-            .stain(&mut self.health);
-
+        target.check_attributes(&attributes, self);
         attributes
     }
 
@@ -924,15 +867,14 @@ impl<'a> Lowerer<'a> {
             }
 
             if let [first, _second, ..] = &*homonymous_attributes {
-                Diagnostic::error()
+                let _: ErasedReportedError = Diagnostic::error()
                     .code(ErrorCode::E006)
                     .message(format!("multiple ‘{}’ attributes", first.bare.name()))
                     .labeled_primary_spans(
                         homonymous_attributes,
                         "duplicate or conflicting attribute",
                     )
-                    .report(self.session.reporter());
-                self.health.taint();
+                    .handle(&mut *self);
             }
         }
 
@@ -941,65 +883,54 @@ impl<'a> Lowerer<'a> {
             return attributes;
         }
 
-        fn check_mutual_exclusivity<Q: Query>(
-            query: Q,
-            attributes: &Attributes,
-            reporter: &Reporter,
-        ) -> Result {
-            let attributes = attributes.filter(query).collect::<Vec<_>>();
-
-            if attributes.len() > 1 {
-                let listing = attributes
-                    .iter()
-                    .map(|attribute| attribute.bare.name().to_str().quote())
-                    .list(Conjunction::And);
-
-                return Err(Diagnostic::error()
-                    .code(ErrorCode::E014)
-                    .message(format!("attributes {listing} are mutually exclusive"))
-                    .labeled_primary_spans(attributes, "conflicting attribute")
-                    .report(reporter));
-            }
-
-            Ok(())
-        }
-
         {
             use AttributeName::*;
-
-            check_mutual_exclusivity(Intrinsic.or(Known), &attributes, self.session.reporter())
-                .stain(&mut self.health);
-            check_mutual_exclusivity(Moving.or(Abstract), &attributes, self.session.reporter())
-                .stain(&mut self.health);
+            self.check_mutual_exclusivity(Intrinsic.or(Known), &attributes);
+            self.check_mutual_exclusivity(Moving.or(Abstract), &attributes);
         }
 
         for attribute in attributes.filter(Predicate(|attribute| !attribute.is_implemented())) {
-            Diagnostic::error()
+            let _: ErasedReportedError = Diagnostic::error()
                 .message(format!(
                     "the attribute ‘{}’ is not supported yet",
                     attribute.bare.name()
                 ))
                 .primary_span(attribute)
-                .report(self.session.reporter());
-            self.health.taint();
+                .handle(&mut *self);
         }
 
         // @Task replace this concept with a feature system
         if !self.options.internal_features_enabled {
             for attribute in attributes.filter(Predicate(BareAttribute::is_internal)) {
-                Diagnostic::error()
+                let _: ErasedReportedError = Diagnostic::error()
                     .code(ErrorCode::E038)
                     .message(format!(
                         "the attribute ‘{}’ is an internal feature",
                         attribute.bare.name()
                     ))
                     .primary_span(attribute)
-                    .report(self.session.reporter());
-                self.health.taint();
+                    .handle(&mut *self);
             }
         }
 
         attributes
+    }
+
+    fn check_mutual_exclusivity<Q: Query>(&mut self, query: Q, attributes: &Attributes) {
+        let attributes = attributes.filter(query).collect::<Vec<_>>();
+
+        if attributes.len() > 1 {
+            let listing = attributes
+                .iter()
+                .map(|attribute| attribute.bare.name().to_str().quote())
+                .list(Conjunction::And);
+
+            let _: ErasedReportedError = Diagnostic::error()
+                .code(ErrorCode::E014)
+                .message(format!("attributes {listing} are mutually exclusive"))
+                .labeled_primary_spans(attributes, "conflicting attribute")
+                .handle(self);
+        }
     }
 
     /// Lower annotated parameters.
@@ -1013,15 +944,11 @@ impl<'a> Lowerer<'a> {
         for parameter in parameters.into_iter().rev() {
             let parameter_type_annotation = match parameter.bare.type_annotation {
                 Some(type_annotation) => type_annotation,
-                None => {
-                    missing_mandatory_type_annotation_error(
-                        &parameter,
-                        AnnotationTarget::Parameter(&parameter),
-                    )
-                    .report(self.session.reporter());
-                    self.health.taint();
-                    PossiblyErroneous::error()
-                }
+                None => missing_mandatory_type_annotation_error(
+                    &parameter,
+                    AnnotationTarget::Parameter(&parameter),
+                )
+                .handle(&mut *self),
             };
 
             let parameter_type_annotation = self.lower_expression(parameter_type_annotation);
@@ -1041,6 +968,14 @@ impl<'a> Lowerer<'a> {
         }
 
         expression
+    }
+}
+
+impl Handler for &mut Lowerer<'_> {
+    fn handle<T: PossiblyErroneous>(self, diagnostic: Diagnostic) -> T {
+        let error = diagnostic.report(self.session.reporter());
+        self.health.taint(error);
+        T::error(error)
     }
 }
 
@@ -1065,17 +1000,15 @@ struct DeclarationContext {
 const NAT32_INTERVAL_REPRESENTATION: &str = "[0, 2^32-1]";
 
 trait TargetExt: Target {
-    fn check_attributes(&self, attributes: &Attributes, session: &BuildSession) -> Result;
+    fn check_attributes(&self, attributes: &Attributes, lowerer: &mut Lowerer<'_>);
 }
 
 impl<T: Target> TargetExt for T {
-    default fn check_attributes(&self, _: &Attributes, _: &BuildSession) -> Result {
-        Ok(())
-    }
+    default fn check_attributes(&self, _: &Attributes, _: &mut Lowerer<'_>) {}
 }
 
 impl TargetExt for ast::Declaration {
-    fn check_attributes(&self, attributes: &Attributes, session: &BuildSession) -> Result {
+    fn check_attributes(&self, attributes: &Attributes, lowerer: &mut Lowerer<'_>) {
         use ast::BareDeclaration::*;
 
         let (binder, missing_definition_location, definition_marker, body) = match &self.bare {
@@ -1096,7 +1029,7 @@ impl TargetExt for ast::Declaration {
                             .between(self.span.end())
                             .trim_start_matches(
                                 |character| character.is_ascii_whitespace(),
-                                &session.shared_map(),
+                                &lowerer.session.shared_map(),
                             );
 
                         (
@@ -1123,7 +1056,7 @@ impl TargetExt for ast::Declaration {
                             .between(self.span.end())
                             .trim_start_matches(
                                 |character| character.is_ascii_whitespace(),
-                                &session.shared_map(),
+                                &lowerer.session.shared_map(),
                             );
 
                         (
@@ -1143,11 +1076,11 @@ the body containing a set of constructors
                     }),
                 )
             }
-            _ => return Ok(()),
+            _ => return,
         };
 
-        match (body, attributes.span(AttributeName::Intrinsic)) {
-            (Some((body_span, body_label)), Some(intrinsic)) => Err(Diagnostic::error()
+        let _: ErasedReportedError = match (body, attributes.span(AttributeName::Intrinsic)) {
+            (Some((body_span, body_label)), Some(intrinsic)) => Diagnostic::error()
                 .code(ErrorCode::E042)
                 .message(format!(
                     "the declaration ‘{binder}’ marked as ‘intrinsic’ has a body",
@@ -1158,15 +1091,15 @@ the body containing a set of constructors
                     "marks the declaration as being defined outside of the language",
                 )
                 .help("remove either the body or the attribute")
-                .report(session.reporter())),
-            (None, None) => Err(Diagnostic::error()
+                .handle(lowerer),
+            (None, None) => Diagnostic::error()
                 .code(ErrorCode::E012)
                 .message(format!("the declaration ‘{binder}’ has no definition"))
                 .primary_span(missing_definition_location)
                 .help(format!("provide a definition with ‘{definition_marker}’"))
-                .report(session.reporter())),
-            _ => Ok(()),
-        }
+                .handle(lowerer),
+            _ => return,
+        };
     }
 }
 
@@ -1366,12 +1299,12 @@ impl BareAttributeExt for lowered_ast::BareAttribute {
             // unless the attribute does not exist in the first place since in such case,
             // no argument was parsed either
             if let Some(argument) = arguments.first() {
-                Diagnostic::error()
+                let error = Diagnostic::error()
                     .code(ErrorCode::E019)
                     .message("too many attribute arguments provided")
                     .primary_span(argument.span.merge(arguments.last()))
                     .report(session.reporter());
-                health.taint();
+                health.taint(error);
             }
         }
 
@@ -1384,7 +1317,7 @@ impl BareAttributeExt for lowered_ast::BareAttribute {
                     .report(session.reporter()),
                 AttributeParsingError::Erased(error) => error,
             })
-            .and_then(|attributes| Result::ok_if_untainted(attributes, health))
+            .and_then(|attributes| Outcome::new(attributes, health).into())
     }
 }
 
@@ -1577,13 +1510,21 @@ impl LintExt for lowered_ast::attribute::Lint {
     }
 }
 
-fn invalid_unnamed_path_hanger_error(hanger: ast::Hanger) -> Diagnostic {
+fn invalid_unnamed_path_hanger(hanger: ast::Hanger) -> Diagnostic {
     Diagnostic::error()
         .code(ErrorCode::E025)
         .message(format!("path ‘{hanger}’ is not bound to an identifier"))
         .primary_span(hanger)
         .note("a use-declaration has to introduce at least one new binder")
         .help("bind the path to a name with ‘as’")
+}
+
+fn incorrectly_positioned_path_hanger(hanger: ast::Hanger) -> Diagnostic {
+    Diagnostic::error()
+        .code(ErrorCode::E026)
+        .message(format!("path ‘{hanger}’ not allowed in this position"))
+        .primary_span(hanger)
+        .help("consider moving this path to a separate use-declaration")
 }
 
 // @Temporary signature

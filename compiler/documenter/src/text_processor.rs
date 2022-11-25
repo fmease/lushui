@@ -1,6 +1,6 @@
 use super::{format::declaration_url_fragment, node::Node};
 use crossbeam::thread::{Scope, ScopedJoinHandle};
-use error::Result;
+use diagnostics::error::Result;
 use resolver::resolve_path;
 use session::{BuildSession, Component};
 use std::{

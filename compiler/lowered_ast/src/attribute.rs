@@ -1,5 +1,4 @@
 use derivation::{Discriminant, Elements, FromStr, Str};
-use error::PossiblyErroneous;
 use span::{Span, Spanned, Spanning};
 use std::fmt;
 use utilities::{condition, obtain, Atom};
@@ -76,7 +75,7 @@ impl Target for ast::Expression {
             CaseAnalysis(_) => "a case analysis",
             DoBlock(_) => "a do block",
             SequenceLiteral(_) => "a sequence literal expression",
-            Error => "an erroneous expression",
+            Error(_) => "an erroneous expression",
         }
     }
 
@@ -97,7 +96,7 @@ impl Target for ast::Expression {
             CaseAnalysis(_) => Targets::CASE_ANALYSIS_EXPRESSION,
             DoBlock(_) => Targets::DO_BLOCK_EXPRESSION,
             SequenceLiteral(_) => Targets::SEQUENCE_LITERAL_EXPRESSION,
-            Error => Targets::empty(),
+            Error(_) => Targets::empty(),
         }
     }
 }
@@ -277,12 +276,6 @@ impl Attributes {
             .iter()
             .find(move |attribute| query.matches(&attribute.bare))
             .map(Attribute::span)
-    }
-}
-
-impl PossiblyErroneous for Attributes {
-    fn error() -> Self {
-        Self::default()
     }
 }
 

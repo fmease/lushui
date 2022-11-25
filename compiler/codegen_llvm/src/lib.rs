@@ -2,8 +2,7 @@
 #![feature(default_free_fn, let_chains, io_error_other)]
 #![allow(clippy::match_same_arms)] // @Temporary
 
-use diagnostics::Diagnostic;
-use error::Result;
+use diagnostics::{error::Result, Diagnostic};
 use hir::DeclarationIndex;
 use hir_format::ComponentExt;
 use inkwell::{
@@ -326,7 +325,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
             }
             Use(_) => {}
             // @Question how should we handle that?
-            Error => todo!(),
+            Error(_) => todo!(),
         };
     }
 
@@ -383,7 +382,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
             }
             Use(_) => {}
             // @Question how should we handle that?
-            Error => todo!(),
+            Error(_) => todo!(),
         };
     }
 
@@ -413,7 +412,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
             }
             Substituted(_) => todo!(),
             IO(_) => todo!(),
-            Error => todo!(),
+            Error(_) => todo!(),
         }
     }
 
@@ -490,7 +489,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
             IntrinsicApplication(_) => todo!("compiling intrinsic applications"),
             Projection(_) => todo!("compiling record projections"),
             IO(_) => todo!("compiling IO actions"),
-            Substituted(_) | Error => unreachable!(),
+            Substituted(_) | Error(_) => unreachable!(),
         }
     }
 
@@ -551,7 +550,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
             Substituted(_) => todo!(),
             IntrinsicApplication(_) => todo!(),
             Projection(_) => todo!(),
-            Error => todo!(),
+            Error(_) => todo!(),
             Number(_) | Text(_) | IO(_) => unreachable!(),
         }
     }
@@ -576,7 +575,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
             IntrinsicApplication(_) => todo!(),
             Projection(_) => todo!(),
             IO(_) => todo!(),
-            Error => todo!(),
+            Error(_) => todo!(),
         }
     }
 
@@ -620,7 +619,7 @@ impl ExpressionExt for hir::Expression {
             Substituted(_) => todo!(),
             Projection(_) => todo!(),
             IO(_) => todo!(),
-            Error => todo!(),
+            Error(_) => todo!(),
         }
     }
 }
