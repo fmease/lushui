@@ -278,7 +278,7 @@ impl Display for super::Pattern {
             NumberLiteral(number) => write!(f, "{number}"),
             TextLiteral(text) => write!(f, "{text}"),
             Path(path) => write!(f, "{path}"),
-            Binder(path) => write!(f, "{backslash}{path}", backslash = "\\".color(SYMBOL_COLOR),),
+            Binder(path) => write!(f, "{backslash}{path}", backslash = "\\".color(SYMBOL_COLOR)),
             Application(application) => {
                 write!(f, "(")?;
                 application.callee.write(f)?;

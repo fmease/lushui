@@ -1,13 +1,16 @@
-error[E061]: ‘i-definitely-do-not-exist’ is not an intrinsic function
+error[E061]: ‘unrecognized-intrinsic-function.i-definitely-do-not-exist’ is not an intrinsic binding
    ┌─ ${TEST_FOLDER}/unrecognized-intrinsic-function.lushui:10:1
    │
 10 │ @intrinsic
-   │ ──────────
+   │ ────────── claims the binding is intrinsic to the language
    │
    ├─ ${TEST_FOLDER}/unrecognized-intrinsic-function.lushui:11:1
    │
 11 │ i-definitely-do-not-exist: I-Do-Exist
    │ ═════════════════════════
+   │
+  help: consider adding an explicit name to the attribute to overwrite the derived one:
+        ‘@(intrinsic name)’
 
 error: aborting due to previous error
 

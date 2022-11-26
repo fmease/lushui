@@ -5,3 +5,9 @@ use topmost.type.Type
 
 @public @intrinsic
 data Nat32: Type
+
+@public @intrinsic
+successor: Nat32 -> Nat32
+
+@public @intrinsic
+add: Nat32 -> Nat32 -> Nat32

@@ -8,15 +8,15 @@ use extern.core.(
     )
 
 it: Tuple (
-    List.cons Type Int
-    (List.cons Type Unit
-    (List.cons Type Int
+    List.prepend Type Int
+    (List.prepend Type Unit
+    (List.prepend Type Int
         (List.empty Type))))
     =
-    Tuple.cons
-        Int (List.cons Type Unit (List.cons Type Int (List.empty Type)))
-        Int.-87 (Tuple.cons
-            Unit (List.cons Type Type (List.empty Type))
-            (identity Unit Unit.unit) (Tuple.cons
+    Tuple.prepend
+        Int (List.prepend Type Unit (List.prepend Type Int (List.empty Type)))
+        Int.-87 (Tuple.prepend
+            Unit (List.prepend Type Type (List.empty Type))
+            (identity Unit Unit.unit) (Tuple.prepend
                 Int (List.empty Type) Int.91
                     Tuple.empty))

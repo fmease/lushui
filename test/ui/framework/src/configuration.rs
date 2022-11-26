@@ -91,7 +91,7 @@ impl<'src> Configuration<'src> {
                     if configuration.program_env_vars.contains_key(name) {
                         // @Task better message
                         return Err(Error::new(
-                            format!("the program environment variable ‘{name}’ is already set",),
+                            format!("the program environment variable ‘{name}’ is already set"),
                             block.span,
                         ));
                     }

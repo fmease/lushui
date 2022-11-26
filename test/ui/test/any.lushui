@@ -2,7 +2,7 @@
 
 use extern.core.(
     type.Type
-    list.(List empty cons)
+    list.(List empty prepend)
     bool.(Bool false true)
     unit.(Unit unit)
     )
@@ -13,7 +13,7 @@ data Any: Type of
 use Any.any
 
 foo: List Bool =
-    cons Bool false (cons Bool true (empty Bool))
+    prepend Bool false (prepend Bool true (empty Bool))
 
 bar: List Any =
-    cons Any (any Unit unit) (cons Any (any Bool false) (empty Any))
+    prepend Any (any Unit unit) (prepend Any (any Bool false) (empty Any))

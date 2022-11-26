@@ -1,6 +1,6 @@
 use crate::{
-    intrinsic, Attributes, DeclarationIndex, Exposure, Expression, Identifier,
-    LocalDeclarationIndex, Namespace, ValueView,
+    special, Attributes, DeclarationIndex, Exposure, Expression, Identifier, LocalDeclarationIndex,
+    Namespace, ValueView,
 };
 use diagnostics::{error::PossiblyErroneous, reporter::ErasedReportedError};
 use std::default::default;
@@ -173,7 +173,7 @@ pub enum EntityKind {
         type_: Expression,
     },
     IntrinsicFunction {
-        function: intrinsic::Function,
+        function: special::Function,
         type_: Expression,
     },
     Error(ErasedReportedError),

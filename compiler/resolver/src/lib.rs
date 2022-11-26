@@ -15,26 +15,26 @@
 
 use colored::Colorize;
 use diagnostics::{
-    error::{Health, Outcome, PossiblyErroneous, Result, Stain},
+    error::{Handler, Health, Outcome, PossiblyErroneous, Result, Stain},
     reporter::ErasedReportedError,
     Diagnostic, ErrorCode, LintCode,
 };
 use hir::{
-    intrinsic, AttributeName, Attributes, DeBruijnIndex, DeclarationIndex, Entity, EntityKind,
-    Exposure, ExposureReach, Identifier, Index, LocalDeclarationIndex, PartiallyResolvedPath,
+    special::{self, NumericType, SequentialType, Type},
+    AttributeName, Attributes, DeBruijnIndex, DeclarationIndex, Entity, EntityKind, Exposure,
+    ExposureReach, Identifier, Index, LocalDeclarationIndex, PartiallyResolvedPath,
 };
 use hir_format::{ComponentExt as _, DefaultContext, Display};
 use session::{
     BuildSession, Component, DeclarationIndexExt, IdentifierExt, LocalDeclarationIndexExt,
 };
-use smallvec::smallvec;
 use span::{Span, Spanned, Spanning};
 use std::{cmp::Ordering, default::default, fmt, mem, sync::Mutex};
 use token::Word;
 use unicode_width::UnicodeWidthStr;
 use utilities::{
-    cycle::find_cycles, displayed, obtain, pluralize, AsAutoColoredChangeset, Conjunction, HashMap,
-    ListingExt, QuoteExt, SmallVec,
+    cycle::find_cycles, displayed, obtain, pluralize, smallvec, AsAutoColoredChangeset,
+    Conjunction, HashMap, ListingExt, QuoteExt, SmallVec,
 };
 
 /// Resolve the names of a declaration.
@@ -150,7 +150,7 @@ impl<'a> ResolverMut<'a> {
         use lowered_ast::BareDeclaration::*;
 
         let exposure = match declaration.attributes.get::<{ AttributeName::Public }>() {
-            Some(public) => match &public.reach {
+            Some(public) => match &public.bare.reach {
                 Some(reach) => ExposureReach::PartiallyResolved(PartiallyResolvedPath {
                     // unwrap: root always has Exposure::Unrestricted, it won't reach this branch
                     namespace: module.unwrap(),
@@ -170,13 +170,31 @@ impl<'a> ResolverMut<'a> {
             Function(function) => {
                 let module = module.unwrap();
 
-                self.define(
+                let index = self.define(
                     function.binder.clone(),
                     exposure,
                     declaration.attributes.clone(),
                     EntityKind::UntypedFunction,
                     Some(module),
                 )?;
+
+                let binder = Identifier::new(index.global(self.component), function.binder.clone());
+
+                if let Some(intrinsic) = declaration.attributes.get::<{ AttributeName::Intrinsic }>()
+                && let Err(error) = self.session
+                    .special
+                    .define(
+                        special::Kind::Intrinsic,
+                        binder,
+                        match &intrinsic.bare.name {
+                            Some(name) => special::DefinitionStyle::Explicit { name },
+                            None => special::DefinitionStyle::Implicit { namespace: Some(self.component[module].source.as_str()) },
+                        },
+                        intrinsic.span,
+                    )
+                {
+                    let _: ErasedReportedError = error.handle(&mut *self);
+                }
             }
             Data(type_) => {
                 // there is always a root module
@@ -193,17 +211,34 @@ impl<'a> ResolverMut<'a> {
 
                 let binder = Identifier::new(index.global(self.component), type_.binder.clone());
 
-                let known = declaration.attributes.span(AttributeName::Known);
-                if let Some(known) = known {
-                    self.session
-                        .define_known_binding(&binder, None, known)
-                        .stain(&mut self.health);
+                let known = declaration.attributes.get::<{ AttributeName::Known }>();
+                if let Some(known) = known
+                && let Err(error) = self.session.special.define(
+                    special::Kind::Known,
+                    binder.clone(),
+                    match &known.bare.name {
+                        Some(name) => special::DefinitionStyle::Explicit { name },
+                        None => special::DefinitionStyle::Implicit { namespace: None },
+                    },
+                    known.span,
+                ) {
+                    let _: ErasedReportedError = error.handle(&mut *self);
                 }
 
-                if let Some(intrinsic) = declaration.attributes.span(AttributeName::Intrinsic) {
-                    self.session
-                        .define_intrinsic_type(binder, intrinsic)
-                        .stain(&mut self.health);
+                if let Some(intrinsic) = declaration.attributes.get::<{ AttributeName::Intrinsic }>()
+                && let Err(error) = self.session
+                    .special
+                    .define(
+                        special::Kind::Intrinsic,
+                        binder,
+                        match &intrinsic.bare.name {
+                            Some(name) => special::DefinitionStyle::Explicit { name },
+                            None => special::DefinitionStyle::Implicit { namespace: None },
+                        },
+                        intrinsic.span,
+                    )
+                {
+                    let _: ErasedReportedError = error.handle(&mut *self);
                 }
 
                 let health = &mut Health::Untainted;
@@ -222,7 +257,7 @@ impl<'a> ResolverMut<'a> {
                             Context::DataDeclaration {
                                 index,
                                 transparency: Some(transparency),
-                                known,
+                                known: known.map(|known| known.span),
                             },
                         )
                         .map_err(DefinitionError::into_inner)
@@ -256,14 +291,18 @@ impl<'a> ResolverMut<'a> {
                 let binder =
                     Identifier::new(index.global(self.component), constructor.binder.clone());
 
-                if let Some(known) = known {
-                    self.session
-                        .define_known_binding(
-                            &binder,
-                            Some(self.component[namespace].source.as_str()),
-                            known,
-                        )
-                        .stain(&mut self.health);
+                // @Task support `@(known name)` on constructors
+                if let Some(known) = known
+                && let Err(error) = self.session
+                    .special
+                    .define(
+                        special::Kind::Known,
+                        binder,
+                        special::DefinitionStyle::Implicit { namespace: Some(self.component[namespace].source.as_str()) },
+                        known,
+                    )
+                {
+                    let _: ErasedReportedError = error.handle(&mut *self);
                 }
             }
             Module(submodule) => {
@@ -699,6 +738,14 @@ expected the exposure of ‘{}’
     }
 }
 
+impl Handler for &mut ResolverMut<'_> {
+    fn handle<T: PossiblyErroneous>(self, diagnostic: Diagnostic) -> T {
+        let error = diagnostic.report(self.session.reporter());
+        self.health.taint(error);
+        T::error(error)
+    }
+}
+
 struct Resolver<'a> {
     component: &'a Component,
     session: &'a BuildSession,
@@ -964,24 +1011,15 @@ impl<'a> Resolver<'a> {
         let type_ = match type_ {
             Some(type_) => self
                 .session
-                .intrinsic_types()
-                .find(|(_, identifier)| identifier.declaration_index().unwrap() == type_.bare)
-                .and_then(
-                    |(intrinsic, _)| obtain!(intrinsic, intrinsic::Type::Numeric(type_) => type_),
-                )
+                .special.get(type_.bare)
+                // @Task write more concisely
+                .and_then(|intrinsic| obtain!(intrinsic, special::Binding::Type(Type::Numeric(type_)) => type_))
                 .ok_or_else(|| {
-                    Diagnostic::error()
-                        .code(ErrorCode::E043)
-                        .message(format!(
-                            "the number literal is not a valid constructor for type ‘{}’",
-                            self.look_up(type_.bare).source
-                        ))
-                        .labeled_primary_span(literal, "number literal may not construct that type")
-                        .labeled_secondary_span(type_, "the data type")
+                    self.literal_used_for_unsupported_type(literal, "number", type_)
                         .report(self.session.reporter())
                 })?,
             // for now, we default to `Nat` until we implement polymorphic number literals and their inference
-            None => intrinsic::NumericType::Nat,
+            None => NumericType::Nat,
         };
 
         let Ok(resolved_number) = hir::Number::parse(&literal.bare, type_) else {
@@ -1024,27 +1062,15 @@ impl<'a> Resolver<'a> {
         let _type = match type_ {
             Some(type_) => self
                 .session
-                .intrinsic_types()
-                .find(|(_, identifier)| identifier.declaration_index().unwrap() == type_.bare)
-                .map(|(intrinsic, _)| intrinsic)
-                // @Task add other textual types
-                .filter(|&intrinsic| intrinsic == intrinsic::Type::Text)
+                .special
+                .get(type_.bare)
+                .filter(|&intrinsic| matches!(intrinsic, special::Binding::Type(Type::Text)))
                 .ok_or_else(|| {
-                    Diagnostic::error()
-                        .code(ErrorCode::E043)
-                        .message(format!(
-                            "the text literal is not a valid constructor for type ‘{}’",
-                            self.look_up(type_.bare).source
-                        ))
-                        .labeled_primary_span(
-                            &text.bare.literal,
-                            "text literal may not construct that type",
-                        )
-                        .labeled_secondary_span(type_, "the data type")
+                    self.literal_used_for_unsupported_type(&text.bare.literal, "text", type_)
                         .report(self.session.reporter())
                 })?,
             // for now, we default to `Text` until we implement polymorphic text literals and their inference
-            None => intrinsic::Type::Text,
+            None => Type::Text.into(),
         };
 
         Ok(hir::Item::new(
@@ -1063,25 +1089,54 @@ impl<'a> Resolver<'a> {
     where
         T: From<hir::SomeSequence>,
     {
-        let _type = sequence
-            .bare
-            .path
-            .as_ref()
-            .map(|path| {
-                Ok(Spanned::new(
-                    path.span(),
-                    self.resolve_path_of_literal(path, sequence.bare.elements.span, scope)?,
-                ))
-            })
-            .transpose()?;
+        // @Task test sequence literals inside of patterns!
 
-        // @Task make core's Vector, Tuple, etc. known and check the namespacing type
+        // @Task test this!
+        let path = sequence.bare.path.as_ref().ok_or_else(|| {
+            Diagnostic::error()
+                .message("sequence literals without explicit type are not supported yet")
+                .primary_span(&sequence.bare.elements)
+                .help("consider prefixing the literal with a path to a type followed by a ‘.’")
+                .report(self.session.reporter())
+        })?;
 
-        // @Task
-        Err(Diagnostic::error()
-            .message("sequence literals are not supported yet")
-            .primary_span(&sequence.bare.elements)
-            .report(self.session.reporter()))
+        let type_ = Spanned::new(
+            path.span(),
+            self.resolve_path_of_literal(path, sequence.bare.elements.span, scope)?,
+        );
+
+        // @Task test this!
+        let type_ = self
+            .session
+            .special.get(type_.bare)
+            .and_then(|known| obtain!(known, special::Binding::Type(special::Type::Sequential(type_)) => type_))
+            .ok_or_else(|| {
+                self.literal_used_for_unsupported_type(&sequence.bare.elements, "sequence", type_)
+                    .report(self.session.reporter())
+            })?;
+
+        match type_ {
+            SequentialType::List => todo!("list"),
+            SequentialType::Vector => todo!("vector"),
+            SequentialType::Tuple => todo!("tuple"),
+        }
+    }
+
+    fn literal_used_for_unsupported_type(
+        &self,
+        literal: impl Spanning,
+        name: &str,
+        type_: Spanned<DeclarationIndex>,
+    ) -> Diagnostic {
+        // @Task use correct terminology here: type vs. type constructor
+        Diagnostic::error()
+            .code(ErrorCode::E043)
+            .message(format!(
+                "a {name} literal is not a valid constructor for type ‘{}’",
+                self.look_up(type_.bare).source
+            ))
+            .labeled_primary_span(literal, "this literal may not construct the type")
+            .labeled_secondary_span(type_, "the data type")
     }
 
     fn resolve_path_of_literal(
@@ -1176,6 +1231,7 @@ impl<'a> Resolver<'a> {
                     return match &*path.segments {
                         [identifier] => Ok(Target::output(root, identifier)),
                         [_, identifiers @ ..] => self.resolve_path::<Target>(
+                            // @Task use PathView once available
                             &ast::Path::with_segments(identifiers.to_owned().into()),
                             PathResolutionContext::new(root)
                                 .origin_namespace(context.origin_namespace)
@@ -1196,6 +1252,7 @@ impl<'a> Resolver<'a> {
                     .map_err(|error| error.report(self.session.reporter()).into())
             } else {
                 self.resolve_path::<Target>(
+                    // @Task use PathView once available
                     &ast::Path::with_segments(path.segments.clone()),
                     context.namespace(namespace).qualified_identifier(),
                 )
@@ -1214,7 +1271,7 @@ impl<'a> Resolver<'a> {
             [identifier, identifiers @ ..] => {
                 if entity.is_namespace() {
                     self.resolve_path::<Target>(
-                        // @Task define & use a PathView instead!
+                        // @Task use PathView once available
                         &ast::Path::with_segments(identifiers.to_owned().into()),
                         context.namespace(index).qualified_identifier(),
                     )
@@ -1284,7 +1341,7 @@ impl<'a> Resolver<'a> {
                 self.component.index_to_path(index, self.session),
             );
 
-            if let Some(reason) = &deprecated.reason {
+            if let Some(reason) = &deprecated.bare.reason {
                 message += ": ";
                 message += reason;
             }

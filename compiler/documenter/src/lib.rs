@@ -827,7 +827,7 @@ fn add_declaration_attribute(attribute: &Attribute, parent: &mut Element<'_>, ur
     #[allow(clippy::match_same_arms)]
     match &attribute.bare {
         // plain style
-        Abstract | Static | If { .. } | Intrinsic | Moving => {
+        Abstract | Static | If { .. } | Intrinsic { .. } | Moving => {
             let name = attribute.bare.name().to_str();
 
             parent.add_child(Element::div("attribute").child(Element::anchor(
@@ -857,7 +857,7 @@ fn add_declaration_attribute(attribute: &Attribute, parent: &mut Element<'_>, ur
         Allow { .. }
         | Deny { .. }
         | Forbid { .. }
-        | Known
+        | Known { .. }
         | Location { .. }
         | RecursionLimit { .. }
         | Statistics

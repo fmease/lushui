@@ -3,7 +3,7 @@
 #![allow(clippy::match_same_arms)] // @Temporary
 
 use diagnostics::{error::Result, Diagnostic};
-use hir::DeclarationIndex;
+use hir::{special::Type, DeclarationIndex};
 use hir_format::ComponentExt;
 use inkwell::{
     builder::Builder,
@@ -421,7 +421,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
         expression: &hir::Expression,
         substitutions: Vec<BasicValueEnum<'ctx>>,
     ) -> Option<BasicValueEnum<'ctx>> {
-        use hir::{intrinsic::Type, BareExpression::*};
+        use hir::BareExpression::*;
 
         match &expression.bare {
             PiType(_) => None,
@@ -456,7 +456,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
             }
             Number(number) => Some(self.compile_number(number).into()),
             Text(_) => todo!("compiling text"),
-            Binding(binding) if self.session.is_intrinsic_type(Type::Type, &binding.0) => None,
+            Binding(binding) if self.session.special.is(&binding.0, Type::Type) => None,
             Binding(binding) => {
                 use hir::Index::*;
 
@@ -520,16 +520,12 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
 
                 match binding.0.index {
                     Declaration(index) => {
-                        use hir::intrinsic::{NumericType::*, Type::*};
+                        use hir::special::{Binding, NumericType::*, Type::*};
 
-                        // @Beacon @Task use a HashMap<DeclarationIndex, IntrinsicType> for this!
                         // @Task don't unwrap
-                        let type_ = self
-                            .session
-                            .intrinsic_types()
-                            .find(|(_, binder)| binder.index.declaration().unwrap() == index)
-                            .unwrap()
-                            .0;
+                        let Binding::Type(type_) = self.session.special.get(index).unwrap() else {
+                            unreachable!();
+                        };
 
                         match type_ {
                             Type => todo!(),
@@ -539,6 +535,8 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
                             Numeric(Nat64 | Int64) => self.context.i64_type(),
                             Text => todo!(),
                             IO => todo!(),
+                            // @Temporary
+                            Unit | Bool | Option | Sequential(_) => unreachable!(),
                         }
                     }
                     DeBruijn(_) => todo!(),
@@ -601,7 +599,7 @@ trait ExpressionExt {
 
 impl ExpressionExt for hir::Expression {
     fn classify(&self, session: &BuildSession) -> ExpressionClassification<'_> {
-        use hir::{intrinsic::Type, BareExpression::*};
+        use hir::BareExpression::*;
         use ExpressionClassification::*;
 
         match &self.bare {
@@ -611,7 +609,7 @@ impl ExpressionExt for hir::Expression {
             },
             Application(_) | IntrinsicApplication(_) => Thunk,
             Number(_) | Text(_) => Constant,
-            Binding(binding) if session.is_intrinsic_type(Type::Type, &binding.0) => Constant,
+            Binding(binding) if session.special.is(&binding.0, Type::Type) => Constant,
             // @Note we could make this more nuanced (prefering Constant if possible)
             Binding(_) => Thunk,
             Lambda(lambda) => Function(lambda),

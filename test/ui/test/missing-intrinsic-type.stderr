@@ -1,10 +1,10 @@
-error[E060]: the intrinsic type ‘Text’ is not defined
+error[E060]: the intrinsic binding ‘Text’ is not defined
    ┌─ ${TEST_FOLDER}/missing-intrinsic-type.lushui:10:16
    │
 10 │ it0: It = make "test"
    │                ══════ the type of this expression
 
-error[E060]: the intrinsic type ‘Nat’ is not defined
+error[E060]: the intrinsic binding ‘Nat’ is not defined
    ┌─ ${TEST_FOLDER}/missing-intrinsic-type.lushui:11:16
    │
 11 │ it1: It = make 344

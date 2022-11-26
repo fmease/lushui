@@ -11,20 +11,20 @@ v2: Bool = == gam jamma
 use extern.core.(tuple.Tuple list.List)
 
 main: Tuple
-    (List.cons Type (Duple Nat Nat)
-    (List.cons Type The-G
-    (List.cons Type Bool
+    (List.prepend Type (Duple Nat Nat)
+    (List.prepend Type The-G
+    (List.prepend Type Bool
     (List.empty Type))))
     =
-    Tuple.cons
+    Tuple.prepend
         (Duple Nat Nat)
-        (List.cons Type The-G (List.cons Type Bool (List.empty Type)))
+        (List.prepend Type The-G (List.prepend Type Bool (List.empty Type)))
         v0
-        (Tuple.cons
+        (Tuple.prepend
             The-G
-            (List.cons Type Bool (List.empty Type))
+            (List.prepend Type Bool (List.empty Type))
             v1
-            (Tuple.cons
+            (Tuple.prepend
                 Bool
                 (List.empty Type)
                 v2

@@ -6,7 +6,15 @@ data Type: Type
 @intrinsic
 data Text: Type
 
+@(intrinsic text.concat)
+join: Text -> Text -> Text
+
 module disambiguator of
     @intrinsic
     data Text: topmost.Type
 
+module text of
+    use topmost.Text
+
+    @intrinsic
+    concat: Text -> Text -> Text

@@ -1,27 +1,14 @@
 ;; Canonical tuples (heterogeneous lists) and related functions.
 module
 
-;;; @Question tuple backed by List or by Vector in core (or both implementations)?
-
 use topmost.type.Type
 use topmost.list.(List self)
 
-;;; @Note backed by List
-@public
+@public @known
 data Tuple (L: List Type): Type of
     empty: Tuple (list.empty Type)
-    ;;; @Task rename "cons" to sth more descriptive
-    cons (A: Type) (L: List Type): A -> Tuple L -> Tuple (list.cons Type A L)
+    prepend (A: Type) (L: List Type):
+        A -> Tuple L -> Tuple (list.prepend Type A L)
 
 @public
-use Tuple.(empty cons)
-
-use topmost.vector.(Vector self)
-use topmost.nat.(Nat +)
-
-;;; @Note backed by Vector
-@public
-data Tuple_ (n: Nat) (L: Vector n Type): Type of
-    empty: Tuple_ 0 (vector.empty Type)
-    ;;; @Task rename "cons" to sth more descriptive
-    cons (A: Type) (n: Nat) (L: Vector n Type): A -> Tuple_ n L -> Tuple_ (+ n 1) (vector.cons n Type A L)
+use Tuple.(empty prepend)

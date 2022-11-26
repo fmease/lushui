@@ -14,7 +14,6 @@ hir = { path = "../hir" }
 hir_format = { path = "../hir_format" }
 lowered_ast = { path = "../lowered_ast" }
 session = { path = "../session" }
-smallvec = { version = "1.8.0", features = ["const_generics"] }
 span = { path = "../span" }
 strsim = "0.10.0"
 token = { path = "../token" }

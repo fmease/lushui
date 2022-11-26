@@ -20,7 +20,7 @@ use diagnostics::{
     Diagnostic,
 };
 use hir::{
-    interfaceable, known, Attributes, DeBruijnIndex, DeclarationIndex, Entity, Identifier,
+    interfaceable, special::Type, Attributes, DeBruijnIndex, DeclarationIndex, Entity, Identifier,
     Substitution::Shift, ValueView,
 };
 use hir_format::Display;
@@ -60,13 +60,11 @@ impl<'a> Interpreter<'a> {
         expression: Expression,
         context: Context<'_>,
     ) -> Result<Expression> {
-        use hir::{intrinsic::Type, BareExpression::*, Substitution::*};
+        use hir::{BareExpression::*, Substitution::*};
 
         // @Bug we currently don't support zero-arity intrinsic functions
         Ok(match expression.clone().bare {
-            Binding(binding) if self.session.is_intrinsic_type(Type::Type, &binding.0) => {
-                expression
-            }
+            Binding(binding) if self.session.special.is(&binding.0, Type::Type) => expression,
             Binding(binding) => {
                 match self.look_up_value(&binding.0) {
                     // @Question is this normalization necessary? I mean, yes, we got a new scope,
@@ -99,7 +97,7 @@ impl<'a> Interpreter<'a> {
                                     // the discarding identifier `_`)
                                     parameter: Identifier::parameter("__"),
                                     parameter_type_annotation: Some(
-                                        self.session.look_up_known_binding(known::Binding::Unit)?,
+                                        self.session.require_special(Type::Unit, None)?,
                                     ),
                                     body_type_annotation: None,
                                     body: Expression::new(
@@ -855,13 +853,13 @@ impl<'a> Context<'a> {
 }
 
 #[derive(Clone)] // @Question expensive attributes clone?
-pub(crate) struct BindingRegistration {
+pub(crate) struct Definition {
     pub(crate) attributes: Attributes,
-    pub(crate) bare: BareBindingRegistration,
+    pub(crate) bare: BareDefinition,
 }
 
 #[derive(Clone)]
-pub(crate) enum BareBindingRegistration {
+pub(crate) enum BareDefinition {
     Function {
         binder: Identifier,
         type_: Expression,
@@ -883,9 +881,9 @@ pub(crate) enum BareBindingRegistration {
 }
 
 // only used to report "cyclic" types (currently treated as a bug)
-impl Display for BindingRegistration {
+impl Display for Definition {
     fn write(&self, context: Self::Context<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use BareBindingRegistration::*;
+        use BareDefinition::*;
 
         match &self.bare {
             Function {

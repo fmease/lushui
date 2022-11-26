@@ -6,15 +6,18 @@
 
 use ast::Explicitness;
 use diagnostics::{
-    error::{Health, Result, Stain},
+    error::{Handler, Health, Result, Stain},
     reporter::ErasedReportedError,
     Diagnostic, ErrorCode,
 };
-use hir::{intrinsic, known, AttributeName, Declaration, EntityKind, Expression, Identifier};
+use hir::{
+    special::{self, Type},
+    AttributeName, Declaration, EntityKind, Expression, Identifier,
+};
 use hir_format::{DefaultContext, Display};
-use interpreter::{BareBindingRegistration, BindingRegistration, FunctionScope, Interpreter};
+use interpreter::{BareDefinition, Definition, FunctionScope, Interpreter};
 use joinery::JoinableIterator;
-use session::{BuildSession, Component, IdentifierExt};
+use session::{BuildSession, Component, IdentifierExt, LocalDeclarationIndexExt};
 use std::default::default;
 use utilities::{displayed, pluralize, QuoteExt};
 
@@ -46,7 +49,7 @@ struct Typer<'a> {
     // OR actual value(s), we bail out and add this here. This might be too conversative (leading to more
     // "circular type" errors or whatever), we can just discriminate by creating sth like
     // UnresolvedThingy/WorlistItem { index: ComponentIndex, expression: TypeAnnotation|Value|Both|... }
-    out_of_order_bindings: Vec<BindingRegistration>,
+    out_of_order_bindings: Vec<Definition>,
     health: Health,
 }
 
@@ -74,15 +77,15 @@ impl<'a> Typer<'a> {
 
         match &declaration.bare {
             Function(function) => {
-                self.evaluate_registration(BindingRegistration {
+                self.evaluate_definition(Definition {
                     attributes: declaration.attributes.clone(),
                     bare: if declaration.attributes.has(AttributeName::Intrinsic) {
-                        BareBindingRegistration::IntrinsicFunction {
+                        BareDefinition::IntrinsicFunction {
                             binder: function.binder.clone(),
                             type_: function.type_annotation.clone(),
                         }
                     } else {
-                        BareBindingRegistration::Function {
+                        BareDefinition::Function {
                             binder: function.binder.clone(),
                             type_: function.type_annotation.clone(),
                             value: Some(function.expression.clone().unwrap()),
@@ -92,9 +95,9 @@ impl<'a> Typer<'a> {
             }
             Data(type_) => {
                 // @Question don't return early??
-                self.evaluate_registration(BindingRegistration {
+                self.evaluate_definition(Definition {
                     attributes: declaration.attributes.clone(),
-                    bare: BareBindingRegistration::Data {
+                    bare: BareDefinition::Data {
                         binder: type_.binder.clone(),
                         type_: type_.type_annotation.clone(),
                     },
@@ -119,9 +122,9 @@ impl<'a> Typer<'a> {
             Constructor(constructor) => {
                 let owner_data_type = context.owning_data_type.take().unwrap();
 
-                self.evaluate_registration(BindingRegistration {
+                self.evaluate_definition(Definition {
                     attributes: declaration.attributes.clone(),
-                    bare: BareBindingRegistration::Constructor {
+                    bare: BareDefinition::Constructor {
                         binder: constructor.binder.clone(),
                         type_: constructor.type_annotation.clone(),
                         owner_data_type,
@@ -150,10 +153,10 @@ impl<'a> Typer<'a> {
     // @Task @Beacon somehow (*somehow*!) restructure this code so it is not DRY.
     // it is DRY even though we use an ugly macro..how sad is that??
     // we need to design the error handling here, it's super difficult, fragile, …
-    fn evaluate_registration(&mut self, registration: BindingRegistration) -> Result {
-        use BareBindingRegistration::*;
+    fn evaluate_definition(&mut self, definition: Definition) -> Result {
+        use BareDefinition::*;
 
-        match registration.clone().bare {
+        match definition.clone().bare {
             Function {
                 binder,
                 type_,
@@ -162,13 +165,7 @@ impl<'a> Typer<'a> {
                 let value = value.unwrap();
 
                 if let Err(error) = self.it_is_a_type(type_.clone(), &FunctionScope::Module) {
-                    return self.handle_registration_error(
-                        error,
-                        &type_,
-                        None,
-                        registration,
-                        |_| Ok(()),
-                    );
+                    return self.handle_definition_error(error, &type_, None, definition, |_| ());
                 };
 
                 let type_ = self.interpreter().evaluate_expression(
@@ -180,23 +177,23 @@ impl<'a> Typer<'a> {
                     match self.infer_type_of_expression(value.clone(), &FunctionScope::Module) {
                         Ok(type_) => type_,
                         Err(error) => {
-                            let attributes = registration.attributes.clone();
+                            let attributes = definition.attributes.clone();
 
-                            return self.handle_registration_error(
+                            return self.handle_definition_error(
                                 error,
                                 &value,
                                 // @Question is this correct?
                                 None,
-                                registration,
+                                definition,
                                 |typer| {
-                                    typer.carry_out_registration(BindingRegistration {
+                                    typer.carry_out_definition(Definition {
                                         attributes,
                                         bare: Function {
                                             binder,
                                             type_,
                                             value: None,
                                         },
-                                    })
+                                    });
                                 },
                             );
                         }
@@ -205,34 +202,28 @@ impl<'a> Typer<'a> {
                 if let Err(error) =
                     self.it_is_actual(type_.clone(), inferred_type.clone(), &FunctionScope::Module)
                 {
-                    return self.handle_registration_error(
+                    return self.handle_definition_error(
                         error,
                         &value,
                         // @Question is this correct?
                         Some(&type_),
-                        registration,
-                        |_| Ok(()),
+                        definition,
+                        |_| (),
                     );
                 };
 
-                self.carry_out_registration(BindingRegistration {
-                    attributes: registration.attributes,
+                self.carry_out_definition(Definition {
+                    attributes: definition.attributes,
                     bare: Function {
                         binder,
                         type_: inferred_type,
                         value: Some(value),
                     },
-                })?;
+                });
             }
             Data { binder, type_ } => {
                 if let Err(error) = self.it_is_a_type(type_.clone(), &FunctionScope::Module) {
-                    return self.handle_registration_error(
-                        error,
-                        &type_,
-                        None,
-                        registration,
-                        |_| Ok(()),
-                    );
+                    return self.handle_definition_error(error, &type_, None, definition, |_| ());
                 };
 
                 let type_ = self.interpreter().evaluate_expression(
@@ -240,12 +231,15 @@ impl<'a> Typer<'a> {
                     interpreter::Context::new(&FunctionScope::Module),
                 )?;
 
-                self.assert_constructor_is_instance_of_type(type_.clone(), self.session.type_())?;
+                self.assert_constructor_is_instance_of_type(
+                    type_.clone(),
+                    self.session.require_special(Type::Type, None)?,
+                )?;
 
-                self.carry_out_registration(BindingRegistration {
-                    attributes: registration.attributes,
+                self.carry_out_definition(Definition {
+                    attributes: definition.attributes,
                     bare: Data { binder, type_ },
-                })?;
+                });
             }
             Constructor {
                 binder,
@@ -253,13 +247,7 @@ impl<'a> Typer<'a> {
                 owner_data_type: data,
             } => {
                 if let Err(error) = self.it_is_a_type(type_.clone(), &FunctionScope::Module) {
-                    return self.handle_registration_error(
-                        error,
-                        &type_,
-                        None,
-                        registration,
-                        |_| Ok(()),
-                    );
+                    return self.handle_definition_error(error, &type_, None, definition, |_| ());
                 };
 
                 let type_ = self.interpreter().evaluate_expression(
@@ -272,24 +260,18 @@ impl<'a> Typer<'a> {
                     data.clone().into_expression(),
                 )?;
 
-                self.carry_out_registration(BindingRegistration {
-                    attributes: registration.attributes,
+                self.carry_out_definition(Definition {
+                    attributes: definition.attributes,
                     bare: Constructor {
                         binder,
                         type_,
                         owner_data_type: data,
                     },
-                })?;
+                });
             }
             IntrinsicFunction { binder, type_ } => {
                 if let Err(error) = self.it_is_a_type(type_.clone(), &FunctionScope::Module) {
-                    return self.handle_registration_error(
-                        error,
-                        &type_,
-                        None,
-                        registration,
-                        |_| Ok(()),
-                    );
+                    return self.handle_definition_error(error, &type_, None, definition, |_| ());
                 };
 
                 let type_ = self.interpreter().evaluate_expression(
@@ -297,21 +279,21 @@ impl<'a> Typer<'a> {
                     interpreter::Context::new(&FunctionScope::Module),
                 )?;
 
-                self.carry_out_registration(BindingRegistration {
-                    attributes: registration.attributes,
+                self.carry_out_definition(Definition {
+                    attributes: definition.attributes,
                     bare: IntrinsicFunction { binder, type_ },
-                })?;
+                });
             }
         }
 
         Ok(())
     }
 
-    // @Bug does not understand non-local binders
-    fn carry_out_registration(&mut self, registration: BindingRegistration) -> Result {
-        use BareBindingRegistration::*;
+    // @Note bad name
+    fn carry_out_definition(&mut self, definition: Definition) {
+        use BareDefinition::*;
 
-        match registration.bare {
+        match definition.bare {
             Function {
                 binder,
                 type_,
@@ -367,34 +349,33 @@ impl<'a> Typer<'a> {
                 let index = binder.local_declaration_index(self.component).unwrap();
                 debug_assert!(self.component[index].is_untyped());
 
-                let function = self.session.define_intrinsic_function(
-                    binder,
-                    registration
-                        .attributes
-                        .span(AttributeName::Intrinsic)
-                        .unwrap(),
-                )?;
+                let function = self
+                    .session
+                    .special
+                    .get(index.global(self.component))
+                    .unwrap();
+                let special::Binding::Function(function) = function else { unreachable!() };
 
                 self.component[index].kind = EntityKind::IntrinsicFunction { function, type_ };
             }
         }
-        Ok(())
     }
 
     // @Task heavily improve API / architecture
-    fn handle_registration_error(
+    fn handle_definition_error(
         &mut self,
         error: Error,
         actual_value: &Expression,
         expectation_cause: Option<&Expression>,
-        registration: BindingRegistration,
-        out_of_order_handler: impl FnOnce(&mut Self) -> Result,
+        definition: Definition,
+        out_of_order_handler: impl FnOnce(&mut Self),
     ) -> Result {
         match error {
             Erased(error) => Err(error),
             OutOfOrderBinding => {
-                self.out_of_order_bindings.push(registration);
-                out_of_order_handler(self)
+                self.out_of_order_bindings.push(definition);
+                out_of_order_handler(self);
+                Ok(())
             }
             TypeMismatch { expected, actual } => Err(Diagnostic::error()
                 .code(ErrorCode::E032)
@@ -422,7 +403,7 @@ expected type ‘{}’
             let previous_amount = bindings.len();
 
             for binding in bindings {
-                self.evaluate_registration(binding)?;
+                self.evaluate_definition(binding)?;
             }
 
             if previous_amount == self.out_of_order_bindings.len() {
@@ -466,12 +447,12 @@ expected type ‘{}’
         expression: Expression,
         scope: &FunctionScope<'_>,
     ) -> Result<Expression, Error> {
-        use hir::{intrinsic::Type, BareExpression::*, Substitution::*};
+        use hir::{BareExpression::*, Substitution::*};
 
         Ok(match expression.bare {
             // @Task explanation why we need to special-case Type here!
-            Binding(binding) if self.session.is_intrinsic_type(Type::Type, &binding.0) => {
-                self.session.type_()
+            Binding(binding) if self.session.special.is(&binding.0, Type::Type) => {
+                self.session.require_special(Type::Type, None)?
             }
             Binding(binding) => self
                 .interpreter()
@@ -479,10 +460,10 @@ expected type ‘{}’
                 .ok_or(OutOfOrderBinding)?,
             Number(number) => self
                 .session
-                .look_up_intrinsic_type(number.type_().into(), Some(expression.span))?,
+                .require_special(number.type_(), Some(expression.span))?,
             Text(_) => self
                 .session
-                .look_up_intrinsic_type(intrinsic::Type::Text, Some(expression.span))?,
+                .require_special(Type::Text, Some(expression.span))?,
             PiType(literal) => {
                 // ensure domain and codomain are are well-typed
                 // @Question why do we need to this? shouldn't this be already handled if
@@ -498,7 +479,7 @@ expected type ‘{}’
                     self.it_is_a_type(literal.codomain.clone(), scope)?;
                 }
 
-                self.session.type_()
+                self.session.require_special(Type::Type, None)?
             }
             Lambda(lambda) => {
                 let parameter_type: Expression = lambda
@@ -551,10 +532,9 @@ expected type ‘{}’
                                 explicitness: Explicitness::Explicit,
                                 laziness: None,
                                 parameter: None,
-                                domain: self.session.look_up_known_type(
-                                    known::Binding::Unit,
-                                    application.callee.span,
-                                )?,
+                                domain: self
+                                    .session
+                                    .require_special(Type::Unit, Some(application.callee.span))?,
                                 codomain: argument_type,
                             }
                             .into(),
@@ -664,10 +644,9 @@ expected type ‘_ -> _’
                     // not sure
                     match &case.pattern.bare {
                         Number(number) => {
-                            let number_type = self.session.look_up_intrinsic_type(
-                                number.type_().into(),
-                                Some(case.pattern.span),
-                            )?;
+                            let number_type = self
+                                .session
+                                .require_special(number.type_(), Some(case.pattern.span))?;
                             self.it_is_actual(subject_type.clone(), number_type, scope)
                                 .map_err(|error| {
                                     self.handle_case_analysis_type_mismatch(
@@ -678,10 +657,9 @@ expected type ‘_ -> _’
                                 })?;
                         }
                         Text(_) => {
-                            let text_type = self.session.look_up_intrinsic_type(
-                                intrinsic::Type::Text,
-                                Some(case.pattern.span),
-                            )?;
+                            let text_type = self
+                                .session
+                                .require_special(Type::Text, Some(case.pattern.span))?;
                             self.it_is_actual(subject_type.clone(), text_type, scope)
                                 .map_err(|error| {
                                     self.handle_case_analysis_type_mismatch(
@@ -769,7 +747,7 @@ expected type ‘_ -> _’
             IntrinsicApplication(_) | Projection(_) => todo!(),
             IO(_) => self
                 .session
-                .look_up_intrinsic_type(intrinsic::Type::IO, Some(expression.span))?,
+                .require_special(Type::IO, Some(expression.span))?,
             Error(_) => expression,
         })
     }
@@ -803,13 +781,21 @@ but got type ‘{}’",
     /// Assert that an expression is of type `Type`.
     fn it_is_a_type(&self, expression: Expression, scope: &FunctionScope<'_>) -> Result<(), Error> {
         let type_ = self.infer_type_of_expression(expression, scope)?;
-        self.it_is_actual(self.session.type_(), type_, scope)
+        self.it_is_actual(
+            self.session.require_special(Type::Type, None)?,
+            type_,
+            scope,
+        )
     }
 
     fn is_a_type(&self, expression: Expression, scope: &FunctionScope<'_>) -> Result<bool, Error> {
         let type_ = self.infer_type_of_expression(expression, scope)?;
-        self.is_actual(self.session.type_(), type_, scope)
-            .map_err(Into::into)
+        self.is_actual(
+            self.session.require_special(Type::Type, None)?,
+            type_,
+            scope,
+        )
+        .map_err(Into::into)
     }
 
     /// Assert that two expression are equal under evaluation/normalization.
@@ -908,6 +894,14 @@ but got type ‘{}’",
         value: &'f impl Display<Context<'f> = DefaultContext<'f>>,
     ) -> impl std::fmt::Display + 'f {
         displayed(|f| value.write((self.component, self.session), f))
+    }
+}
+
+impl Handler for &mut Typer<'_> {
+    fn handle<T: diagnostics::error::PossiblyErroneous>(self, diagnostic: Diagnostic) -> T {
+        let error = diagnostic.report(self.session.reporter());
+        self.health.taint(error);
+        T::error(error)
     }
 }
 

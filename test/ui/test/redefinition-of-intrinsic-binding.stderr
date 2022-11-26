@@ -1,13 +1,24 @@
-error[E040]: the intrinsic type ‘Text’ is defined multiple times
+error[E040]: the intrinsic binding ‘Text’ is defined multiple times
    ┌─ ${TEST_FOLDER}/redefinition-of-intrinsic-binding.lushui:7:6
    │
  7 │ data Text: Type
    │      ──── previous definition
    │
-   ├─ ${TEST_FOLDER}/redefinition-of-intrinsic-binding.lushui:11:10
+   ├─ ${TEST_FOLDER}/redefinition-of-intrinsic-binding.lushui:14:10
    │
-11 │     data Text: topmost.Type
+14 │     data Text: topmost.Type
    │          ════ redefinition
 
-error: aborting due to previous error
+error[E040]: the intrinsic binding ‘text.concat’ is defined multiple times
+   ┌─ ${TEST_FOLDER}/redefinition-of-intrinsic-binding.lushui:10:1
+   │
+10 │ join: Text -> Text -> Text
+   │ ──── previous definition
+   │
+   ├─ ${TEST_FOLDER}/redefinition-of-intrinsic-binding.lushui:20:5
+   │
+20 │     concat: Text -> Text -> Text
+   │     ══════ redefinition
+
+error: aborting due to 2 previous errors
 

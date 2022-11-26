@@ -1,4 +1,4 @@
-// @Task document meaning behind the word “interfaceable”
+// @Task get rid of interfaceable::{Type, Value} if possible, it's needless indirection
 
 use utilities::{Int, Nat};
 

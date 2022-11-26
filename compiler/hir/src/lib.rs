@@ -8,6 +8,7 @@ pub use identifier::{DeBruijnIndex, DeclarationIndex, Identifier, Index, LocalDe
 use joinery::JoinableIterator;
 pub use lowered_ast::{attribute, Attribute, AttributeName, Attributes, BareAttribute, Item};
 use span::{SourceFileIndex, Span};
+use special::NumericType;
 use std::{
     fmt,
     sync::{Arc, Mutex},
@@ -16,9 +17,9 @@ use utilities::{obtain, Int, Nat};
 
 mod entity;
 mod identifier;
+// @Task get rid of this smh.
 pub mod interfaceable;
-pub mod intrinsic;
-pub mod known;
+pub mod special;
 
 pub type Declaration = Item<BareDeclaration>;
 
@@ -312,7 +313,7 @@ impl From<Application<Pattern>> for BarePattern {
 }
 
 #[derive(Clone)]
-pub struct Binding(pub Identifier);
+pub struct Binding(pub Identifier); // @Task rename 0 -> binder again
 
 #[derive(Clone)]
 pub struct Application<T> {
@@ -332,8 +333,8 @@ pub enum Number {
 }
 
 impl Number {
-    pub fn parse(source: &str, type_: intrinsic::NumericType) -> Result<Self, ()> {
-        use intrinsic::NumericType::*;
+    pub fn parse(source: &str, type_: NumericType) -> Result<Self, ()> {
+        use special::NumericType::*;
 
         match type_ {
             Nat => source.parse().map(Self::Nat).map_err(drop),
@@ -347,8 +348,8 @@ impl Number {
 }
 
 impl Number {
-    pub fn type_(&self) -> intrinsic::NumericType {
-        use intrinsic::NumericType::*;
+    pub fn type_(&self) -> NumericType {
+        use special::NumericType::*;
 
         match self {
             Self::Nat(_) => Nat,
@@ -390,6 +391,7 @@ impl fmt::Display for Text {
 
 // @Temporary placeholder until we can desugar sequence literals to
 // concrete constructors of sequence-like data types
+// @Beacon @Beacon @Beacon @Task remove
 pub enum SomeSequence {}
 
 #[derive(Clone, Default)]
@@ -399,14 +401,11 @@ pub struct Namespace {
 
 impl fmt::Debug for Namespace {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            self.binders
-                .iter()
-                .map(|binding| format!("{binding:?}"))
-                .join_with(' ')
-        )
+        self.binders
+            .iter()
+            .map(|binding| format!("{binding:?}"))
+            .join_with(' ')
+            .fmt(f)
     }
 }
 

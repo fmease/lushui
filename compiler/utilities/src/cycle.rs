@@ -32,7 +32,7 @@ where
 
 fn find_cycle_by_key<'a, T, U>(
     graph: &'a HashMap<T, U>,
-    get_key: &impl Fn(&U) -> &T,
+    key: &impl Fn(&U) -> &T,
     worklist: &mut Vec<&'a T>,
     visited: &mut HashMap<&'a T, Status>,
 ) -> Option<Cycle<'a, U>>
@@ -42,7 +42,7 @@ where
 {
     // @Task rewrite to avoid ugly unwrap
     let entry = graph.get(worklist.last().unwrap())?;
-    let node = get_key(entry);
+    let node = key(entry);
 
     let cycle = match visited.get(&node) {
         Some(Status::Ongoing) => {
@@ -59,7 +59,7 @@ where
         None => {
             worklist.push(node);
             visited.insert(node, Status::Ongoing);
-            find_cycle_by_key(graph, get_key, worklist, visited)
+            find_cycle_by_key(graph, key, worklist, visited)
         }
     };
 

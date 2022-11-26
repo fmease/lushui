@@ -48,7 +48,7 @@ pub(crate) fn ensure_variant_is_fieldless(fields: &Fields, macro_name: &str) -> 
     if let Fields::Named(_) | Fields::Unnamed(_) = fields {
         return Err(Error::new_spanned(
             fields,
-            format!("variant may not have fields when deriving `derivation::{macro_name}`",),
+            format!("variant may not have fields when deriving `derivation::{macro_name}`"),
         ));
     };
 

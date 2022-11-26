@@ -5,11 +5,10 @@
 
 use diagnostics::{error::PossiblyErroneous, reporter::ErasedReportedError};
 pub use format::{Debug, Format};
-use smallvec::smallvec;
 use span::{PossiblySpanning, SourceFileIndex, Span, Spanned, Spanning};
 use std::{fmt, hash::Hash};
 use token::{BareToken, Token, TokenExt, Word};
-use utilities::{obtain, Atom, SmallVec};
+use utilities::{obtain, smallvec, Atom, SmallVec};
 
 mod format;
 
@@ -467,12 +466,13 @@ pub struct TextLiteral {
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Path {
     pub hanger: Option<Hanger>,
-    // @Task better name: identifier_segments
-    // @Note non-empty if hanger is None
+    /// Has to be non-empty if the `hanger` is `None`.
+    // @Task make it impossible to construct with an empty vector
     pub segments: SmallVec<Identifier, 1>,
 }
 
 impl Path {
+    // @Task make it impossible to construct with an empty vector
     pub fn with_segments(segments: SmallVec<Identifier, 1>) -> Self {
         Self {
             hanger: None,
@@ -488,9 +488,10 @@ impl Path {
         Ok(self)
     }
 
-    pub fn bare_hanger(&self, hanger: BareHanger) -> Option<Hanger> {
+    pub fn is_bare_hanger(&self, hanger: BareHanger) -> bool {
         self.hanger
-            .filter(|some_hanger| some_hanger.bare == hanger && self.segments.is_empty())
+            .map_or(false, |some_hanger| some_hanger.bare == hanger)
+            && self.segments.is_empty()
     }
 
     /// The path head if it is an identifier.
@@ -500,10 +501,6 @@ impl Path {
         }
 
         Some(&self.segments[0])
-    }
-
-    pub fn last_identifier(&self) -> Option<&Identifier> {
-        self.segments.last()
     }
 }
 
@@ -534,10 +531,9 @@ impl From<Hanger> for Path {
 
 impl Spanning for Path {
     fn span(&self) -> Span {
+        // @Task improve
         if let Some(head) = &self.hanger {
-            head.span()
-                .merge(self.segments.first())
-                .merge(self.segments.last())
+            head.span().merge(self.segments.last())
         } else {
             self.segments
                 .first()

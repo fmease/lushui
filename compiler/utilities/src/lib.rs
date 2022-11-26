@@ -11,6 +11,7 @@ use colored::Colorize;
 use difference::{Changeset, Difference};
 pub use num_bigint::{BigInt as Int, BigUint as Nat};
 pub use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
+pub use smallvec::smallvec;
 use std::{cell::Cell, ffi::OsStr, fmt, path::Path};
 pub use string_cache::DefaultAtom as Atom;
 

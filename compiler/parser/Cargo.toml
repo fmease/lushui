@@ -17,4 +17,3 @@ utilities = { path = "../utilities" }
 colored = "2.0.0"
 difference = "2.0.0"
 index_map = { path = "../../project/library/index_map" }
-smallvec = { version = "1.8.0", features = ["const_generics"] }
