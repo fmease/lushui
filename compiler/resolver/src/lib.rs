@@ -1088,7 +1088,7 @@ impl<'a> Resolver<'a> {
         scope: &FunctionScope<'_>,
     ) -> Result<hir::Item<T>>
     where
-        T: Clone + From<hir::Binding> + From<hir::Application<hir::Item<T>>>,
+        T: Clone + From<hir::Binding> + From<hir::Number> + From<hir::Application<hir::Item<T>>>,
     {
         // @Task test sequence literals inside of patterns!
 
@@ -1134,8 +1134,7 @@ impl<'a> Resolver<'a> {
             SequentialType::List => {
                 // @Bug don't unwrap, otherwise this is gonna ICE if sb were to define
                 //      `List` as `@known data List: Type -> Type of {}` (no constructors)
-                //      @Question right?
-                // @Task use `require` instead, right?
+                // @Task use `require` instead
                 let empty = self
                     .session
                     .special
@@ -1205,7 +1204,95 @@ impl<'a> Resolver<'a> {
 
                 Ok(result)
             }
-            SequentialType::Vector => todo!("vector"),
+            // @Task write UI tests
+            SequentialType::Vector => {
+                // @Bug don't unwrap, otherwise this is gonna ICE if sb were to define
+                //      `Vector` as `@known data Vector: … of {}` (no constructors)
+                // @Task use `require` instead
+                let empty = self
+                    .session
+                    .special
+                    .get(special::Constructor::VectorEmpty)
+                    .unwrap();
+                let prepend = self
+                    .session
+                    .special
+                    .get(special::Constructor::VectorPrepend)
+                    .unwrap();
+
+                // @Task check if all those attributes & spans make sense
+                let mut result = hir::Item::new(
+                    default(),
+                    sequence.bare.elements.span,
+                    hir::Application {
+                        // @Task don't throw away attributes & span
+                        callee: hir::Item::new(
+                            default(),
+                            sequence.bare.elements.span,
+                            hir::Binding(empty.clone()).into(),
+                        ),
+                        explicitness: Explicit,
+                        argument: element_type.clone(),
+                    }
+                    .into(),
+                );
+
+                for (length, element) in elements.rev().enumerate() {
+                    // @Task check if all those attributes & spans make sense
+                    let prepend = hir::Item::new(
+                        default(),
+                        element.span,
+                        hir::Application {
+                            callee: hir::Item::new(
+                                default(),
+                                element.span,
+                                hir::Application {
+                                    callee: hir::Item::new(
+                                        default(),
+                                        element.span,
+                                        hir::Binding(prepend.clone()).into(),
+                                    ),
+                                    explicitness: Explicit,
+                                    // @Beacon @Question What happens if the user does not define the intrinsic type `Nat`?
+                                    //                   Is that going to lead to crashes later on?
+                                    argument: hir::Item::new(
+                                        default(),
+                                        element.span,
+                                        hir::Number::Nat(length.into()).into(),
+                                    ),
+                                }
+                                .into(),
+                            ),
+                            explicitness: Explicit,
+                            argument: element_type.clone(),
+                        }
+                        .into(),
+                    );
+
+                    // @Task check if all those attributes & spans make sense
+                    result = hir::Item::new(
+                        default(),
+                        element.span,
+                        hir::Application {
+                            callee: hir::Item::new(
+                                default(),
+                                element.span,
+                                hir::Application {
+                                    callee: prepend,
+                                    explicitness: Explicit,
+                                    argument: element,
+                                }
+                                .into(),
+                            ),
+                            explicitness: Explicit,
+                            argument: result,
+                        }
+                        .into(),
+                    );
+                }
+
+                Ok(result)
+            }
             SequentialType::Tuple => todo!("tuple"),
         }
     }
