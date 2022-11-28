@@ -13,6 +13,7 @@
 // @Task transform all Result-returning functions into ()-returning ones modifying self.health
 //       and use the new Handler API and get rid of the Stain API
 
+use ast::Explicitness::Explicit;
 use colored::Colorize;
 use diagnostics::{
     error::{Handler, Health, Outcome, PossiblyErroneous, Result, Stain},
@@ -1087,7 +1088,7 @@ impl<'a> Resolver<'a> {
         scope: &FunctionScope<'_>,
     ) -> Result<hir::Item<T>>
     where
-        T: From<hir::SomeSequence>,
+        T: Clone + From<hir::Binding> + From<hir::Application<hir::Item<T>>>,
     {
         // @Task test sequence literals inside of patterns!
 
@@ -1115,8 +1116,95 @@ impl<'a> Resolver<'a> {
                     .report(self.session.reporter())
             })?;
 
+        let mut elements = sequence.bare.elements.bare.into_iter();
+
+        let Some(element_type) = elements.next() else {
+            return Err(Diagnostic::error()
+                .message("sequence literals cannot be empty")
+                .note(
+                    "due to limitations of the current type system, \
+                     element types cannot be inferred and\n\
+                     have to be manually supplied as the first element",
+                )
+                .primary_span(sequence.bare.elements.span)
+                .report(self.session.reporter()));
+        };
+
         match type_ {
-            SequentialType::List => todo!("list"),
+            SequentialType::List => {
+                // @Bug don't unwrap, otherwise this is gonna ICE if sb were to define
+                //      `List` as `@known data List: Type -> Type of {}` (no constructors)
+                //      @Question right?
+                // @Task use `require` instead, right?
+                let empty = self
+                    .session
+                    .special
+                    .get(special::Constructor::ListEmpty)
+                    .unwrap();
+                let prepend = self
+                    .session
+                    .special
+                    .get(special::Constructor::ListPrepend)
+                    .unwrap();
+
+                // @Task check if all those attributes & spans make sense
+                let mut result = hir::Item::new(
+                    default(),
+                    sequence.bare.elements.span,
+                    hir::Application {
+                        // @Task don't throw away attributes & span
+                        callee: hir::Item::new(
+                            default(),
+                            sequence.bare.elements.span,
+                            hir::Binding(empty.clone()).into(),
+                        ),
+                        explicitness: Explicit,
+                        argument: element_type.clone(),
+                    }
+                    .into(),
+                );
+
+                for element in elements.rev() {
+                    // @Task check if all those attributes & spans make sense
+                    let prepend = hir::Item::new(
+                        default(),
+                        element.span,
+                        hir::Application {
+                            callee: hir::Item::new(
+                                default(),
+                                element.span,
+                                hir::Binding(prepend.clone()).into(),
+                            ),
+                            explicitness: Explicit,
+                            argument: element_type.clone(),
+                        }
+                        .into(),
+                    );
+
+                    // @Task check if all those attributes & spans make sense
+                    result = hir::Item::new(
+                        default(),
+                        element.span,
+                        hir::Application {
+                            callee: hir::Item::new(
+                                default(),
+                                element.span,
+                                hir::Application {
+                                    callee: prepend,
+                                    explicitness: Explicit,
+                                    argument: element,
+                                }
+                                .into(),
+                            ),
+                            explicitness: Explicit,
+                            argument: result,
+                        }
+                        .into(),
+                    );
+                }
+
+                Ok(result)
+            }
             SequentialType::Vector => todo!("vector"),
             SequentialType::Tuple => todo!("tuple"),
         }

@@ -1,14 +1,14 @@
 error[E032]: type mismatch
    ┌─ ${DISTRIBUTED_LIBRARIES_FOLDER}/core/source/library/tuple.lushui:11:14
    │
-11 │         A -> Tuple L -> Tuple (list.prepend Type A L)
+11 │         A -> Tuple L -> Tuple (List.prepend Type A L)
    │              ─────── expected due to this
    │
-   ├─ ${TEST_FOLDER}/lengthy-type-mismatch.lushui:20:39
+   ├─ ${TEST_FOLDER}/lengthy-type-mismatch.lushui:15:39
    │
-20 │               (identity Unit Unit.unit) (Tuple.prepend
+15 │               (identity Unit Unit.unit) (Tuple.prepend
    · ╔═══════════════════════════════════════╝
-22 │ ║                     Tuple.empty))
+17 │ ║                     Tuple.empty))
    │ ╚════════════════════════════════╝ has the wrong type
    │
   note: expected type ‘extern.core.tuple.Tuple (extern.core.list.List.prepend extern.core.type.Type extern.core.type.Type (extern.core.list.List.empty extern.core.type.Type))’

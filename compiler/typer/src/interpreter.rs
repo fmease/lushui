@@ -36,7 +36,7 @@ pub fn evaluate_main_function(component: &Component, session: &BuildSession) -> 
             .component
             .look_up_program_entry(session)
             .unwrap()
-            .into_expression(),
+            .into_item(),
         Context::new(&FunctionScope::Module),
     )
 }
@@ -274,7 +274,7 @@ impl<'a> Interpreter<'a> {
                                 expression.attributes,
                                 expression.span,
                                 hir::CaseAnalysis {
-                                    scrutinee: scrutinee.0.clone().into_expression(),
+                                    scrutinee: scrutinee.0.clone().into_item(),
                                     cases: analysis.cases.clone(),
                                 }
                                 .into(),
@@ -640,10 +640,7 @@ impl Substitute for Expression {
                                 let binder = parameter.as_innermost();
 
                                 // @Question what about the attributes of the binder?
-                                Use(
-                                    Box::new(Shift(1).compose(substitution)),
-                                    binder.into_expression(),
-                                )
+                                Use(Box::new(Shift(1).compose(substitution)), binder.into_item())
                             }
                             None => substitution,
                         },
@@ -689,7 +686,7 @@ impl Substitute for Expression {
                                 // @Question what about the attributes of the binder?
                                 Use(
                                     Box::new(Shift(1).compose(substitution.clone())),
-                                    binder.into_expression(),
+                                    binder.into_item(),
                                 )
                             },
                         }
@@ -706,10 +703,7 @@ impl Substitute for Expression {
                             let binder = lambda.parameter.as_innermost();
 
                             // @Question what about the attributes of the binder?
-                            Use(
-                                Box::new(Shift(1).compose(substitution)),
-                                binder.into_expression(),
-                            )
+                            Use(Box::new(Shift(1).compose(substitution)), binder.into_item())
                         },
                     }
                     .into(),

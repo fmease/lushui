@@ -13,9 +13,7 @@ use Source as Alias
 use Source.source as alias
 
 n0: List Nat =
-    List.prepend N 0
-        (List.prepend Nat 9
-            (List.empty Nat))
+    List.prepend N 0 List.[(Nat) 9]
 
 id0 (s: Source): Alias = s
 id1 (f: Nat -> Alias): N -> Source = f

@@ -69,13 +69,13 @@ fn pi_type_application_argument() {
 
     let array = component
         .add("Array", EntityKind::untyped_data_type())
-        .into_expression();
+        .into_item();
     let int = component
         .add("Int", EntityKind::untyped_data_type())
-        .into_expression();
+        .into_item();
     let type_ = component
         .add("Type", EntityKind::untyped_data_type())
-        .into_expression();
+        .into_item();
 
     assert_format(
         "topmost.Array topmost.Int -> topmost.Type",
@@ -128,8 +128,8 @@ fn pi_type_named_parameter() {
                     default(),
                     default(),
                     hir::Application {
-                        callee: array.into_expression(),
-                        argument: int.into_expression(),
+                        callee: array.into_item(),
+                        argument: int.into_item(),
                         explicitness: Explicit,
                     }
                     .into(),
@@ -138,8 +138,8 @@ fn pi_type_named_parameter() {
                     default(),
                     default(),
                     hir::Application {
-                        callee: container.into_expression(),
-                        argument: alpha.into_expression(),
+                        callee: container.into_item(),
+                        argument: alpha.into_item(),
                         explicitness: Explicit,
                     }
                     .into(),
@@ -159,7 +159,7 @@ fn pi_type_implicit_parameter() {
 
     let type_ = component
         .add("Type", EntityKind::untyped_data_type())
-        .into_expression();
+        .into_item();
 
     assert_format(
         "'(whatever: topmost.Type) -> topmost.Type",
@@ -187,7 +187,7 @@ fn pi_type_higher_order_argument() {
     let mut component = Component::test();
     let int = component
         .add("Int", EntityKind::untyped_data_type())
-        .into_expression();
+        .into_item();
 
     assert_format(
         "(topmost.Int -> topmost.Int) -> topmost.Int",
@@ -226,13 +226,13 @@ fn pi_type_two_curried_arguments() {
     let mut component = Component::test();
     let int = component
         .add("Int", EntityKind::untyped_data_type())
-        .into_expression();
+        .into_item();
     let text = component
         .add("Text", EntityKind::untyped_data_type())
-        .into_expression();
+        .into_item();
     let type_ = component
         .add("Type", EntityKind::untyped_data_type())
-        .into_expression();
+        .into_item();
 
     assert_format(
         "topmost.Int -> topmost.Text -> topmost.Type",
@@ -272,7 +272,7 @@ fn pi_type_lambda_domain() {
 
     let type_ = component
         .add("Type", EntityKind::untyped_data_type())
-        .into_expression();
+        .into_item();
 
     let x = Identifier::parameter("x");
 
@@ -292,7 +292,7 @@ fn pi_type_lambda_domain() {
                         parameter: x.clone(),
                         parameter_type_annotation: None,
                         body_type_annotation: None,
-                        body: x.into_expression(),
+                        body: x.into_item(),
                         explicitness: Explicit,
                         laziness: None,
                     }
@@ -315,7 +315,7 @@ fn application_three_curried_arguments() {
     let beta = component.add("beta", EntityKind::UntypedFunction);
     let type_ = component
         .add("Type", EntityKind::untyped_data_type())
-        .into_expression();
+        .into_item();
 
     assert_format(
         "alpha topmost.beta (gamma topmost.Type) 0",
@@ -331,8 +331,8 @@ fn application_three_curried_arguments() {
                             default(),
                             default(),
                             hir::Application {
-                                callee: Identifier::parameter("alpha").into_expression(),
-                                argument: beta.into_expression(),
+                                callee: Identifier::parameter("alpha").into_item(),
+                                argument: beta.into_item(),
                                 explicitness: Explicit,
                             }
                             .into(),
@@ -341,7 +341,7 @@ fn application_three_curried_arguments() {
                             default(),
                             default(),
                             hir::Application {
-                                callee: Identifier::parameter("gamma").into_expression(),
+                                callee: Identifier::parameter("gamma").into_item(),
                                 argument: type_,
                                 explicitness: Explicit,
                             }
@@ -377,7 +377,7 @@ fn application_lambda_last_argument() {
             default(),
             default(),
             hir::Application {
-                callee: take.into_expression(),
+                callee: take.into_item(),
                 argument: Expression::new(
                     default(),
                     default(),
@@ -386,7 +386,7 @@ fn application_lambda_last_argument() {
                         parameter_type_annotation: None,
                         body_type_annotation: None,
                         // technically not correct
-                        body: it.into_expression(),
+                        body: it.into_item(),
                         explicitness: Explicit,
                         laziness: None,
                     }
@@ -420,7 +420,7 @@ fn application_lambda_argument() {
                     default(),
                     default(),
                     hir::Application {
-                        callee: take.into_expression(),
+                        callee: take.into_item(),
                         argument: Expression::new(
                             default(),
                             default(),
@@ -429,7 +429,7 @@ fn application_lambda_argument() {
                                 parameter_type_annotation: None,
                                 body_type_annotation: None,
                                 // technically not correct
-                                body: it.into_expression(),
+                                body: it.into_item(),
                                 explicitness: Explicit,
                                 laziness: None,
                             }
@@ -457,7 +457,7 @@ fn application_implicit_argument() {
     let identity = component.add("identity", EntityKind::UntypedFunction);
     let type_ = component
         .add("Type", EntityKind::untyped_data_type())
-        .into_expression();
+        .into_item();
 
     assert_format(
         r"topmost.identity 'topmost.Type",
@@ -465,7 +465,7 @@ fn application_implicit_argument() {
             default(),
             default(),
             hir::Application {
-                callee: identity.into_expression(),
+                callee: identity.into_item(),
                 argument: type_,
                 explicitness: Implicit,
             }
@@ -490,13 +490,13 @@ fn application_complex_implicit_argument() {
             default(),
             default(),
             hir::Application {
-                callee: identity.into_expression(),
+                callee: identity.into_item(),
                 argument: Expression::new(
                     default(),
                     default(),
                     hir::Application {
-                        callee: Identifier::parameter("prepare").into_expression(),
-                        argument: text.into_expression(),
+                        callee: Identifier::parameter("prepare").into_item(),
+                        argument: text.into_item(),
                         explicitness: Explicit,
                     }
                     .into(),
@@ -534,7 +534,7 @@ fn application_intrinsic_application_callee() {
                     }
                     .into(),
                 ),
-                argument: Identifier::parameter("omicron").into_expression(),
+                argument: Identifier::parameter("omicron").into_item(),
                 explicitness: Explicit,
             }
             .into(),
@@ -559,7 +559,7 @@ fn lambda_body_type_annotation() {
             hir::Lambda {
                 parameter: Identifier::parameter("input"),
                 parameter_type_annotation: None,
-                body_type_annotation: Some(output.into_expression()),
+                body_type_annotation: Some(output.into_item()),
                 body: Expression::new(default(), default(), Number::Nat(0u8.into()).into()),
                 explicitness: Explicit,
                 laziness: None,
@@ -580,7 +580,7 @@ fn lambda_parameter_type_annotation_body_type_annotation() {
     let output = component.add("Output", EntityKind::untyped_data_type());
     let type_ = component
         .add("Type", EntityKind::untyped_data_type())
-        .into_expression();
+        .into_item();
 
     assert_format(
         r"\(input: topmost.Input): topmost.Output => topmost.Type",
@@ -589,8 +589,8 @@ fn lambda_parameter_type_annotation_body_type_annotation() {
             default(),
             hir::Lambda {
                 parameter: Identifier::parameter("input"),
-                parameter_type_annotation: Some(input.into_expression()),
-                body_type_annotation: Some(output.into_expression()),
+                parameter_type_annotation: Some(input.into_item()),
+                body_type_annotation: Some(output.into_item()),
                 body: type_,
                 explicitness: Explicit,
                 laziness: None,
@@ -609,7 +609,7 @@ fn lambda_implicit_parameter() {
 
     let type_ = component
         .add("Type", EntityKind::untyped_data_type())
-        .into_expression();
+        .into_item();
 
     assert_format(
         r"\'(Input: topmost.Type) => topmost.Type",
@@ -653,7 +653,7 @@ fn lambda_implicit_unannotated_parameter() {
                         parameter: a.clone(),
                         parameter_type_annotation: None,
                         body_type_annotation: None,
-                        body: a.into_expression(),
+                        body: a.into_item(),
                         explicitness: Explicit,
                         laziness: None,
                     }
@@ -677,7 +677,7 @@ fn lambda_pi_type_body() {
 
     let type_ = component
         .add("Type", EntityKind::untyped_data_type())
-        .into_expression();
+        .into_item();
 
     let x = Identifier::parameter("x");
 
@@ -697,7 +697,7 @@ fn lambda_pi_type_body() {
                         explicitness: Explicit,
                         laziness: None,
                         parameter: None,
-                        domain: x.into_expression(),
+                        domain: x.into_item(),
                         codomain: type_,
                     }
                     .into(),
@@ -795,7 +795,7 @@ fn attributes() {
                     default(),
                     default(),
                     hir::Application {
-                        callee: Identifier::parameter("==").into_expression(),
+                        callee: Identifier::parameter("==").into_item(),
                         argument: Expression::new(
                             Attributes(vec![
                                 Attribute::new(default(), BareAttribute::Static),
@@ -812,7 +812,7 @@ fn attributes() {
                     Attributes(vec![Attribute::new(default(), BareAttribute::Static)]),
                     default(),
                     hir::Application {
-                        callee: Identifier::parameter("increment").into_expression(),
+                        callee: Identifier::parameter("increment").into_item(),
                         argument: Expression::new(
                             default(),
                             default(),
@@ -850,7 +850,7 @@ fn path() {
 
     assert_format(
         "topmost.overarching.middle.sink",
-        &sink.into_expression(),
+        &sink.into_item(),
         &component,
         &session,
     );
@@ -880,7 +880,7 @@ fn path_identifier_symbol_symbol_identifier_segments() {
 
     assert_format(
         "topmost.overarching.&/.~## . ^^^ .sink",
-        &sink.into_expression(),
+        &sink.into_item(),
         &component,
         &session,
     );

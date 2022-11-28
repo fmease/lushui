@@ -335,7 +335,7 @@ fn build_component(
             resolver::resolve_declarations(component_root, component, session)?;
     }
 
-    if options.emit_hir {
+    if component.is_target(session) && options.emit_hir {
         eprintln!(
             "{}",
             displayed(|f| component_root.write((component, session), f))

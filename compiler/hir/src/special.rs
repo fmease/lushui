@@ -486,15 +486,15 @@ pub struct Bindings {
 }
 
 impl Bindings {
-    pub fn require(
+    pub fn require<T: From<crate::Binding>>(
         &self,
         special: impl Into<Binding>,
         user: Option<Span>,
-    ) -> Result<crate::Expression, Diagnostic> {
+    ) -> Result<crate::Item<T>, Diagnostic> {
         let special = special.into();
 
         self.get(special)
-            .map(|identifier| identifier.clone().into_expression())
+            .map(|identifier| identifier.clone().into_item())
             .ok_or_else(|| missing_binding_error(special, user))
     }
 

@@ -10,22 +10,17 @@ v2: Bool = == gam jamma
 
 use extern.core.(tuple.Tuple list.List)
 
-main: Tuple
-    (List.prepend Type (Duple Nat Nat)
-    (List.prepend Type The-G
-    (List.prepend Type Bool
-    (List.empty Type))))
-    =
+main: Tuple List.[(Type) (Duple Nat Nat) The-G Bool] =
     Tuple.prepend
         (Duple Nat Nat)
-        (List.prepend Type The-G (List.prepend Type Bool (List.empty Type)))
+        List.[(Type) The-G Bool]
         v0
         (Tuple.prepend
             The-G
-            (List.prepend Type Bool (List.empty Type))
+            List.[(Type) Bool]
             v1
             (Tuple.prepend
                 Bool
-                (List.empty Type)
+                List.[(Type)]
                 v2
                 Tuple.empty))

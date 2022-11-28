@@ -257,7 +257,7 @@ impl<'a> Typer<'a> {
 
                 self.assert_constructor_is_instance_of_type(
                     type_.clone(),
-                    data.clone().into_expression(),
+                    data.clone().into_item(),
                 )?;
 
                 self.carry_out_definition(Definition {

@@ -160,12 +160,6 @@ impl From<Text> for BareExpression {
     }
 }
 
-impl From<SomeSequence> for BareExpression {
-    fn from(sequence: SomeSequence) -> Self {
-        match sequence {}
-    }
-}
-
 impl From<Binding> for BareExpression {
     fn from(binding: Binding) -> Self {
         Self::Binding(Box::new(binding))
@@ -285,12 +279,6 @@ impl From<Text> for BarePattern {
     }
 }
 
-impl From<SomeSequence> for BarePattern {
-    fn from(sequence: SomeSequence) -> Self {
-        match sequence {}
-    }
-}
-
 impl From<Binding> for BarePattern {
     fn from(binding: Binding) -> Self {
         Self::Binding(Box::new(binding))
@@ -388,11 +376,6 @@ impl fmt::Display for Text {
         }
     }
 }
-
-// @Temporary placeholder until we can desugar sequence literals to
-// concrete constructors of sequence-like data types
-// @Beacon @Beacon @Beacon @Task remove
-pub enum SomeSequence {}
 
 #[derive(Clone, Default)]
 pub struct Namespace {
