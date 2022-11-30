@@ -6,7 +6,7 @@
 //! expressions and patterns to [(resolved) identifiers](Identifier) which
 //! contain a [declaration index](DeclarationIndex) or a [de Bruijn index](DeBruijnIndex)
 //! respectively.
-#![feature(default_free_fn, let_chains)]
+#![feature(default_free_fn, let_chains, iter_array_chunks)]
 
 // @Task improve docs above!
 // @Task get rid of "register" terminology
@@ -1116,56 +1116,254 @@ impl<'a> Resolver<'a> {
                     .report(self.session.reporter())
             })?;
 
-        let mut elements = sequence.bare.elements.bare.into_iter();
+        match type_ {
+            SequentialType::List => self.resolve_list_literal(sequence.bare.elements),
+            SequentialType::Vector => self.resolve_vector_literal(sequence.bare.elements),
+            SequentialType::Tuple => self.resolve_tuple_literal(sequence.bare.elements),
+        }
+    }
 
+    fn resolve_list_literal<T>(&self, elements: Spanned<Vec<hir::Item<T>>>) -> Result<hir::Item<T>>
+    where
+        T: Clone + From<hir::Binding> + From<hir::Application<hir::Item<T>>>,
+    {
+        let span = elements.span;
+        let mut elements = elements.bare.into_iter();
         let Some(element_type) = elements.next() else {
             return Err(Diagnostic::error()
-                .message("sequence literals cannot be empty")
+                .message("list literals cannot be empty")
                 .note(
                     "due to limitations of the current type system, \
                      element types cannot be inferred and\n\
-                     have to be manually supplied as the first element",
+                     have to be manually supplied as the first “element”",
                 )
-                .primary_span(sequence.bare.elements.span)
+                .primary_span(span)
                 .report(self.session.reporter()));
         };
 
-        match type_ {
-            SequentialType::List => {
-                // @Bug don't unwrap, otherwise this is gonna ICE if sb were to define
-                //      `List` as `@known data List: Type -> Type of {}` (no constructors)
-                // @Task use `require` instead
-                let empty = self
-                    .session
-                    .special
-                    .get(special::Constructor::ListEmpty)
-                    .unwrap();
-                let prepend = self
-                    .session
-                    .special
-                    .get(special::Constructor::ListPrepend)
-                    .unwrap();
+        // @Task don't unwrap, @Bug this is gonna crash if sb. were to define
+        // `List` as `@known data List: … of {}` (no constructors)
+        // @Task use `require` instead once it returns an Identifier instead of an Item
+        let empty = self
+            .session
+            .special
+            .get(special::Constructor::ListEmpty)
+            .unwrap();
+        let prepend = self
+            .session
+            .special
+            .get(special::Constructor::ListPrepend)
+            .unwrap();
 
-                // @Task check if all those attributes & spans make sense
-                let mut result = hir::Item::new(
-                    default(),
-                    sequence.bare.elements.span,
-                    hir::Application {
-                        // @Task don't throw away attributes & span
-                        callee: hir::Item::new(
-                            default(),
-                            sequence.bare.elements.span,
-                            hir::Binding(empty.clone()).into(),
-                        ),
-                        explicitness: Explicit,
-                        argument: element_type.clone(),
-                    }
-                    .into(),
-                );
+        // @Task check if all those attributes & spans make sense
+        let mut result = hir::Item::new(
+            default(),
+            span,
+            hir::Application {
+                // @Task don't throw away attributes & span
+                callee: hir::Item::new(default(), span, hir::Binding(empty.clone()).into()),
+                explicitness: Explicit,
+                argument: element_type.clone(),
+            }
+            .into(),
+        );
 
-                for element in elements.rev() {
-                    // @Task check if all those attributes & spans make sense
-                    let prepend = hir::Item::new(
+        for element in elements.rev() {
+            // @Task check if all those attributes & spans make sense
+            let prepend = hir::Item::new(
+                default(),
+                element.span,
+                hir::Application {
+                    callee: hir::Item::new(
+                        default(),
+                        element.span,
+                        hir::Binding(prepend.clone()).into(),
+                    ),
+                    explicitness: Explicit,
+                    argument: element_type.clone(),
+                }
+                .into(),
+            );
+
+            // @Task check if all those attributes & spans make sense
+            result = hir::Item::new(
+                default(),
+                element.span,
+                hir::Application {
+                    callee: hir::Item::new(
+                        default(),
+                        element.span,
+                        hir::Application {
+                            callee: prepend,
+                            explicitness: Explicit,
+                            argument: element,
+                        }
+                        .into(),
+                    ),
+                    explicitness: Explicit,
+                    argument: result,
+                }
+                .into(),
+            );
+        }
+
+        Ok(result)
+    }
+
+    // @Task write UI tests
+    fn resolve_vector_literal<T>(
+        &self,
+        elements: Spanned<Vec<hir::Item<T>>>,
+    ) -> Result<hir::Item<T>>
+    where
+        T: Clone + From<hir::Binding> + From<hir::Number> + From<hir::Application<hir::Item<T>>>,
+    {
+        let span = elements.span;
+        let mut elements = elements.bare.into_iter();
+        let Some(element_type) = elements.next() else {
+            return Err(Diagnostic::error()
+                .message("vector literals cannot be empty")
+                .note(
+                    "due to limitations of the current type system, \
+                     element types cannot be inferred and\n\
+                     have to be manually supplied as the first “element”",
+                )
+                .primary_span(span)
+                .report(self.session.reporter()));
+        };
+
+        // @Task don't unwrap, @Bug this is gonna crash if sb. were to define
+        // `Vector` as `@known data Vector: … of {}` (no constructors)
+        // @Task use `require` instead once it returns an Identifier instead of an Item
+        let empty = self
+            .session
+            .special
+            .get(special::Constructor::VectorEmpty)
+            .unwrap();
+        let prepend = self
+            .session
+            .special
+            .get(special::Constructor::VectorPrepend)
+            .unwrap();
+
+        // @Task check if all those attributes & spans make sense
+        let mut result = hir::Item::new(
+            default(),
+            span,
+            hir::Application {
+                // @Task don't throw away attributes & span
+                callee: hir::Item::new(default(), span, hir::Binding(empty.clone()).into()),
+                explicitness: Explicit,
+                argument: element_type.clone(),
+            }
+            .into(),
+        );
+
+        for (length, element) in elements.rev().enumerate() {
+            // @Task check if all those attributes & spans make sense
+            let prepend = hir::Item::new(
+                default(),
+                element.span,
+                hir::Application {
+                    callee: hir::Item::new(
+                        default(),
+                        element.span,
+                        hir::Application {
+                            callee: hir::Item::new(
+                                default(),
+                                element.span,
+                                hir::Binding(prepend.clone()).into(),
+                            ),
+                            explicitness: Explicit,
+                            // @Beacon @Question What happens if the user does not define the intrinsic type `Nat`?
+                            //                   Is that going to lead to crashes later on?
+                            argument: hir::Item::new(
+                                default(),
+                                element.span,
+                                hir::Number::Nat(length.into()).into(),
+                            ),
+                        }
+                        .into(),
+                    ),
+                    explicitness: Explicit,
+                    argument: element_type.clone(),
+                }
+                .into(),
+            );
+
+            // @Task check if all those attributes & spans make sense
+            result = hir::Item::new(
+                default(),
+                element.span,
+                hir::Application {
+                    callee: hir::Item::new(
+                        default(),
+                        element.span,
+                        hir::Application {
+                            callee: prepend,
+                            explicitness: Explicit,
+                            argument: element,
+                        }
+                        .into(),
+                    ),
+                    explicitness: Explicit,
+                    argument: result,
+                }
+                .into(),
+            );
+        }
+
+        Ok(result)
+    }
+
+    // @Task write UI tests
+    fn resolve_tuple_literal<T>(&self, elements: Spanned<Vec<hir::Item<T>>>) -> Result<hir::Item<T>>
+    where
+        T: Clone + From<hir::Binding> + From<hir::Application<hir::Item<T>>>,
+    {
+        if elements.bare.len() % 2 != 0 {
+            return Err(Diagnostic::error()
+                .message("tuple literals cannot be empty")
+                .note(
+                    "due to limitations of the current type system, \
+                     element types cannot be inferred and\n\
+                     have to be manually supplied to the left of each element",
+                )
+                .primary_span(elements.span)
+                .report(self.session.reporter()));
+        }
+
+        // @Task don't unwrap, @Bug this is gonna crash if sb. were to define
+        // `Tuple` as `@known data Tuple: … of {}` (no constructors)
+        // @Task use `require` instead once it returns an Identifier instead of an Item
+        let empty = self
+            .session
+            .special
+            .get(special::Constructor::TupleEmpty)
+            .unwrap();
+        let prepend = self
+            .session
+            .special
+            .get(special::Constructor::TuplePrepend)
+            .unwrap();
+        let type_ = self.session.special.get(special::Type::Type).unwrap();
+
+        // @Task check if all those attributes & spans make sense
+        let mut result =
+            hir::Item::new(default(), elements.span, hir::Binding(empty.clone()).into());
+        let mut list = vec![hir::Item::new(
+            default(),
+            elements.span,
+            hir::Binding(type_.clone()).into(),
+        )];
+
+        for [element_type, element] in elements.bare.into_iter().array_chunks().rev() {
+            // @Task check if all those attributes & spans make sense
+            let prepend = hir::Item::new(
+                default(),
+                element.span,
+                hir::Application {
+                    callee: hir::Item::new(
                         default(),
                         element.span,
                         hir::Application {
@@ -1178,123 +1376,40 @@ impl<'a> Resolver<'a> {
                             argument: element_type.clone(),
                         }
                         .into(),
-                    );
-
-                    // @Task check if all those attributes & spans make sense
-                    result = hir::Item::new(
-                        default(),
-                        element.span,
-                        hir::Application {
-                            callee: hir::Item::new(
-                                default(),
-                                element.span,
-                                hir::Application {
-                                    callee: prepend,
-                                    explicitness: Explicit,
-                                    argument: element,
-                                }
-                                .into(),
-                            ),
-                            explicitness: Explicit,
-                            argument: result,
-                        }
-                        .into(),
-                    );
+                    ),
+                    explicitness: Explicit,
+                    argument: self
+                        .resolve_list_literal(Spanned::new(element.span, list.clone()))?,
                 }
+                .into(),
+            );
 
-                Ok(result)
-            }
-            // @Task write UI tests
-            SequentialType::Vector => {
-                // @Bug don't unwrap, otherwise this is gonna ICE if sb were to define
-                //      `Vector` as `@known data Vector: … of {}` (no constructors)
-                // @Task use `require` instead
-                let empty = self
-                    .session
-                    .special
-                    .get(special::Constructor::VectorEmpty)
-                    .unwrap();
-                let prepend = self
-                    .session
-                    .special
-                    .get(special::Constructor::VectorPrepend)
-                    .unwrap();
+            // @Task find a cleaner approach
+            list.insert(1, element_type);
 
-                // @Task check if all those attributes & spans make sense
-                let mut result = hir::Item::new(
-                    default(),
-                    sequence.bare.elements.span,
-                    hir::Application {
-                        // @Task don't throw away attributes & span
-                        callee: hir::Item::new(
-                            default(),
-                            sequence.bare.elements.span,
-                            hir::Binding(empty.clone()).into(),
-                        ),
-                        explicitness: Explicit,
-                        argument: element_type.clone(),
-                    }
-                    .into(),
-                );
-
-                for (length, element) in elements.rev().enumerate() {
-                    // @Task check if all those attributes & spans make sense
-                    let prepend = hir::Item::new(
+            // @Task check if all those attributes & spans make sense
+            result = hir::Item::new(
+                default(),
+                element.span,
+                hir::Application {
+                    callee: hir::Item::new(
                         default(),
                         element.span,
                         hir::Application {
-                            callee: hir::Item::new(
-                                default(),
-                                element.span,
-                                hir::Application {
-                                    callee: hir::Item::new(
-                                        default(),
-                                        element.span,
-                                        hir::Binding(prepend.clone()).into(),
-                                    ),
-                                    explicitness: Explicit,
-                                    // @Beacon @Question What happens if the user does not define the intrinsic type `Nat`?
-                                    //                   Is that going to lead to crashes later on?
-                                    argument: hir::Item::new(
-                                        default(),
-                                        element.span,
-                                        hir::Number::Nat(length.into()).into(),
-                                    ),
-                                }
-                                .into(),
-                            ),
+                            callee: prepend,
                             explicitness: Explicit,
-                            argument: element_type.clone(),
+                            argument: element,
                         }
                         .into(),
-                    );
-
-                    // @Task check if all those attributes & spans make sense
-                    result = hir::Item::new(
-                        default(),
-                        element.span,
-                        hir::Application {
-                            callee: hir::Item::new(
-                                default(),
-                                element.span,
-                                hir::Application {
-                                    callee: prepend,
-                                    explicitness: Explicit,
-                                    argument: element,
-                                }
-                                .into(),
-                            ),
-                            explicitness: Explicit,
-                            argument: result,
-                        }
-                        .into(),
-                    );
+                    ),
+                    explicitness: Explicit,
+                    argument: result,
                 }
-
-                Ok(result)
-            }
-            SequentialType::Tuple => todo!("tuple"),
+                .into(),
+            );
         }
+
+        Ok(result)
     }
 
     fn literal_used_for_unsupported_type(

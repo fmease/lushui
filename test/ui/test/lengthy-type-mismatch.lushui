@@ -11,7 +11,7 @@ it: Tuple List.[(Type) Int Unit Int] =
     Tuple.prepend
         Int List.[(Type) Unit Int]
         Int.-87 (Tuple.prepend
-            Unit List.[(Type) Type]
+            Unit List.[(Type) Type] ;;; <- ‘Type’ instead of ‘Int’
             (identity Unit Unit.unit) (Tuple.prepend
                 Int List.[(Type)] Int.91
                     Tuple.empty))
