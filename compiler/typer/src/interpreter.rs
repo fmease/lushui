@@ -20,7 +20,7 @@ use diagnostics::{
     Diagnostic,
 };
 use hir::{
-    interfaceable, known, Attributes, DeBruijnIndex, DeclarationIndex, Entity, Identifier,
+    interfaceable, special::Type, Attributes, DeBruijnIndex, DeclarationIndex, Entity, Identifier,
     Substitution::Shift, ValueView,
 };
 use hir_format::Display;
@@ -36,7 +36,7 @@ pub fn evaluate_main_function(component: &Component, session: &BuildSession) -> 
             .component
             .look_up_program_entry(session)
             .unwrap()
-            .into_expression(),
+            .into_item(),
         Context::new(&FunctionScope::Module),
     )
 }
@@ -60,13 +60,11 @@ impl<'a> Interpreter<'a> {
         expression: Expression,
         context: Context<'_>,
     ) -> Result<Expression> {
-        use hir::{intrinsic::Type, BareExpression::*, Substitution::*};
+        use hir::{BareExpression::*, Substitution::*};
 
         // @Bug we currently don't support zero-arity intrinsic functions
         Ok(match expression.clone().bare {
-            Binding(binding) if self.session.is_intrinsic_type(Type::Type, &binding.0) => {
-                expression
-            }
+            Binding(binding) if self.session.special.is(&binding.0, Type::Type) => expression,
             Binding(binding) => {
                 match self.look_up_value(&binding.0) {
                     // @Question is this normalization necessary? I mean, yes, we got a new scope,
@@ -99,7 +97,7 @@ impl<'a> Interpreter<'a> {
                                     // the discarding identifier `_`)
                                     parameter: Identifier::parameter("__"),
                                     parameter_type_annotation: Some(
-                                        self.session.look_up_known_binding(known::Binding::Unit)?,
+                                        self.session.require_special(Type::Unit, None)?,
                                     ),
                                     body_type_annotation: None,
                                     body: Expression::new(
@@ -276,7 +274,7 @@ impl<'a> Interpreter<'a> {
                                 expression.attributes,
                                 expression.span,
                                 hir::CaseAnalysis {
-                                    scrutinee: scrutinee.0.clone().into_expression(),
+                                    scrutinee: scrutinee.0.clone().into_item(),
                                     cases: analysis.cases.clone(),
                                 }
                                 .into(),
@@ -642,10 +640,7 @@ impl Substitute for Expression {
                                 let binder = parameter.as_innermost();
 
                                 // @Question what about the attributes of the binder?
-                                Use(
-                                    Box::new(Shift(1).compose(substitution)),
-                                    binder.into_expression(),
-                                )
+                                Use(Box::new(Shift(1).compose(substitution)), binder.into_item())
                             }
                             None => substitution,
                         },
@@ -691,7 +686,7 @@ impl Substitute for Expression {
                                 // @Question what about the attributes of the binder?
                                 Use(
                                     Box::new(Shift(1).compose(substitution.clone())),
-                                    binder.into_expression(),
+                                    binder.into_item(),
                                 )
                             },
                         }
@@ -708,10 +703,7 @@ impl Substitute for Expression {
                             let binder = lambda.parameter.as_innermost();
 
                             // @Question what about the attributes of the binder?
-                            Use(
-                                Box::new(Shift(1).compose(substitution)),
-                                binder.into_expression(),
-                            )
+                            Use(Box::new(Shift(1).compose(substitution)), binder.into_item())
                         },
                     }
                     .into(),
@@ -855,13 +847,13 @@ impl<'a> Context<'a> {
 }
 
 #[derive(Clone)] // @Question expensive attributes clone?
-pub(crate) struct BindingRegistration {
+pub(crate) struct Definition {
     pub(crate) attributes: Attributes,
-    pub(crate) bare: BareBindingRegistration,
+    pub(crate) bare: BareDefinition,
 }
 
 #[derive(Clone)]
-pub(crate) enum BareBindingRegistration {
+pub(crate) enum BareDefinition {
     Function {
         binder: Identifier,
         type_: Expression,
@@ -883,9 +875,9 @@ pub(crate) enum BareBindingRegistration {
 }
 
 // only used to report "cyclic" types (currently treated as a bug)
-impl Display for BindingRegistration {
+impl Display for Definition {
     fn write(&self, context: Self::Context<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use BareBindingRegistration::*;
+        use BareDefinition::*;
 
         match &self.bare {
             Function {

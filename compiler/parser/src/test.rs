@@ -12,13 +12,12 @@ use ast::{
 use diagnostics::{error::Result, Reporter};
 use index_map::Index as _;
 use lexer::lex;
-use smallvec::smallvec;
 use span::{span, SourceFileIndex, SourceMap, Span, Spanned};
 use std::{
     default::default,
     sync::{Arc, RwLock},
 };
-use utilities::{displayed, SmallVec};
+use utilities::{displayed, smallvec, SmallVec};
 
 fn parse_expression(source: &str) -> Result<Expression> {
     let mut map = SourceMap::default();

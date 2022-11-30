@@ -251,13 +251,16 @@ impl Attributes {
             .filter(move |attribute| query.matches(&attribute.bare))
     }
 
-    pub fn get<const NAME: AttributeName>(&self) -> Option<&DataQueryOutput<NAME>>
+    pub fn get<const NAME: AttributeName>(&self) -> Option<Spanned<&DataQueryOutput<NAME>>>
     where
         NameQuery<NAME>: DataQuery,
     {
-        self.0
-            .iter()
-            .find_map(move |attribute| NameQuery::<NAME>::obtain(&attribute.bare))
+        self.0.iter().find_map(move |attribute| {
+            Some(Spanned::new(
+                attribute.span,
+                NameQuery::<NAME>::obtain(&attribute.bare)?,
+            ))
+        })
     }
 
     pub fn select<const NAME: AttributeName>(
@@ -321,7 +324,6 @@ pub enum BareAttribute {
     /// ```text
     /// deprecated <0:reason:Text-Literal> [<since:Version>] [<removal:Version>] [<replacement:Text-Literal>]
     /// ```
-    #[allow(dead_code)]
     Deprecated(Deprecated),
     /// Documentation of a binding.
     ///
@@ -353,19 +355,28 @@ pub enum BareAttribute {
     /// ```
     #[allow(dead_code)]
     If { condition: Condition },
-    /// Identify a binding as an intrinsic.
-    Intrinsic,
+    /// Identify a binding as being intrinsic to the language.
+    ///
+    /// # Form
+    ///
+    /// ```text
+    /// intrinsic [<0:name:Path>]
+    /// ```
+    Intrinsic(Special),
     /// Exclude the attribute target from further processing.
     ///
     /// Basically `@(if false)` but `if` won't be implemented anytime soon.
     Ignore,
     /// Statically include the contents of file given by path.
     Include,
-    /// Identify a binding intrinsic to the language.
+    /// Identify a binding as being known to the compiler.
     ///
-    /// Currently only used for bindings that are required for some
-    /// intrinsic bindings in the core library.
-    Known,
+    /// # Form
+    ///
+    /// ```text
+    /// known [<0:name:Path>]
+    /// ```
+    Known(Special),
     /// Change the path where the out-of-line module resides.
     ///
     /// # Form
@@ -432,9 +443,9 @@ impl BareAttribute {
             Deprecated { .. } | Doc { .. } | If { .. } | Ignore | Statistics | Unstable { .. } => {
                 Targets::DECLARATION
             }
-            Intrinsic => Targets::FUNCTION_DECLARATION | Targets::DATA_DECLARATION,
+            Intrinsic { .. } => Targets::FUNCTION_DECLARATION | Targets::DATA_DECLARATION,
             Include => Targets::TEXT_LITERAL,
-            Known | Moving | Abstract => Targets::DATA_DECLARATION,
+            Known { .. } | Moving | Abstract => Targets::DATA_DECLARATION,
             // @Task for constructors, smh add extra diagnostic note saying they are public automatically
             // @Update with `@transparent` implemented, suggest `@transparent` on the data decl
             Public { .. } => {
@@ -489,10 +500,8 @@ impl fmt::Display for BareAttribute {
 
         match self {
             Self::Abstract
-            | Self::Intrinsic
             | Self::Ignore
             | Self::Include
-            | Self::Known
             | Self::Moving
             | Self::Static
             | Self::Statistics
@@ -503,6 +512,11 @@ impl fmt::Display for BareAttribute {
             | Self::Deny { lint }
             | Self::Forbid { lint }
             | Self::Warn { lint } => write!(f, "({name} {lint})"),
+
+            Self::Intrinsic(special) | Self::Known(special) => match &special.name {
+                Some(path) => write!(f, "({name} {path})"),
+                None => write!(f, "{name}"),
+            },
 
             Self::Deprecated(deprecated) => {
                 if deprecated.reason.is_none()
@@ -631,6 +645,8 @@ macro data_queries($( $name:ident: $Output:ty = $pat:pat => $expr:expr ),+ $(,)?
 data_queries! {
     Deprecated: Deprecated = BareAttribute::Deprecated(deprecated) => deprecated,
     Doc: str = BareAttribute::Doc { content } => content,
+    Intrinsic: Special = BareAttribute::Intrinsic(special) => special,
+    Known: Special = BareAttribute::Known(special) => special,
     Location: str = BareAttribute::Location { path } => path,
     Public: Public = BareAttribute::Public(reach) => reach,
 }
@@ -653,6 +669,11 @@ pub struct Public {
 pub struct Unstable {
     pub feature: Feature,
     pub reason: String,
+}
+
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub struct Special {
+    pub name: Option<ast::Path>,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]

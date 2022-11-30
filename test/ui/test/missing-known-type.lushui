@@ -8,7 +8,7 @@ data Type: Type
 @intrinsic
 data Nat: Type
 
-@intrinsic
+@(intrinsic nat.equal)
 equal: Nat -> Nat -> Bool
 
 data Bool: Type of

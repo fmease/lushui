@@ -8,7 +8,7 @@ subject: Text = "core"
 @intrinsic
 data Text: Type
 
-@intrinsic
+@(intrinsic text.concat)
 concat:
     Text ->
     Text ->

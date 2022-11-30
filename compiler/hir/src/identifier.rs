@@ -1,3 +1,4 @@
+use super::{Binding, Item};
 use span::{Span, Spanning};
 use std::{default::default, fmt};
 use utilities::ComponentIndex;
@@ -29,8 +30,8 @@ impl Identifier {
         self.source.as_str()
     }
 
-    pub fn into_expression(self) -> super::Expression {
-        super::Expression::new(default(), self.span(), super::Binding(self).into())
+    pub fn into_item<T: From<Binding>>(self) -> Item<T> {
+        Item::new(default(), self.span(), Binding(self).into())
     }
 
     // @Note bad name

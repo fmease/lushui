@@ -206,7 +206,7 @@ impl BuildQueue {
                         && type_.bare != ComponentType::Executable
                     {
                         let error = Diagnostic::error()
-                            .message(format!("the component type ‘{type_}’ is not supported yet",))
+                            .message(format!("the component type ‘{type_}’ is not supported yet"))
                             .primary_span(type_)
                             .report(&self.reporter);
                         health.taint(error);

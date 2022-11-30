@@ -10,7 +10,6 @@ ast = { path = "../ast" }
 diagnostics = { path = "../diagnostics" }
 lowered_ast = { path = "../lowered_ast" }
 session = { path = "../session" }
-smallvec = { version = "1.8.0", features = ["const_generics"] }
 span = { path = "../span" }
 syntax = { path = "../syntax" }
 utilities = { path = "../utilities" }

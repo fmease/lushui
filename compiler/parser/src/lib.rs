@@ -1194,16 +1194,14 @@ impl<'a> Parser<'a> {
 
     /// Parse the first segment of a path.
     fn parse_first_path_segment(&mut self) -> Result<Path> {
-        let path = match self.current_token().name() {
-            Word | Symbol => Identifier::try_from(self.current_token().clone())
-                .unwrap()
-                .into(),
-            name if name.is_path_hanger() => self
-                .current_token()
+        let token = self.current_token();
+        let path = match token.name() {
+            Word | Symbol => Identifier::try_from(token.clone()).unwrap().into(),
+            name if name.is_path_hanger() => token
                 .clone()
                 .map(|token| ast::BareHanger::try_from(token).unwrap())
                 .into(),
-            _ => return self.error(|| Expected::Path.but_actual_is(self.current_token())),
+            _ => return self.error(|| Expected::Path.but_actual_is(token)),
         };
         self.advance();
         Ok(path)
@@ -2103,7 +2101,7 @@ impl LexerErrorExt for lexer::Error {
                     ),
                 }),
             InvalidToken(token) => {
-                let message = format!("found invalid character U+{:04X} ‘{token}’", token as u32,);
+                let message = format!("found invalid character U+{:04X} ‘{token}’", token as u32);
 
                 // @Task code
                 Diagnostic::error()

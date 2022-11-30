@@ -3,11 +3,10 @@ module
 
 use topmost.type.Type
 
-@public
+@public @known
 data List (A: Type): Type of
     empty (A: Type): List A
-    ;;; @Task rename cons...cons to new, with, cell, idk
-    cons (A: Type): A -> List A -> List A
+    prepend (A: Type): A -> List A -> List A
 
 @public
-use List.(empty cons)
+use List.(empty prepend)

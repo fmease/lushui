@@ -6,35 +6,36 @@
 //! expressions and patterns to [(resolved) identifiers](Identifier) which
 //! contain a [declaration index](DeclarationIndex) or a [de Bruijn index](DeBruijnIndex)
 //! respectively.
-#![feature(default_free_fn, let_chains)]
+#![feature(default_free_fn, let_chains, iter_array_chunks)]
 
 // @Task improve docs above!
 // @Task get rid of "register" terminology
 // @Task transform all Result-returning functions into ()-returning ones modifying self.health
 //       and use the new Handler API and get rid of the Stain API
 
+use ast::Explicitness::Explicit;
 use colored::Colorize;
 use diagnostics::{
-    error::{Health, Outcome, PossiblyErroneous, Result, Stain},
+    error::{Handler, Health, Outcome, PossiblyErroneous, Result, Stain},
     reporter::ErasedReportedError,
     Diagnostic, ErrorCode, LintCode,
 };
 use hir::{
-    intrinsic, AttributeName, Attributes, DeBruijnIndex, DeclarationIndex, Entity, EntityKind,
-    Exposure, ExposureReach, Identifier, Index, LocalDeclarationIndex, PartiallyResolvedPath,
+    special::{self, NumericType, SequentialType, Type},
+    AttributeName, Attributes, DeBruijnIndex, DeclarationIndex, Entity, EntityKind, Exposure,
+    ExposureReach, Identifier, Index, LocalDeclarationIndex, PartiallyResolvedPath,
 };
 use hir_format::{ComponentExt as _, DefaultContext, Display};
 use session::{
     BuildSession, Component, DeclarationIndexExt, IdentifierExt, LocalDeclarationIndexExt,
 };
-use smallvec::smallvec;
 use span::{Span, Spanned, Spanning};
 use std::{cmp::Ordering, default::default, fmt, mem, sync::Mutex};
 use token::Word;
 use unicode_width::UnicodeWidthStr;
 use utilities::{
-    cycle::find_cycles, displayed, obtain, pluralize, AsAutoColoredChangeset, Conjunction, HashMap,
-    ListingExt, QuoteExt, SmallVec,
+    cycle::find_cycles, displayed, obtain, pluralize, smallvec, AsAutoColoredChangeset,
+    Conjunction, HashMap, ListingExt, QuoteExt, SmallVec,
 };
 
 /// Resolve the names of a declaration.
@@ -150,7 +151,7 @@ impl<'a> ResolverMut<'a> {
         use lowered_ast::BareDeclaration::*;
 
         let exposure = match declaration.attributes.get::<{ AttributeName::Public }>() {
-            Some(public) => match &public.reach {
+            Some(public) => match &public.bare.reach {
                 Some(reach) => ExposureReach::PartiallyResolved(PartiallyResolvedPath {
                     // unwrap: root always has Exposure::Unrestricted, it won't reach this branch
                     namespace: module.unwrap(),
@@ -170,13 +171,31 @@ impl<'a> ResolverMut<'a> {
             Function(function) => {
                 let module = module.unwrap();
 
-                self.define(
+                let index = self.define(
                     function.binder.clone(),
                     exposure,
                     declaration.attributes.clone(),
                     EntityKind::UntypedFunction,
                     Some(module),
                 )?;
+
+                let binder = Identifier::new(index.global(self.component), function.binder.clone());
+
+                if let Some(intrinsic) = declaration.attributes.get::<{ AttributeName::Intrinsic }>()
+                && let Err(error) = self.session
+                    .special
+                    .define(
+                        special::Kind::Intrinsic,
+                        binder,
+                        match &intrinsic.bare.name {
+                            Some(name) => special::DefinitionStyle::Explicit { name },
+                            None => special::DefinitionStyle::Implicit { namespace: Some(self.component[module].source.as_str()) },
+                        },
+                        intrinsic.span,
+                    )
+                {
+                    let _: ErasedReportedError = error.handle(&mut *self);
+                }
             }
             Data(type_) => {
                 // there is always a root module
@@ -193,17 +212,34 @@ impl<'a> ResolverMut<'a> {
 
                 let binder = Identifier::new(index.global(self.component), type_.binder.clone());
 
-                let known = declaration.attributes.span(AttributeName::Known);
-                if let Some(known) = known {
-                    self.session
-                        .define_known_binding(&binder, None, known)
-                        .stain(&mut self.health);
+                let known = declaration.attributes.get::<{ AttributeName::Known }>();
+                if let Some(known) = known
+                && let Err(error) = self.session.special.define(
+                    special::Kind::Known,
+                    binder.clone(),
+                    match &known.bare.name {
+                        Some(name) => special::DefinitionStyle::Explicit { name },
+                        None => special::DefinitionStyle::Implicit { namespace: None },
+                    },
+                    known.span,
+                ) {
+                    let _: ErasedReportedError = error.handle(&mut *self);
                 }
 
-                if let Some(intrinsic) = declaration.attributes.span(AttributeName::Intrinsic) {
-                    self.session
-                        .define_intrinsic_type(binder, intrinsic)
-                        .stain(&mut self.health);
+                if let Some(intrinsic) = declaration.attributes.get::<{ AttributeName::Intrinsic }>()
+                && let Err(error) = self.session
+                    .special
+                    .define(
+                        special::Kind::Intrinsic,
+                        binder,
+                        match &intrinsic.bare.name {
+                            Some(name) => special::DefinitionStyle::Explicit { name },
+                            None => special::DefinitionStyle::Implicit { namespace: None },
+                        },
+                        intrinsic.span,
+                    )
+                {
+                    let _: ErasedReportedError = error.handle(&mut *self);
                 }
 
                 let health = &mut Health::Untainted;
@@ -222,7 +258,7 @@ impl<'a> ResolverMut<'a> {
                             Context::DataDeclaration {
                                 index,
                                 transparency: Some(transparency),
-                                known,
+                                known: known.map(|known| known.span),
                             },
                         )
                         .map_err(DefinitionError::into_inner)
@@ -256,14 +292,18 @@ impl<'a> ResolverMut<'a> {
                 let binder =
                     Identifier::new(index.global(self.component), constructor.binder.clone());
 
-                if let Some(known) = known {
-                    self.session
-                        .define_known_binding(
-                            &binder,
-                            Some(self.component[namespace].source.as_str()),
-                            known,
-                        )
-                        .stain(&mut self.health);
+                // @Task support `@(known name)` on constructors
+                if let Some(known) = known
+                && let Err(error) = self.session
+                    .special
+                    .define(
+                        special::Kind::Known,
+                        binder,
+                        special::DefinitionStyle::Implicit { namespace: Some(self.component[namespace].source.as_str()) },
+                        known,
+                    )
+                {
+                    let _: ErasedReportedError = error.handle(&mut *self);
                 }
             }
             Module(submodule) => {
@@ -699,6 +739,14 @@ expected the exposure of ‘{}’
     }
 }
 
+impl Handler for &mut ResolverMut<'_> {
+    fn handle<T: PossiblyErroneous>(self, diagnostic: Diagnostic) -> T {
+        let error = diagnostic.report(self.session.reporter());
+        self.health.taint(error);
+        T::error(error)
+    }
+}
+
 struct Resolver<'a> {
     component: &'a Component,
     session: &'a BuildSession,
@@ -964,24 +1012,15 @@ impl<'a> Resolver<'a> {
         let type_ = match type_ {
             Some(type_) => self
                 .session
-                .intrinsic_types()
-                .find(|(_, identifier)| identifier.declaration_index().unwrap() == type_.bare)
-                .and_then(
-                    |(intrinsic, _)| obtain!(intrinsic, intrinsic::Type::Numeric(type_) => type_),
-                )
+                .special.get(type_.bare)
+                // @Task write more concisely
+                .and_then(|intrinsic| obtain!(intrinsic, special::Binding::Type(Type::Numeric(type_)) => type_))
                 .ok_or_else(|| {
-                    Diagnostic::error()
-                        .code(ErrorCode::E043)
-                        .message(format!(
-                            "the number literal is not a valid constructor for type ‘{}’",
-                            self.look_up(type_.bare).source
-                        ))
-                        .labeled_primary_span(literal, "number literal may not construct that type")
-                        .labeled_secondary_span(type_, "the data type")
+                    self.literal_used_for_unsupported_type(literal, "number", type_)
                         .report(self.session.reporter())
                 })?,
             // for now, we default to `Nat` until we implement polymorphic number literals and their inference
-            None => intrinsic::NumericType::Nat,
+            None => NumericType::Nat,
         };
 
         let Ok(resolved_number) = hir::Number::parse(&literal.bare, type_) else {
@@ -1024,27 +1063,15 @@ impl<'a> Resolver<'a> {
         let _type = match type_ {
             Some(type_) => self
                 .session
-                .intrinsic_types()
-                .find(|(_, identifier)| identifier.declaration_index().unwrap() == type_.bare)
-                .map(|(intrinsic, _)| intrinsic)
-                // @Task add other textual types
-                .filter(|&intrinsic| intrinsic == intrinsic::Type::Text)
+                .special
+                .get(type_.bare)
+                .filter(|&intrinsic| matches!(intrinsic, special::Binding::Type(Type::Text)))
                 .ok_or_else(|| {
-                    Diagnostic::error()
-                        .code(ErrorCode::E043)
-                        .message(format!(
-                            "the text literal is not a valid constructor for type ‘{}’",
-                            self.look_up(type_.bare).source
-                        ))
-                        .labeled_primary_span(
-                            &text.bare.literal,
-                            "text literal may not construct that type",
-                        )
-                        .labeled_secondary_span(type_, "the data type")
+                    self.literal_used_for_unsupported_type(&text.bare.literal, "text", type_)
                         .report(self.session.reporter())
                 })?,
             // for now, we default to `Text` until we implement polymorphic text literals and their inference
-            None => intrinsic::Type::Text,
+            None => Type::Text.into(),
         };
 
         Ok(hir::Item::new(
@@ -1061,27 +1088,345 @@ impl<'a> Resolver<'a> {
         scope: &FunctionScope<'_>,
     ) -> Result<hir::Item<T>>
     where
-        T: From<hir::SomeSequence>,
+        T: Clone + From<hir::Binding> + From<hir::Number> + From<hir::Application<hir::Item<T>>>,
     {
-        let _type = sequence
-            .bare
-            .path
-            .as_ref()
-            .map(|path| {
-                Ok(Spanned::new(
-                    path.span(),
-                    self.resolve_path_of_literal(path, sequence.bare.elements.span, scope)?,
-                ))
-            })
-            .transpose()?;
+        // @Task test sequence literals inside of patterns!
 
-        // @Task make core's Vector, Tuple, etc. known and check the namespacing type
+        // @Task test this!
+        let path = sequence.bare.path.as_ref().ok_or_else(|| {
+            Diagnostic::error()
+                .message("sequence literals without explicit type are not supported yet")
+                .primary_span(&sequence.bare.elements)
+                .help("consider prefixing the literal with a path to a type followed by a ‘.’")
+                .report(self.session.reporter())
+        })?;
 
-        // @Task
-        Err(Diagnostic::error()
-            .message("sequence literals are not supported yet")
-            .primary_span(&sequence.bare.elements)
-            .report(self.session.reporter()))
+        let type_ = Spanned::new(
+            path.span(),
+            self.resolve_path_of_literal(path, sequence.bare.elements.span, scope)?,
+        );
+
+        // @Task test this!
+        let type_ = self
+            .session
+            .special.get(type_.bare)
+            .and_then(|known| obtain!(known, special::Binding::Type(special::Type::Sequential(type_)) => type_))
+            .ok_or_else(|| {
+                self.literal_used_for_unsupported_type(&sequence.bare.elements, "sequence", type_)
+                    .report(self.session.reporter())
+            })?;
+
+        match type_ {
+            SequentialType::List => self.resolve_list_literal(sequence.bare.elements),
+            SequentialType::Vector => self.resolve_vector_literal(sequence.bare.elements),
+            SequentialType::Tuple => self.resolve_tuple_literal(sequence.bare.elements),
+        }
+    }
+
+    fn resolve_list_literal<T>(&self, elements: Spanned<Vec<hir::Item<T>>>) -> Result<hir::Item<T>>
+    where
+        T: Clone + From<hir::Binding> + From<hir::Application<hir::Item<T>>>,
+    {
+        let span = elements.span;
+        let mut elements = elements.bare.into_iter();
+        let Some(element_type) = elements.next() else {
+            return Err(Diagnostic::error()
+                .message("list literals cannot be empty")
+                .note(
+                    "due to limitations of the current type system, \
+                     element types cannot be inferred and\n\
+                     have to be manually supplied as the first “element”",
+                )
+                .primary_span(span)
+                .report(self.session.reporter()));
+        };
+
+        // @Task don't unwrap, @Bug this is gonna crash if sb. were to define
+        // `List` as `@known data List: … of {}` (no constructors)
+        // @Task use `require` instead once it returns an Identifier instead of an Item
+        let empty = self
+            .session
+            .special
+            .get(special::Constructor::ListEmpty)
+            .unwrap();
+        let prepend = self
+            .session
+            .special
+            .get(special::Constructor::ListPrepend)
+            .unwrap();
+
+        // @Task check if all those attributes & spans make sense
+        let mut result = hir::Item::new(
+            default(),
+            span,
+            hir::Application {
+                // @Task don't throw away attributes & span
+                callee: hir::Item::new(default(), span, hir::Binding(empty.clone()).into()),
+                explicitness: Explicit,
+                argument: element_type.clone(),
+            }
+            .into(),
+        );
+
+        for element in elements.rev() {
+            // @Task check if all those attributes & spans make sense
+            let prepend = hir::Item::new(
+                default(),
+                element.span,
+                hir::Application {
+                    callee: hir::Item::new(
+                        default(),
+                        element.span,
+                        hir::Binding(prepend.clone()).into(),
+                    ),
+                    explicitness: Explicit,
+                    argument: element_type.clone(),
+                }
+                .into(),
+            );
+
+            // @Task check if all those attributes & spans make sense
+            result = hir::Item::new(
+                default(),
+                element.span,
+                hir::Application {
+                    callee: hir::Item::new(
+                        default(),
+                        element.span,
+                        hir::Application {
+                            callee: prepend,
+                            explicitness: Explicit,
+                            argument: element,
+                        }
+                        .into(),
+                    ),
+                    explicitness: Explicit,
+                    argument: result,
+                }
+                .into(),
+            );
+        }
+
+        Ok(result)
+    }
+
+    // @Task write UI tests
+    fn resolve_vector_literal<T>(
+        &self,
+        elements: Spanned<Vec<hir::Item<T>>>,
+    ) -> Result<hir::Item<T>>
+    where
+        T: Clone + From<hir::Binding> + From<hir::Number> + From<hir::Application<hir::Item<T>>>,
+    {
+        let span = elements.span;
+        let mut elements = elements.bare.into_iter();
+        let Some(element_type) = elements.next() else {
+            return Err(Diagnostic::error()
+                .message("vector literals cannot be empty")
+                .note(
+                    "due to limitations of the current type system, \
+                     element types cannot be inferred and\n\
+                     have to be manually supplied as the first “element”",
+                )
+                .primary_span(span)
+                .report(self.session.reporter()));
+        };
+
+        // @Task don't unwrap, @Bug this is gonna crash if sb. were to define
+        // `Vector` as `@known data Vector: … of {}` (no constructors)
+        // @Task use `require` instead once it returns an Identifier instead of an Item
+        let empty = self
+            .session
+            .special
+            .get(special::Constructor::VectorEmpty)
+            .unwrap();
+        let prepend = self
+            .session
+            .special
+            .get(special::Constructor::VectorPrepend)
+            .unwrap();
+
+        // @Task check if all those attributes & spans make sense
+        let mut result = hir::Item::new(
+            default(),
+            span,
+            hir::Application {
+                // @Task don't throw away attributes & span
+                callee: hir::Item::new(default(), span, hir::Binding(empty.clone()).into()),
+                explicitness: Explicit,
+                argument: element_type.clone(),
+            }
+            .into(),
+        );
+
+        for (length, element) in elements.rev().enumerate() {
+            // @Task check if all those attributes & spans make sense
+            let prepend = hir::Item::new(
+                default(),
+                element.span,
+                hir::Application {
+                    callee: hir::Item::new(
+                        default(),
+                        element.span,
+                        hir::Application {
+                            callee: hir::Item::new(
+                                default(),
+                                element.span,
+                                hir::Binding(prepend.clone()).into(),
+                            ),
+                            explicitness: Explicit,
+                            // @Beacon @Question What happens if the user does not define the intrinsic type `Nat`?
+                            //                   Is that going to lead to crashes later on?
+                            argument: hir::Item::new(
+                                default(),
+                                element.span,
+                                hir::Number::Nat(length.into()).into(),
+                            ),
+                        }
+                        .into(),
+                    ),
+                    explicitness: Explicit,
+                    argument: element_type.clone(),
+                }
+                .into(),
+            );
+
+            // @Task check if all those attributes & spans make sense
+            result = hir::Item::new(
+                default(),
+                element.span,
+                hir::Application {
+                    callee: hir::Item::new(
+                        default(),
+                        element.span,
+                        hir::Application {
+                            callee: prepend,
+                            explicitness: Explicit,
+                            argument: element,
+                        }
+                        .into(),
+                    ),
+                    explicitness: Explicit,
+                    argument: result,
+                }
+                .into(),
+            );
+        }
+
+        Ok(result)
+    }
+
+    // @Task write UI tests
+    fn resolve_tuple_literal<T>(&self, elements: Spanned<Vec<hir::Item<T>>>) -> Result<hir::Item<T>>
+    where
+        T: Clone + From<hir::Binding> + From<hir::Application<hir::Item<T>>>,
+    {
+        if elements.bare.len() % 2 != 0 {
+            return Err(Diagnostic::error()
+                .message("tuple literals cannot be empty")
+                .note(
+                    "due to limitations of the current type system, \
+                     element types cannot be inferred and\n\
+                     have to be manually supplied to the left of each element",
+                )
+                .primary_span(elements.span)
+                .report(self.session.reporter()));
+        }
+
+        // @Task don't unwrap, @Bug this is gonna crash if sb. were to define
+        // `Tuple` as `@known data Tuple: … of {}` (no constructors)
+        // @Task use `require` instead once it returns an Identifier instead of an Item
+        let empty = self
+            .session
+            .special
+            .get(special::Constructor::TupleEmpty)
+            .unwrap();
+        let prepend = self
+            .session
+            .special
+            .get(special::Constructor::TuplePrepend)
+            .unwrap();
+        let type_ = self.session.special.get(special::Type::Type).unwrap();
+
+        // @Task check if all those attributes & spans make sense
+        let mut result =
+            hir::Item::new(default(), elements.span, hir::Binding(empty.clone()).into());
+        let mut list = vec![hir::Item::new(
+            default(),
+            elements.span,
+            hir::Binding(type_.clone()).into(),
+        )];
+
+        for [element_type, element] in elements.bare.into_iter().array_chunks().rev() {
+            // @Task check if all those attributes & spans make sense
+            let prepend = hir::Item::new(
+                default(),
+                element.span,
+                hir::Application {
+                    callee: hir::Item::new(
+                        default(),
+                        element.span,
+                        hir::Application {
+                            callee: hir::Item::new(
+                                default(),
+                                element.span,
+                                hir::Binding(prepend.clone()).into(),
+                            ),
+                            explicitness: Explicit,
+                            argument: element_type.clone(),
+                        }
+                        .into(),
+                    ),
+                    explicitness: Explicit,
+                    argument: self
+                        .resolve_list_literal(Spanned::new(element.span, list.clone()))?,
+                }
+                .into(),
+            );
+
+            // @Task find a cleaner approach
+            list.insert(1, element_type);
+
+            // @Task check if all those attributes & spans make sense
+            result = hir::Item::new(
+                default(),
+                element.span,
+                hir::Application {
+                    callee: hir::Item::new(
+                        default(),
+                        element.span,
+                        hir::Application {
+                            callee: prepend,
+                            explicitness: Explicit,
+                            argument: element,
+                        }
+                        .into(),
+                    ),
+                    explicitness: Explicit,
+                    argument: result,
+                }
+                .into(),
+            );
+        }
+
+        Ok(result)
+    }
+
+    fn literal_used_for_unsupported_type(
+        &self,
+        literal: impl Spanning,
+        name: &str,
+        type_: Spanned<DeclarationIndex>,
+    ) -> Diagnostic {
+        // @Task use correct terminology here: type vs. type constructor
+        Diagnostic::error()
+            .code(ErrorCode::E043)
+            .message(format!(
+                "a {name} literal is not a valid constructor for type ‘{}’",
+                self.look_up(type_.bare).source
+            ))
+            .labeled_primary_span(literal, "this literal may not construct the type")
+            .labeled_secondary_span(type_, "the data type")
     }
 
     fn resolve_path_of_literal(
@@ -1176,6 +1521,7 @@ impl<'a> Resolver<'a> {
                     return match &*path.segments {
                         [identifier] => Ok(Target::output(root, identifier)),
                         [_, identifiers @ ..] => self.resolve_path::<Target>(
+                            // @Task use PathView once available
                             &ast::Path::with_segments(identifiers.to_owned().into()),
                             PathResolutionContext::new(root)
                                 .origin_namespace(context.origin_namespace)
@@ -1196,6 +1542,7 @@ impl<'a> Resolver<'a> {
                     .map_err(|error| error.report(self.session.reporter()).into())
             } else {
                 self.resolve_path::<Target>(
+                    // @Task use PathView once available
                     &ast::Path::with_segments(path.segments.clone()),
                     context.namespace(namespace).qualified_identifier(),
                 )
@@ -1214,7 +1561,7 @@ impl<'a> Resolver<'a> {
             [identifier, identifiers @ ..] => {
                 if entity.is_namespace() {
                     self.resolve_path::<Target>(
-                        // @Task define & use a PathView instead!
+                        // @Task use PathView once available
                         &ast::Path::with_segments(identifiers.to_owned().into()),
                         context.namespace(index).qualified_identifier(),
                     )
@@ -1284,7 +1631,7 @@ impl<'a> Resolver<'a> {
                 self.component.index_to_path(index, self.session),
             );
 
-            if let Some(reason) = &deprecated.reason {
+            if let Some(reason) = &deprecated.bare.reason {
                 message += ": ";
                 message += reason;
             }

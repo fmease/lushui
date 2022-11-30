@@ -7,16 +7,11 @@ use extern.core.(
     function.identity
     )
 
-it: Tuple (
-    List.cons Type Int
-    (List.cons Type Unit
-    (List.cons Type Int
-        (List.empty Type))))
-    =
-    Tuple.cons
-        Int (List.cons Type Unit (List.cons Type Int (List.empty Type)))
-        Int.-87 (Tuple.cons
-            Unit (List.cons Type Type (List.empty Type))
-            (identity Unit Unit.unit) (Tuple.cons
-                Int (List.empty Type) Int.91
+it: Tuple List.[(Type) Int Unit Int] =
+    Tuple.prepend
+        Int List.[(Type) Unit Int]
+        Int.-87 (Tuple.prepend
+            Unit List.[(Type) Type] ;;; <- ‘Type’ instead of ‘Int’
+            (identity Unit Unit.unit) (Tuple.prepend
+                Int List.[(Type)] Int.91
                     Tuple.empty))

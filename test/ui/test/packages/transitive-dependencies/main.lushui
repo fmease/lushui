@@ -10,22 +10,5 @@ v2: Bool = == gam jamma
 
 use extern.core.(tuple.Tuple list.List)
 
-main: Tuple
-    (List.cons Type (Duple Nat Nat)
-    (List.cons Type The-G
-    (List.cons Type Bool
-    (List.empty Type))))
-    =
-    Tuple.cons
-        (Duple Nat Nat)
-        (List.cons Type The-G (List.cons Type Bool (List.empty Type)))
-        v0
-        (Tuple.cons
-            The-G
-            (List.cons Type Bool (List.empty Type))
-            v1
-            (Tuple.cons
-                Bool
-                (List.empty Type)
-                v2
-                Tuple.empty))
+main: Tuple List.[(Type) (Duple Nat Nat) The-G Bool] =
+    Tuple.[(Duple Nat Nat) v0 (The-G) v1 (Bool) v2]

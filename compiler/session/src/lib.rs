@@ -2,10 +2,11 @@
 
 use ast::Explicitness;
 use derivation::{Elements, FromStr, Str};
-use diagnostics::{error::Result, Diagnostic, ErrorCode, Reporter};
+use diagnostics::{error::Result, Reporter};
 use hir::{
-    interfaceable, intrinsic, known, DeclarationIndex, Entity, EntityKind, Expression, Identifier,
-    LocalDeclarationIndex,
+    interfaceable,
+    special::{self, Bindings},
+    DeclarationIndex, Entity, EntityKind, Expression, LocalDeclarationIndex,
 };
 use index_map::IndexMap;
 use lexer::word::WordExt;
@@ -32,11 +33,8 @@ pub struct BuildSession {
     component_packages: HashMap<ComponentIndex, PackageIndex>,
     // @Task support multiple target components (depending on a user-supplied component filter)
     target_component: ComponentOutline,
-    // @Task Identifier -> DeclarationIndex
-    known_bindings: HashMap<known::Binding, Identifier>,
-    // @Task make this a DoubleHashMap
-    intrinsic_types: HashMap<intrinsic::Type, Identifier>,
-    intrinsic_functions: HashMap<intrinsic::Function, Identifier>,
+    /// Intrinsic and known bindings.
+    pub special: Bindings,
     map: Arc<RwLock<SourceMap>>,
     reporter: Reporter,
 }
@@ -56,9 +54,7 @@ impl BuildSession {
             packages,
             component_packages,
             target_component,
-            known_bindings: default(),
-            intrinsic_types: default(),
-            intrinsic_functions: default(),
+            special: default(),
             map: map.clone(),
             reporter,
         }
@@ -77,9 +73,7 @@ impl BuildSession {
                 name: Word::new_unchecked("test".into()),
                 index: ComponentIndex::new(0),
             },
-            known_bindings: default(),
-            intrinsic_types: default(),
-            intrinsic_functions: default(),
+            special: default(),
             map: map.clone(),
             reporter: Reporter::stderr().with_map(map),
         }
@@ -106,168 +100,14 @@ impl BuildSession {
         self.components.insert(component.index(), component);
     }
 
-    pub fn known_bindings(&self) -> impl Iterator<Item = (known::Binding, &Identifier)> {
-        self.known_bindings
-            .iter()
-            .map(|(&known, identifier)| (known, identifier))
-    }
-
-    pub fn known_binding(&self, known: known::Binding) -> Option<&Identifier> {
-        self.known_bindings.get(&known)
-    }
-
-    pub fn look_up_known_binding(&self, known: known::Binding) -> Result<Expression> {
-        Ok(self
-            .known_binding(known)
-            .cloned()
-            .ok_or_else(|| missing_known_binding_error(known).report(self.reporter()))?
-            .into_expression())
-    }
-
-    pub fn look_up_known_type(
+    pub fn require_special(
         &self,
-        known: known::Binding,
-        expression: Span,
+        special: impl Into<special::Binding>,
+        user: Option<Span>,
     ) -> Result<Expression> {
-        Ok(self
-            .known_binding(known)
-            .cloned()
-            .ok_or_else(|| missing_known_type_error(known, expression).report(self.reporter()))?
-            .into_expression())
-    }
-
-    pub fn define_known_binding(
-        &mut self,
-        binder: &Identifier,
-        namespace: Option<&str>,
-        attribute: Span,
-    ) -> Result {
-        let Some(binding) = known::Binding::parse(namespace, binder.as_str()) else {
-            return Err(Diagnostic::error()
-                .code(ErrorCode::E063)
-                .message(format!(
-                    "‘{}{binder}’ is not a known binding",
-                    namespace.map(|namespace| format!(".{namespace}"))
-                        .unwrap_or_default()
-                ))
-                .primary_span(binder)
-                .labeled_secondary_span(attribute, "marks the binding as known to the compiler")
-                .report(self.reporter()));
-        };
-
-        if let Some(previous) = self.known_bindings.get(&binding) {
-            return Err(Diagnostic::error()
-                .code(ErrorCode::E039)
-                .message(format!(
-                    "the known binding ‘{}’ is defined multiple times",
-                    binding.path()
-                ))
-                .labeled_primary_span(binder, "redefinition")
-                .labeled_secondary_span(previous, "previous definition")
-                .report(self.reporter()));
-        }
-
-        self.known_bindings.insert(binding, binder.clone());
-
-        Ok(())
-    }
-
-    pub fn intrinsic_types(&self) -> impl Iterator<Item = (intrinsic::Type, &Identifier)> {
-        self.intrinsic_types
-            .iter()
-            .map(|(&intrinsic, identifier)| (intrinsic, identifier))
-    }
-
-    pub fn intrinsic_type(&self, intrinsic: intrinsic::Type) -> Option<&Identifier> {
-        self.intrinsic_types.get(&intrinsic)
-    }
-
-    pub fn type_(&self) -> hir::Expression {
-        // @Task don't unwrap!
-        self.intrinsic_type(hir::intrinsic::Type::Type)
-            .cloned()
-            .unwrap()
-            .into_expression()
-    }
-
-    // @Beacon @Task support paths!
-    pub fn define_intrinsic_type(&mut self, binder: Identifier, attribute: Span) -> Result {
-        let Ok(intrinsic) = binder.as_str().parse::<intrinsic::Type>() else {
-            return Err(unrecognized_intrinsic_binding_error(binder.as_str(), intrinsic::Kind::Type)
-                .primary_span(&binder)
-                .secondary_span(attribute)
-                .report(self.reporter()));
-        };
-
-        if let Some(previous) = self.intrinsic_type(intrinsic) {
-            return Err(Diagnostic::error()
-                .code(ErrorCode::E040)
-                .message(format!(
-                    "the intrinsic type ‘{intrinsic}’ is defined multiple times",
-                ))
-                .labeled_primary_span(&binder, "redefinition")
-                .labeled_secondary_span(previous as &_, "previous definition")
-                .report(self.reporter()));
-        }
-
-        self.intrinsic_types.insert(intrinsic, binder);
-
-        Ok(())
-    }
-
-    pub fn define_intrinsic_function(
-        &mut self,
-        binder: Identifier,
-        attribute: Span,
-    ) -> Result<intrinsic::Function> {
-        let Ok(intrinsic) = binder.as_str().parse() else {
-            return Err(unrecognized_intrinsic_binding_error(binder.as_str(), intrinsic::Kind::Function)
-                .primary_span(&binder)
-                .secondary_span(attribute)
-                .report(self.reporter()));
-        };
-
-        // @Beacon @Task add a UI test for this!
-        if let Some(previous) = self.intrinsic_functions.get(&intrinsic) {
-            return Err(Diagnostic::error()
-                .code(ErrorCode::E040)
-                .message(format!(
-                    "the intrinsic function ‘{intrinsic}’ is defined multiple times",
-                ))
-                .labeled_primary_span(&binder, "redefinition")
-                .labeled_secondary_span(previous as &_, "previous definition")
-                .report(self.reporter()));
-        }
-
-        self.intrinsic_functions.insert(intrinsic, binder);
-
-        Ok(intrinsic)
-    }
-
-    pub fn is_intrinsic_type(&self, intrinsic: intrinsic::Type, binder: &hir::Identifier) -> bool {
-        self.intrinsic_type(intrinsic)
-            .map_or(false, |intrinsic| intrinsic == binder)
-    }
-
-    pub fn look_up_intrinsic_type(
-        &self,
-        intrinsic: intrinsic::Type,
-        expression: Option<Span>,
-    ) -> Result<Expression> {
-        if let Some(intrinsic) = self.intrinsic_type(intrinsic) {
-            return Ok(intrinsic.clone().into_expression());
-        }
-
-        Err(
-            missing_intrinsic_binding_error(intrinsic, intrinsic::Kind::Type)
-                .with(|error| match expression {
-                    Some(expression) => {
-                        error.labeled_primary_span(expression, "the type of this expression")
-                    }
-                    None => error,
-                })
-                .report(self.reporter()),
-        )
+        self.special
+            .require(special, user)
+            .map_err(|error| error.report(self.reporter()))
     }
 
     pub fn shared_map(&self) -> RwLockReadGuard<'_, SourceMap> {
@@ -319,38 +159,34 @@ pub trait InterfaceableBindingExt: Sized {
 impl InterfaceableBindingExt for interfaceable::Type {
     // @Task improve this code with the new enum logic
     fn from_expression(expression: &Expression, session: &BuildSession) -> Option<Self> {
-        use intrinsic::{NumericType::*, Type::*};
-        use known::Binding::*;
+        use special::NumericType::*;
+        use special::Type::*;
 
-        let known = |binding: &hir::Binding, known: known::Binding| {
-            session
-                .known_binding(known)
-                .map_or(false, |known| &binding.0 == known)
-        };
-        let intrinsic = |binding: &hir::Binding, intrinsic: intrinsic::Type| {
-            session
-                .intrinsic_type(intrinsic)
-                .map_or(false, |intrinsic| &binding.0 == intrinsic)
-        };
+        macro is_special($binding:ident, $name:ident) {
+            session.special.is(&$binding.0, $name)
+        }
 
         Some(match &expression.bare {
             // @Note this lookup looks incredibly inefficient
             hir::BareExpression::Binding(binding) => condition! {
-                known(binding, Unit) => Self::Unit,
-                known(binding, Bool) => Self::Bool,
-                intrinsic(binding, Nat.into()) => Self::Nat,
-                intrinsic(binding, Nat32.into()) => Self::Nat32,
-                intrinsic(binding, Nat64.into()) => Self::Nat64,
-                intrinsic(binding, Int.into()) => Self::Int,
-                intrinsic(binding, Int32.into()) => Self::Int32,
-                intrinsic(binding, Int64.into()) => Self::Int64,
-                intrinsic(binding, Text) => Self::Text,
+                is_special!(binding, Unit) => Self::Unit,
+                is_special!(binding, Bool) => Self::Bool,
+                is_special!(binding, Nat) => Self::Nat,
+                is_special!(binding, Nat32) => Self::Nat32,
+                is_special!(binding, Nat64) => Self::Nat64,
+                is_special!(binding, Int) => Self::Int,
+                is_special!(binding, Int32) => Self::Int32,
+                is_special!(binding, Int64) => Self::Int64,
+                is_special!(binding, Text) => Self::Text,
                 else => return None,
             },
             hir::BareExpression::Application(application) => match &application.callee.bare {
-                hir::BareExpression::Binding(binding) if known(binding, Option) => Self::Option(
-                    Box::new(Self::from_expression(&application.argument, session)?),
-                ),
+                hir::BareExpression::Binding(binding) if is_special!(binding, Option) => {
+                    Self::Option(Box::new(Self::from_expression(
+                        &application.argument,
+                        session,
+                    )?))
+                }
                 _ => return None,
             },
             _ => return None,
@@ -358,22 +194,26 @@ impl InterfaceableBindingExt for interfaceable::Type {
     }
 
     fn into_expression(self, session: &BuildSession) -> Result<Expression> {
-        use intrinsic::{NumericType::*, Type::*};
-        use known::Binding::*;
+        use special::{NumericType::*, Type::*};
 
-        let intrinsic = |binding| session.look_up_intrinsic_type(binding, None);
-        let known = |binding| session.look_up_known_binding(binding);
+        macro special($name:ident) {
+            session.require_special($name, None)
+        }
+
         match self {
-            Self::Unit => known(Unit),
-            Self::Bool => known(Bool),
-            Self::Nat => intrinsic(Nat.into()),
-            Self::Nat32 => intrinsic(Nat32.into()),
-            Self::Nat64 => intrinsic(Nat64.into()),
-            Self::Int => intrinsic(Int.into()),
-            Self::Int32 => intrinsic(Int32.into()),
-            Self::Int64 => intrinsic(Int64.into()),
-            Self::Text => intrinsic(Text),
-            Self::Option(type_) => Ok(application(known(Option)?, type_.into_expression(session)?)),
+            Self::Unit => special!(Unit),
+            Self::Bool => special!(Bool),
+            Self::Nat => special!(Nat),
+            Self::Nat32 => special!(Nat32),
+            Self::Nat64 => special!(Nat64),
+            Self::Int => special!(Int),
+            Self::Int32 => special!(Int32),
+            Self::Int64 => special!(Int64),
+            Self::Text => special!(Text),
+            Self::Option(type_) => Ok(application(
+                special!(Option)?,
+                type_.into_expression(session)?,
+            )),
         }
     }
 }
@@ -381,13 +221,11 @@ impl InterfaceableBindingExt for interfaceable::Type {
 impl InterfaceableBindingExt for interfaceable::Value {
     fn from_expression(expression: &Expression, session: &BuildSession) -> Option<Self> {
         use hir::BareExpression::*;
-        use known::Binding::*;
+        use special::Constructor::*;
 
-        let known = |binding: &hir::Binding, known: known::Binding| {
-            session
-                .known_binding(known)
-                .map_or(false, |known| &binding.0 == known)
-        };
+        macro is_special($binding:ident, $name:ident) {
+            session.special.is(&$binding.0, $name)
+        }
 
         Some(match &expression.bare {
             Text(text) => {
@@ -411,19 +249,19 @@ impl InterfaceableBindingExt for interfaceable::Value {
                 }
             }
             Binding(binding) => condition! {
-                known(binding, UnitUnit) => Self::Unit,
-                known(binding, BoolFalse) => Self::Bool(false),
-                known(binding, BoolTrue) => Self::Bool(true),
+                is_special!(binding, UnitUnit) => Self::Unit,
+                is_special!(binding, BoolFalse) => Self::Bool(false),
+                is_special!(binding, BoolTrue) => Self::Bool(true),
                 else => return None,
             },
 
             Application(application0) => match &application0.callee.bare {
-                Binding(binding) if known(binding, OptionNone) => Self::Option {
+                Binding(binding) if is_special!(binding, OptionNone) => Self::Option {
                     value: None,
                     type_: interfaceable::Type::from_expression(&application0.argument, session)?,
                 },
                 Application(application1) => match &application1.callee.bare {
-                    Binding(binding) if known(binding, OptionSome) => Self::Option {
+                    Binding(binding) if is_special!(binding, OptionSome) => Self::Option {
                         value: Some(Box::new(Self::from_expression(
                             &application0.argument,
                             session,
@@ -442,31 +280,31 @@ impl InterfaceableBindingExt for interfaceable::Value {
     }
 
     fn into_expression(self, session: &BuildSession) -> Result<Expression> {
-        use hir::{Number::*, Text::*};
-        use known::Binding::*;
+        use hir::Number::*;
+        use special::{Constructor::*, Type::*};
 
         Ok(match self {
-            Self::Unit => session.look_up_known_binding(Unit)?,
+            Self::Unit => session.require_special(Unit, None)?,
             Self::Bool(value) => {
-                session.look_up_known_binding(if value { BoolTrue } else { BoolFalse })?
+                session.require_special(if value { BoolTrue } else { BoolFalse }, None)?
             }
-            Self::Text(value) => Expression::new(default(), default(), Text(value).into()),
-            Self::Nat(value) => Expression::new(default(), default(), Nat(value).into()),
-            Self::Nat32(value) => Expression::new(default(), default(), Nat32(value).into()),
-            Self::Nat64(value) => Expression::new(default(), default(), Nat64(value).into()),
-            Self::Int(value) => Expression::new(default(), default(), Int(value).into()),
-            Self::Int32(value) => Expression::new(default(), default(), Int32(value).into()),
-            Self::Int64(value) => Expression::new(default(), default(), Int64(value).into()),
+            Self::Text(value) => Expression::bare(hir::Text::Text(value).into()),
+            Self::Nat(value) => Expression::bare(Nat(value).into()),
+            Self::Nat32(value) => Expression::bare(Nat32(value).into()),
+            Self::Nat64(value) => Expression::bare(Nat64(value).into()),
+            Self::Int(value) => Expression::bare(Int(value).into()),
+            Self::Int32(value) => Expression::bare(Int32(value).into()),
+            Self::Int64(value) => Expression::bare(Int64(value).into()),
             Self::Option { type_, value } => match value {
                 Some(value) => application(
                     application(
-                        session.look_up_known_binding(OptionSome)?,
+                        session.require_special(OptionSome, None)?,
                         type_.into_expression(session)?,
                     ),
                     value.into_expression(session)?,
                 ),
                 None => application(
-                    session.look_up_known_binding(OptionNone)?,
+                    session.require_special(OptionNone, None)?,
                     type_.into_expression(session)?,
                 ),
             },
@@ -486,6 +324,7 @@ impl InterfaceableBindingExt for interfaceable::Value {
     }
 }
 
+#[allow(dead_code)] // @Temporary
 fn application(callee: Expression, argument: Expression) -> Expression {
     Expression::new(
         default(),
@@ -497,33 +336,6 @@ fn application(callee: Expression, argument: Expression) -> Expression {
         }
         .into(),
     )
-}
-
-fn missing_known_binding_error(binding: known::Binding) -> Diagnostic {
-    Diagnostic::error().code(ErrorCode::E062).message(format!(
-        "the known binding ‘{}’ is not defined",
-        binding.path()
-    ))
-}
-
-fn missing_known_type_error(binding: known::Binding, expression: Span) -> Diagnostic {
-    missing_known_binding_error(binding)
-        .labeled_primary_span(expression, "the type of this expression")
-}
-
-fn unrecognized_intrinsic_binding_error(name: &str, kind: intrinsic::Kind) -> Diagnostic {
-    Diagnostic::error()
-        .code(ErrorCode::E061)
-        .message(format!("‘{name}’ is not an intrinsic {kind}"))
-}
-
-fn missing_intrinsic_binding_error(
-    intrinsic: intrinsic::Type,
-    kind: intrinsic::Kind,
-) -> Diagnostic {
-    Diagnostic::error()
-        .code(ErrorCode::E060)
-        .message(format!("the intrinsic {kind} ‘{intrinsic}’ is not defined"))
 }
 
 pub type Components = IndexMap<ComponentIndex, Component>;

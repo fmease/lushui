@@ -107,7 +107,7 @@ pub enum ErrorCode {
     E041,
     /// Intrinsic declaration with a body.
     E042,
-    /// Attempt to construct a type with a literal that does not supported it.
+    /// Attempt to construct a type with a literal that does not support it.
     E043,
     /// Unbalanced bracket.
     E044,

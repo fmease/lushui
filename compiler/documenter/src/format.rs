@@ -274,9 +274,6 @@ impl<'a> Formatter<'a> {
     fn format_binder(&mut self, binder: &hir::Identifier) {
         if let Some(index) = binder.declaration_index() {
             let declaration_url = self.declaration_url_fragment(index);
-
-            // @Task don't use path_to_string for this but don't use extern_path_to_string either
-            // (just something without the `extern`/`core` prefix)
             let path = self.component.index_to_path(index, self.session);
 
             Element::anchor(declaration_url, binder.to_string())

@@ -32,15 +32,14 @@ use diagnostics::{
     Diagnostic, ErrorCode, Reporter,
 };
 use lowered_ast::{
-    attribute::{Predicate, Public, Query, Target},
+    attribute::{Predicate, Public, Query, Special, Target},
     AttributeName, Attributes, BareAttribute,
 };
 use session::{BuildSession, Component};
-use smallvec::smallvec;
 use span::{Span, Spanned, Spanning};
 use std::{default::default, fmt, iter::once};
 use utilities::{
-    Atom, Conjunction, FormatError, ListingExt, QuoteExt, SmallVec, Str, FILE_EXTENSION,
+    smallvec, Atom, Conjunction, FormatError, ListingExt, QuoteExt, SmallVec, Str, FILE_EXTENSION,
 };
 
 /// Lower a file.
@@ -299,7 +298,7 @@ impl<'a> Lowerer<'a> {
                         let _ = inline_modules.take_last();
 
                         path.extend(inline_modules);
-                        path.push(location);
+                        path.push(location.bare);
                     }
                     None => {
                         path.extend(&context.inline_modules);
@@ -415,7 +414,7 @@ impl<'a> Lowerer<'a> {
         'discriminate: {
             match use_.bindings.bare {
                 ast::BareUsePathTree::Single { target, binder } => {
-                    let binder = binder.or_else(|| target.last_identifier().cloned());
+                    let binder = binder.or_else(|| target.segments.last().cloned());
                     let Some(binder) = binder else {
                                 // @Task improve the message for `use topmost.(self)`: hint that `self`
                                 // is effectively unnamed because `topmost` is unnamed
@@ -466,12 +465,13 @@ impl<'a> Lowerer<'a> {
                     // identifier of the target but if that one is `self`, look up the last identifier of
                     // the parent path
                     let Some(binder) = binder.or_else(|| {
-                        if target.bare_hanger(BareHanger::Self_).is_some() {
+                        if target.is_bare_hanger(BareHanger::Self_) {
                             &path
                         } else {
                             &target
                         }
-                        .last_identifier()
+                        .segments
+                        .last()
                         .cloned()
                     }) else {
                         // @Task improve the message for `use topmost.(self)`: hint that `self`
@@ -618,6 +618,7 @@ impl<'a> Lowerer<'a> {
 
                     match let_in.expression {
                         Some(expression) => expression,
+                        // @Task use suggestion API once available
                         None => Diagnostic::error()
                             .code(ErrorCode::E012)
                             .message(format!("the let-binding ‘{binder}’ has no definition"))
@@ -1229,7 +1230,14 @@ impl BareAttributeExt for lowered_ast::BareAttribute {
                         default()
                     },
                 },
-                Intrinsic => Self::Intrinsic,
+                Intrinsic => {
+                    let name = optional_argument(arguments)
+                        .map(|argument| argument.path(Some("name"), session.reporter()))
+                        .transpose()?
+                        .cloned();
+
+                    Self::Intrinsic(Special { name })
+                }
                 If => {
                     return Err(AttributeParsingError::Erased(
                         Diagnostic::error()
@@ -1240,7 +1248,14 @@ impl BareAttributeExt for lowered_ast::BareAttribute {
                 }
                 Ignore => Self::Ignore,
                 Include => Self::Include,
-                Known => Self::Known,
+                Known => {
+                    let name = optional_argument(arguments)
+                        .map(|argument| argument.path(Some("name"), session.reporter()))
+                        .transpose()?
+                        .cloned();
+
+                    Self::Known(Special { name })
+                }
                 Location => {
                     let path = argument(arguments, attribute.span, session.reporter())?
                         .text_literal(Some("path"), session.reporter())?

@@ -576,6 +576,8 @@ impl Format for super::BareParameter {
     }
 }
 
+// @Bug this does not properly handle symbols in paths
+// @Task take a look at `Component::index_to_path`
 impl fmt::Display for super::Path {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         if let Some(hanger) = &self.hanger {
