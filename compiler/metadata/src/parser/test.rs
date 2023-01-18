@@ -4,7 +4,7 @@
 
 use super::{Record, Value};
 use diagnostics::{error::Result, Reporter};
-use span::{span, SourceMap, WeaklySpanned};
+use span::{span, FileName, SourceMap, WeaklySpanned};
 use std::{
     default::default,
     sync::{Arc, RwLock},
@@ -16,7 +16,7 @@ fn parse(source: &str) -> Result<Value> {
     let file = map
         .write()
         .unwrap()
-        .add(None, Arc::new(source.to_owned()), None);
+        .add(FileName::Anonymous, Arc::new(source.to_owned()), None);
     let reporter = Reporter::stderr().with_map(map.clone());
     super::super::parse(file, &map, &reporter)
 }

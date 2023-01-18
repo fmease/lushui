@@ -1,49 +1,49 @@
 error[E036]: the package name ‘???’ is not a valid word
-  ┌─ ${TEST_FOLDER}/packages/invalid-package-and-component-names/package.metadata:3:8
+  ┌─ ${TEST_FOLDER}/packages/invalid-package-and-component-names/package.metadata:2:8
   │
-3 │ name: "???",
+2 │ name: "???",
   │        ═══
 
 error[E036]: the component name ‘of’ is not a valid word
-  ┌─ ${TEST_FOLDER}/packages/invalid-package-and-component-names/package.metadata:7:5
+  ┌─ ${TEST_FOLDER}/packages/invalid-package-and-component-names/package.metadata:6:5
   │
-7 │     "of": {
+6 │     "of": {
   │     ════
 
 error[E036]: the component name ‘0//’ is not a valid word
-   ┌─ ${TEST_FOLDER}/packages/invalid-package-and-component-names/package.metadata:12:14
+   ┌─ ${TEST_FOLDER}/packages/invalid-package-and-component-names/package.metadata:11:14
    │
-12 │             "0//": { component: "hey there", package: "-e" },
+11 │             "0//": { component: "hey there", package: "-e" },
    │              ═══
 
 error[E036]: the component name ‘hey there’ is not a valid word
-   ┌─ ${TEST_FOLDER}/packages/invalid-package-and-component-names/package.metadata:12:34
+   ┌─ ${TEST_FOLDER}/packages/invalid-package-and-component-names/package.metadata:11:34
    │
-12 │             "0//": { component: "hey there", package: "-e" },
+11 │             "0//": { component: "hey there", package: "-e" },
    │                                  ═════════
 
 error[E036]: the package name ‘-e’ is not a valid word
-   ┌─ ${TEST_FOLDER}/packages/invalid-package-and-component-names/package.metadata:12:56
+   ┌─ ${TEST_FOLDER}/packages/invalid-package-and-component-names/package.metadata:11:56
    │
-12 │             "0//": { component: "hey there", package: "-e" },
+11 │             "0//": { component: "hey there", package: "-e" },
    │                                                        ══
 
 error[E036]: the component name ‘’ is not a valid word
-   ┌─ ${TEST_FOLDER}/packages/invalid-package-and-component-names/package.metadata:13:14
+   ┌─ ${TEST_FOLDER}/packages/invalid-package-and-component-names/package.metadata:12:14
    │
-13 │             "": { component: module, provider: distribution },
+12 │             "": { component: module, provider: distribution },
    │             ⟫⟪
 
 error[E036]: the component name ‘module’ is not a valid word
-   ┌─ ${TEST_FOLDER}/packages/invalid-package-and-component-names/package.metadata:13:30
+   ┌─ ${TEST_FOLDER}/packages/invalid-package-and-component-names/package.metadata:12:30
    │
-13 │             "": { component: module, provider: distribution },
+12 │             "": { component: module, provider: distribution },
    │                              ══════
 
 error[E036]: the component name ‘data’ is not a valid word
-   ┌─ ${TEST_FOLDER}/packages/invalid-package-and-component-names/package.metadata:14:13
+   ┌─ ${TEST_FOLDER}/packages/invalid-package-and-component-names/package.metadata:13:13
    │
-14 │             data: {},
+13 │             data: {},
    │             ════
 
 error: aborting due to 8 previous errors

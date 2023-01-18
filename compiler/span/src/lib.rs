@@ -1,5 +1,6 @@
 //! Data structures and procedures for handling source locations.
 #![feature(
+    associated_type_bounds,
     adt_const_params,
     decl_macro,
     default_free_fn,
@@ -11,8 +12,7 @@
 // @Task handle overflows showing errors like "file too big" to the user
 
 use generic::Locality::*;
-pub use source_map::SourceMap;
-pub use source_map::{SourceFile, SourceFileIndex};
+pub use source_map::{FileName, SourceFile, SourceFileIndex, SourceMap};
 pub use spanned::Spanned;
 pub use spanning::{PossiblySpanning, Spanning};
 use std::ops::{Add, Range, Sub};
@@ -453,7 +453,7 @@ mod spanning {
 
 mod spanned {
     use super::{Span, Spanning, WeaklySpanned};
-    use std::{fmt, hash::Hash, ops::Deref};
+    use std::{default::default, fmt, hash::Hash, ops::Deref};
 
     #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
     pub struct Spanned<Bare> {
@@ -464,6 +464,10 @@ mod spanned {
     impl<Bare> Spanned<Bare> {
         pub const fn new(span: Span, bare: Bare) -> Self {
             Self { bare, span }
+        }
+
+        pub fn bare(bare: Bare) -> Self {
+            Self::new(default(), bare)
         }
 
         pub fn map<U>(self, mapper: impl FnOnce(Bare) -> U) -> Spanned<U> {

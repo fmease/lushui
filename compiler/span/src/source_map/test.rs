@@ -1,4 +1,4 @@
-use super::{Highlight, LineWithHighlight, LinesWithHighlight, SourceMap};
+use super::{FileName::Anonymous, Highlight, LineWithHighlight, LinesWithHighlight, SourceMap};
 use crate::{span, ByteIndex};
 
 /// Letting the first proper offset be `1` frees up `0` to mean _unknown location_ in [`Span::default`].
@@ -13,8 +13,8 @@ fn first_next_offset_is_one() {
 fn spacing_between_files() {
     let mut map = SourceMap::default();
 
-    let file0 = map.add_str(None, "abc");
-    let file1 = map.add_str(None, "defgh");
+    let file0 = map.add_str(Anonymous, "abc");
+    let file1 = map.add_str(Anonymous, "defgh");
 
     assert_eq!(map[file0].span, span(1, 4));
     assert_eq!(&map[file0][map[file0].span.local(&map[file0])], "abc");
@@ -25,12 +25,12 @@ fn spacing_between_files() {
 #[test]
 fn lines_single_line_highlight() {
     let mut map = SourceMap::default();
-    map.add_str(None, "abcdefghijklmnopq\n");
+    map.add_str(Anonymous, "abcdefghijklmnopq\n");
 
     assert_eq!(
         map.lines_with_highlight(span(4, 7)),
         LinesWithHighlight {
-            path: None,
+            file: &Anonymous,
             first: LineWithHighlight {
                 number: 1,
                 content: "abcdefghijklmnopq",
@@ -49,12 +49,12 @@ fn lines_single_line_highlight() {
 #[test]
 fn lines_single_line_highlight_no_trailing_line_break() {
     let mut map = SourceMap::default();
-    map.add_str(None, "abcdefghijklmnopq");
+    map.add_str(Anonymous, "abcdefghijklmnopq");
 
     assert_eq!(
         map.lines_with_highlight(span(4, 7)),
         LinesWithHighlight {
-            path: None,
+            file: &Anonymous,
             first: LineWithHighlight {
                 number: 1,
                 content: "abcdefghijklmnopq",
@@ -73,12 +73,12 @@ fn lines_single_line_highlight_no_trailing_line_break() {
 #[test]
 fn lines_single_character_highlight() {
     let mut map = SourceMap::default();
-    map.add_str(None, "空#\n");
+    map.add_str(Anonymous, "空#\n");
 
     assert_eq!(
         map.lines_with_highlight(span(4, 5)),
         LinesWithHighlight {
-            path: None,
+            file: &Anonymous,
             first: LineWithHighlight {
                 number: 1,
                 content: "空#",
@@ -97,12 +97,12 @@ fn lines_single_character_highlight() {
 #[test]
 fn lines_single_wide_character_highlight() {
     let mut map = SourceMap::default();
-    map.add_str(None, "#空\n");
+    map.add_str(Anonymous, "#空\n");
 
     assert_eq!(
         map.lines_with_highlight(span(2, 5)),
         LinesWithHighlight {
-            path: None,
+            file: &Anonymous,
             first: LineWithHighlight {
                 number: 1,
                 content: "#空",
@@ -120,12 +120,12 @@ fn lines_single_wide_character_highlight() {
 #[test]
 fn lines_single_wide_character_highlight_no_trailing_line_break() {
     let mut map = SourceMap::default();
-    map.add_str(None, "#空");
+    map.add_str(Anonymous, "#空");
 
     assert_eq!(
         map.lines_with_highlight(span(2, 5)),
         LinesWithHighlight {
-            path: None,
+            file: &Anonymous,
             first: LineWithHighlight {
                 number: 1,
                 content: "#空",
@@ -144,12 +144,12 @@ fn lines_single_wide_character_highlight_no_trailing_line_break() {
 #[test]
 fn lines_single_line_highlight_multi_line_source() {
     let mut map = SourceMap::default();
-    map.add_str(None, "buffer\n空\n空it__\nbuffer\n");
+    map.add_str(Anonymous, "buffer\n空\n空it__\nbuffer\n");
 
     assert_eq!(
         map.lines_with_highlight(span(15, 17)),
         LinesWithHighlight {
-            path: None,
+            file: &Anonymous,
             first: LineWithHighlight {
                 number: 3,
                 content: "空it__",
@@ -168,12 +168,12 @@ fn lines_single_line_highlight_multi_line_source() {
 #[test]
 fn lines_multi_line_highlight() {
     let mut map = SourceMap::default();
-    map.add_str(None, "alpha\nbeta\n第三\ndelta\nepsilon\n");
+    map.add_str(Anonymous, "alpha\nbeta\n第三\ndelta\nepsilon\n");
 
     assert_eq!(
         map.lines_with_highlight(span(8, 21)),
         LinesWithHighlight {
-            path: None,
+            file: &Anonymous,
             first: LineWithHighlight {
                 number: 2,
                 content: "beta",
@@ -201,12 +201,12 @@ fn lines_multi_line_highlight() {
 #[test]
 fn lines_multi_line_highlight_no_trailing_line_break() {
     let mut map = SourceMap::default();
-    map.add_str(None, "alpha\nbeta\n第三\ndelta\nepsilon");
+    map.add_str(Anonymous, "alpha\nbeta\n第三\ndelta\nepsilon");
 
     assert_eq!(
         map.lines_with_highlight(span(10, 15)),
         LinesWithHighlight {
-            path: None,
+            file: &Anonymous,
             first: LineWithHighlight {
                 number: 2,
                 content: "beta",
@@ -234,12 +234,12 @@ fn lines_multi_line_highlight_no_trailing_line_break() {
 #[test]
 fn lines_highlight_line_break() {
     let mut map = SourceMap::default();
-    map.add_str(None, "buffer\n");
+    map.add_str(Anonymous, "buffer\n");
 
     assert_eq!(
         map.lines_with_highlight(span(7, 8)),
         LinesWithHighlight {
-            path: None,
+            file: &Anonymous,
             first: LineWithHighlight {
                 number: 1,
                 content: "buffer",
@@ -258,12 +258,12 @@ fn lines_highlight_line_break() {
 #[test]
 fn lines_zero_length_highlight() {
     let mut map = SourceMap::default();
-    map.add_str(None, ".:.:.:\n");
+    map.add_str(Anonymous, ".:.:.:\n");
 
     assert_eq!(
         map.lines_with_highlight(span(2, 2)),
         LinesWithHighlight {
-            path: None,
+            file: &Anonymous,
             first: LineWithHighlight {
                 number: 1,
                 content: ".:.:.:",
@@ -284,12 +284,12 @@ fn lines_zero_length_highlight() {
 #[test]
 fn lines_end_of_input_highlight() {
     let mut map = SourceMap::default();
-    map.add_str(None, "content\n");
+    map.add_str(Anonymous, "content\n");
 
     assert_eq!(
         map.lines_with_highlight(span(9, 9)),
         LinesWithHighlight {
-            path: None,
+            file: &Anonymous,
             first: LineWithHighlight {
                 number: 1,
                 content: "content",
@@ -308,12 +308,12 @@ fn lines_end_of_input_highlight() {
 #[test]
 fn lines_end_of_input_highlight_no_trailing_line_break() {
     let mut map = SourceMap::default();
-    map.add_str(None, "content");
+    map.add_str(Anonymous, "content");
 
     assert_eq!(
         map.lines_with_highlight(span(8, 8)),
         LinesWithHighlight {
-            path: None,
+            file: &Anonymous,
             first: LineWithHighlight {
                 number: 1,
                 content: "content",
@@ -332,12 +332,12 @@ fn lines_end_of_input_highlight_no_trailing_line_break() {
 #[test]
 fn lines_end_of_input_highlight_empty_file() {
     let mut map = SourceMap::default();
-    map.add_str(None, "");
+    map.add_str(Anonymous, "");
 
     assert_eq!(
         map.lines_with_highlight(span(1, 1)),
         LinesWithHighlight {
-            path: None,
+            file: &Anonymous,
             first: LineWithHighlight {
                 number: 1,
                 content: "",
@@ -356,12 +356,12 @@ fn lines_end_of_input_highlight_empty_file() {
 #[test]
 fn lines_highlight_containing_trailing_line_break() {
     let mut map = SourceMap::default();
-    map.add_str(None, "alpha\nbeta\n");
+    map.add_str(Anonymous, "alpha\nbeta\n");
 
     assert_eq!(
         map.lines_with_highlight(span(1, 12)),
         LinesWithHighlight {
-            path: None,
+            file: &Anonymous,
             first: LineWithHighlight {
                 number: 1,
                 content: "alpha",
@@ -391,7 +391,7 @@ fn lines_highlight_containing_trailing_line_break() {
 #[ignore = "panicking on invalid spans is currently not guaranteed"]
 fn lines_span_out_of_bounds_single_line_source() {
     let mut map = SourceMap::default();
-    map.add_str(None, "abcdefghi\n");
+    map.add_str(Anonymous, "abcdefghi\n");
 
     map.lines_with_highlight(span(6, 20));
 }
@@ -400,7 +400,7 @@ fn lines_span_out_of_bounds_single_line_source() {
 #[should_panic]
 fn lines_span_out_of_bounds_single_line_source_no_trailing_line_break() {
     let mut map = SourceMap::default();
-    map.add_str(None, "abcdefghi");
+    map.add_str(Anonymous, "abcdefghi");
 
     map.lines_with_highlight(span(6, 20));
 }
@@ -410,7 +410,7 @@ fn lines_span_out_of_bounds_single_line_source_no_trailing_line_break() {
 #[ignore = "panicking on invalid spans is currently not guaranteed"]
 fn lines_span_out_of_bounds_multi_line_source() {
     let mut map = SourceMap::default();
-    map.add_str(None, "abc\ndefghi\n");
+    map.add_str(Anonymous, "abc\ndefghi\n");
 
     map.lines_with_highlight(span(6, 20));
 }
@@ -419,7 +419,7 @@ fn lines_span_out_of_bounds_multi_line_source() {
 #[should_panic]
 fn lines_span_out_of_bounds_multi_line_source_no_trailing_line_break() {
     let mut map = SourceMap::default();
-    map.add_str(None, "abc\ndefghi");
+    map.add_str(Anonymous, "abc\ndefghi");
 
     map.lines_with_highlight(span(6, 20));
 }
@@ -428,7 +428,7 @@ fn lines_span_out_of_bounds_multi_line_source_no_trailing_line_break() {
 #[should_panic]
 fn lines_span_out_of_bounds_empty_source() {
     let mut map = SourceMap::default();
-    map.add_str(None, "");
+    map.add_str(Anonymous, "");
 
     map.lines_with_highlight(span(1, 2));
 }

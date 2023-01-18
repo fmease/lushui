@@ -14,8 +14,6 @@ use std::{fmt, path::PathBuf, str::FromStr};
 use token::Word;
 use utilities::{try_all, AndThenMapExt, Conjunction, HashMap, ListingExt, QuoteExt};
 
-pub const FILE_NAME: &str = "package.metadata";
-
 pub(super) struct PackageManifest {
     pub(super) profile: PackageProfile,
     pub(super) components: Option<Spanned<Components>>,
@@ -203,14 +201,6 @@ fn parse_dependencies(
             )
         });
 
-        let package = declaration.take_optional("package").and_then_map(|name| {
-            parse_name(
-                name.with_text_content_span(map),
-                NameKind::Package,
-                reporter,
-            )
-        });
-
         let provider = declaration
             .take_optional::<String>("provider")
             .and_then_map(|name| {
@@ -237,10 +227,19 @@ fn parse_dependencies(
 
         let version = declaration.take_optional::<String>("version");
         let path = declaration.take_optional::<String>("path");
+        let package = declaration.take_optional("package").and_then_map(|name| {
+            parse_name(
+                name.with_text_content_span(map),
+                NameKind::Package,
+                reporter,
+            )
+        });
+        let public = declaration.take_optional("public");
+
         let span = declaration.exhaust();
 
         try_all! {
-            exonym, component_endonym, package, provider, version, path, span;
+            exonym, component_endonym, provider, version, path, package, public, span;
             health.taint(ErasedReportedError::new_unchecked()); // @Task don't call new_unchecked here!
             continue
         };
@@ -251,10 +250,11 @@ fn parse_dependencies(
                 span,
                 DependencyDeclaration {
                     component: component_endonym,
-                    package,
                     provider,
                     version: version.map(|version| version.map(VersionRequirement)),
                     path: path.map(|path| path.map(Into::into).with_text_content_span(map)),
+                    package,
+                    public,
                 },
             ),
         );
@@ -277,10 +277,8 @@ pub(super) type Components = HashMap<WeaklySpanned<Word>, Spanned<ComponentManif
 
 pub(super) struct ComponentManifest {
     pub(super) type_: Spanned<ComponentType>,
-    #[allow(dead_code)] // @Temporary
     pub(super) public: Option<Spanned<bool>>,
-    // @Note this path is relative to the package
-    // @Task encode this information in the type system, either manually or via a library
+    /// The path to the component root (relative to the package).
     pub(super) path: Spanned<PathBuf>,
     pub(super) dependencies:
         Option<Spanned<HashMap<WeaklySpanned<Word>, Spanned<DependencyDeclaration>>>>,
@@ -289,12 +287,12 @@ pub(super) struct ComponentManifest {
 #[derive(Clone, Debug)]
 pub(super) struct DependencyDeclaration {
     pub(super) component: Option<Spanned<Word>>,
-    #[allow(dead_code)] // @Temporary
-    pub(super) package: Option<Spanned<Word>>,
     pub(super) provider: Option<Spanned<DependencyProvider>>,
     #[allow(dead_code)]
     pub(super) version: Option<Spanned<VersionRequirement>>,
     pub(super) path: Option<Spanned<PathBuf>>,
+    pub(super) package: Option<Spanned<Word>>,
+    pub(super) public: Option<Spanned<bool>>,
 }
 
 #[derive(Clone, Copy, Debug, Elements, FromStr, Str, PartialEq, Eq)]

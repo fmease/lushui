@@ -1,19 +1,19 @@
 error: the component type ‘example’ is not supported yet
-  ┌─ ${TEST_FOLDER}/packages/unsupported-component-types/package.metadata:8:16
+  ┌─ ${TEST_FOLDER}/packages/unsupported-component-types/package.metadata:7:16
   │
-8 │         type: "example",
+7 │         type: "example",
   │                ═══════
 
 error: the component type ‘test-suite’ is not supported yet
-   ┌─ ${TEST_FOLDER}/packages/unsupported-component-types/package.metadata:12:15
+   ┌─ ${TEST_FOLDER}/packages/unsupported-component-types/package.metadata:11:15
    │
-12 │         type: test-suite,
+11 │         type: test-suite,
    │               ══════════
 
 error: the component type ‘benchmark-suite’ is not supported yet
-   ┌─ ${TEST_FOLDER}/packages/unsupported-component-types/package.metadata:16:16
+   ┌─ ${TEST_FOLDER}/packages/unsupported-component-types/package.metadata:15:16
    │
-16 │         type: "benchmark-suite",
+15 │         type: "benchmark-suite",
    │                ═══════════════
 
 error: aborting due to 3 previous errors

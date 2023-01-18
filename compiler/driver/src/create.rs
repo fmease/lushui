@@ -1,7 +1,7 @@
 //! Package creation.
 
 use diagnostics::{error::Result, Diagnostic, Reporter};
-use package::MANIFEST_FILE_NAME;
+use session::ManifestPath;
 use std::{fs, io, path::PathBuf};
 use token::Word;
 use utilities::{FormatError, FILE_EXTENSION};
@@ -39,7 +39,7 @@ fn create(name: Word, options: &PackageCreationOptions) -> Result<(), Error> {
     fs::create_dir(&source_folder_path).with_path(source_folder_path.clone())?;
 
     {
-        let path = package_path.join(MANIFEST_FILE_NAME);
+        let path = package_path.join(ManifestPath::FILE_NAME);
         let package_manifest = io::BufWriter::new(fs::File::create(&path).with_path(path)?);
         create_package_manifest(&name, options, package_manifest)?;
     }

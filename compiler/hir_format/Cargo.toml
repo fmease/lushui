@@ -14,5 +14,6 @@ session = { path = "../session" }
 token = { path = "../token" }
 
 [dev-dependencies]
+session = { path = "../session", features = ["test"] }
 span = { path = "../span" }
 utilities = { path = "../utilities" }

@@ -1,6 +1,6 @@
 use span::{ByteIndex, LocalByteIndex, SourceMap, Span};
-use std::path::Path;
 use tower_lsp::lsp_types::{Location, Position, Range, Url};
+use utilities::path::CanonicalPath;
 
 pub(crate) trait ToLocationExt {
     fn to_location(self, map: &SourceMap) -> Location;
@@ -12,7 +12,7 @@ impl ToLocationExt for Span {
 
         Location {
             // @Beacon @Task handle anonymous SourceFiles smh!!!
-            uri: Url::from_file_path(lines.path.unwrap()).unwrap(),
+            uri: Url::from_file_path(lines.file.path().unwrap()).unwrap(),
             range: Range {
                 start: Position {
                     line: lines.first.number - 1,
@@ -34,12 +34,12 @@ impl ToLocationExt for Span {
 }
 
 pub(crate) trait FromPositionExt {
-    fn from_position(position: Position, path: &Path, map: &SourceMap) -> Self;
+    fn from_position(position: Position, path: &CanonicalPath, map: &SourceMap) -> Self;
 }
 
 impl FromPositionExt for ByteIndex {
     // @Beacon @Note this is an abomination!!!
-    fn from_position(position: Position, path: &Path, map: &SourceMap) -> Self {
+    fn from_position(position: Position, path: &CanonicalPath, map: &SourceMap) -> Self {
         let file = map.file_by_path(path).unwrap();
         let mut index = LocalByteIndex::new(0);
 

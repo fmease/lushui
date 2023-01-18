@@ -25,7 +25,9 @@ use hir::{
 };
 use hir_format::Display;
 use resolver::ProgramEntryExt;
-use session::{BuildSession, Component, DeclarationIndexExt, InterfaceableBindingExt};
+use session::{
+    interfaceable::InterfaceableBindingExt, BuildSession, Component, DeclarationIndexExt,
+};
 use std::{default::default, fmt};
 use utilities::debugged;
 

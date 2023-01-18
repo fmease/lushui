@@ -1,5 +1,5 @@
 use crate::{Diagnostic, ErrorCode, LintCode, UnboxedUntaggedDiagnostic};
-use span::{span, SourceMap};
+use span::{span, FileName::Anonymous, SourceMap};
 use std::sync::Arc;
 use utilities::difference;
 
@@ -28,7 +28,7 @@ fn format_no_highlights() {
 #[test]
 fn format_single_line_primary_highlight() {
     let mut map = SourceMap::default();
-    map.add_str(None, "alpha\nbeta\ngamma\n");
+    map.add_str(Anonymous, "alpha\nbeta\ngamma\n");
 
     let diagnostic = Diagnostic::error()
         .message("message")
@@ -39,7 +39,7 @@ fn format_single_line_primary_highlight() {
         Some(&map),
         "\
 error: message
-  ┌─ :2:2
+  ┌─ ⟨anonymous⟩:2:2
   │
 2 │ beta
   │  ═══",
@@ -49,7 +49,7 @@ error: message
 #[test]
 fn format_two_line_primary_highlight() {
     let mut map = SourceMap::default();
-    map.add_str(None, "alpha\nbeta\n");
+    map.add_str(Anonymous, "alpha\nbeta\n");
 
     let diagnostic = Diagnostic::error().primary_span(span(1, 9));
 
@@ -58,7 +58,7 @@ fn format_two_line_primary_highlight() {
         Some(&map),
         "\
 error
-  ┌─ :1:1
+  ┌─ ⟨anonymous⟩:1:1
   │
 1 │   alpha
   │ ╔═╝
@@ -70,7 +70,7 @@ error
 #[test]
 fn format_multi_line_primary_highlight() {
     let mut map = SourceMap::default();
-    map.add_str(None, "alpha\nbeta\ngamma\ndelta\nepsilon");
+    map.add_str(Anonymous, "alpha\nbeta\ngamma\ndelta\nepsilon");
 
     let diagnostic = Diagnostic::error()
         .code(ErrorCode::E000)
@@ -82,7 +82,7 @@ fn format_multi_line_primary_highlight() {
         Some(&map),
         "\
 error[E000]: explanation
-  ┌─ :2:3
+  ┌─ ⟨anonymous⟩:2:3
   │
 2 │   beta
   · ╔═══╝
@@ -95,7 +95,7 @@ error[E000]: explanation
 fn format_triple_digit_line_number() {
     let mut map = SourceMap::default();
     map.add(
-        None,
+        Anonymous,
         {
             let mut content = "\n".repeat(120);
             content += "这是一个句子";
@@ -113,7 +113,7 @@ fn format_triple_digit_line_number() {
         Some(&map),
         "\
 warning: this is a sentence
-    ┌─ :121:2
+    ┌─ ⟨anonymous⟩:121:2
     │
 121 │ 这是一个句子
     │   ══════",
@@ -123,7 +123,7 @@ warning: this is a sentence
 #[test]
 fn format_primary_secondary_highlights() {
     let mut map = SourceMap::default();
-    map.add_str(None, "2ndry\nPRIM\n2ndry\n");
+    map.add_str(Anonymous, "2ndry\nPRIM\n2ndry\n");
 
     let diagnostic = Diagnostic::error()
         .code(ErrorCode::E001)
@@ -137,17 +137,17 @@ fn format_primary_secondary_highlights() {
         Some(&map),
         "\
 error[E001]: important
-  ┌─ :1:1
+  ┌─ ⟨anonymous⟩:1:1
   │
 1 │ 2ndry
   │ ───
   │
-  ├─ :2:1
+  ├─ ⟨anonymous⟩:2:1
   │
 2 │ PRIM
   │ ════
   │
-  ├─ :3:4
+  ├─ ⟨anonymous⟩:3:4
   │
 3 │ 2ndry
   │    ──",
@@ -157,7 +157,7 @@ error[E001]: important
 #[test]
 fn format_primary_secondary_highlight_differing_line_number_widths() {
     let mut map = SourceMap::default();
-    map.add_str(None, "\nprimary\n\n\n\n\n\n\n\n\n\nsecondary\n");
+    map.add_str(Anonymous, "\nprimary\n\n\n\n\n\n\n\n\n\nsecondary\n");
 
     let diagnostic = Diagnostic::bug()
         .message("placeholder")
@@ -169,12 +169,12 @@ fn format_primary_secondary_highlight_differing_line_number_widths() {
         Some(&map),
         "\
 internal compiler error: placeholder
-   ┌─ :2:2
+   ┌─ ⟨anonymous⟩:2:2
    │
  2 │ primary
    │  ════
    │
-   ├─ :12:1
+   ├─ ⟨anonymous⟩:12:1
    │
 12 │ secondary
    │ ─────────",
@@ -184,8 +184,8 @@ internal compiler error: placeholder
 #[test]
 fn format_highlights_in_different_files() {
     let mut map = SourceMap::default();
-    map.add_str(Some("ONE".into()), "a\nbc\ndef\n");
-    map.add_str(Some("TWO".into()), "zyx");
+    map.add_str("ONE", "a\nbc\ndef\n");
+    map.add_str("TWO", "zyx");
 
     let diagnostic = Diagnostic::debug()
         .primary_span(span(4, 5))
@@ -211,7 +211,7 @@ internal debugging message
 #[test]
 fn format_highlights_same_line() {
     let mut map = SourceMap::default();
-    map.add_str(Some("identity".into()), "sequence\n");
+    map.add_str("identity", "sequence\n");
 
     let diagnostic = Diagnostic::error()
         .message("tag")
@@ -238,7 +238,7 @@ error: tag
 #[test]
 fn format_labeled_highlights() {
     let mut map = SourceMap::default();
-    map.add_str(None, "alpha\nbeta\ngamma\ndelta\nepsilon\nzeta");
+    map.add_str(Anonymous, "alpha\nbeta\ngamma\ndelta\nepsilon\nzeta");
 
     let diagnostic = Diagnostic::error()
         .message("labels")
@@ -252,24 +252,24 @@ fn format_labeled_highlights() {
         Some(&map),
         "\
 error: labels
-  ┌─ :1:2
+  ┌─ ⟨anonymous⟩:1:2
   │
 1 │ alpha
   │  ══ pointer
   │
-  ├─ :2:1
+  ├─ ⟨anonymous⟩:2:1
   │
 2 │ beta
   │ ──── content
   │
-  ├─ :3:1
+  ├─ ⟨anonymous⟩:3:1
   │
 3 │   gamma
   │ ╔═╝
 4 │ ║ delta
   │ ╚═════╝ explanation
   │
-  ├─ :5:5
+  ├─ ⟨anonymous⟩:5:5
   │
 5 │   epsilon
   │ ┌─────┘
@@ -281,7 +281,7 @@ error: labels
 #[test]
 fn format_multi_line_labeled_highlights() {
     let mut map = SourceMap::default();
-    map.add_str(None, "alpha\nbeta\ngamma\ndelta\nepsilon\nzeta\n");
+    map.add_str(Anonymous, "alpha\nbeta\ngamma\ndelta\nepsilon\nzeta\n");
 
     let diagnostic = Diagnostic::error()
         .message("multi-line labels")
@@ -295,20 +295,20 @@ fn format_multi_line_labeled_highlights() {
         Some(&map),
         "\
 error: multi-line labels
-  ┌─ :1:2
+  ┌─ ⟨anonymous⟩:1:2
   │
 1 │ alpha
   │  ══ pointer
   │     context
   │     filler
   │
-  ├─ :2:1
+  ├─ ⟨anonymous⟩:2:1
   │
 2 │ beta
   │ ──── content
   │        indented
   │
-  ├─ :3:1
+  ├─ ⟨anonymous⟩:3:1
   │
 3 │   gamma
   │ ╔═╝
@@ -316,7 +316,7 @@ error: multi-line labels
   │ ╚═════╝ explanation
   │         addendum
   │
-  ├─ :5:5
+  ├─ ⟨anonymous⟩:5:5
   │
 5 │   epsilon
   │ ┌─────┘
@@ -330,7 +330,7 @@ error: multi-line labels
 #[test]
 fn format_multi_line_labeled_highlights_no_trailing_line_break() {
     let mut map = SourceMap::default();
-    map.add_str(None, "alpha\nbeta\ngamma\ndelta\nepsilon\nzeta");
+    map.add_str(Anonymous, "alpha\nbeta\ngamma\ndelta\nepsilon\nzeta");
 
     let diagnostic = Diagnostic::error()
         .message("multi-line labels")
@@ -344,20 +344,20 @@ fn format_multi_line_labeled_highlights_no_trailing_line_break() {
         Some(&map),
         "\
 error: multi-line labels
-  ┌─ :1:2
+  ┌─ ⟨anonymous⟩:1:2
   │
 1 │ alpha
   │  ══ pointer
   │     context
   │     filler
   │
-  ├─ :2:1
+  ├─ ⟨anonymous⟩:2:1
   │
 2 │ beta
   │ ──── content
   │        indented
   │
-  ├─ :3:1
+  ├─ ⟨anonymous⟩:3:1
   │
 3 │   gamma
   │ ╔═╝
@@ -365,7 +365,7 @@ error: multi-line labels
   │ ╚═════╝ explanation
   │         addendum
   │
-  ├─ :5:5
+  ├─ ⟨anonymous⟩:5:5
   │
 5 │   epsilon
   │ ┌─────┘
@@ -399,7 +399,7 @@ error[E004]: summary
 #[test]
 fn format_subdiagnostics() {
     let mut map = SourceMap::default();
-    map.add_str(None, "****  ****");
+    map.add_str(Anonymous, "****  ****");
 
     let diagnostic = Diagnostic::warning()
         .message("it")
@@ -412,7 +412,7 @@ fn format_subdiagnostics() {
         Some(&map),
         "\
 warning: it
-  ┌─ :1:5
+  ┌─ ⟨anonymous⟩:1:5
   │
 1 │ ****  ****
   │     ══
@@ -425,7 +425,7 @@ warning: it
 #[test]
 fn format_subdiagnostics_two_digit_line_numbers() {
     let mut map = SourceMap::default();
-    map.add(None, Arc::new("****  ****\n".repeat(10)), None);
+    map.add(Anonymous, Arc::new("****  ****\n".repeat(10)), None);
 
     let diagnostic = Diagnostic::warning()
         .message("it")
@@ -438,7 +438,7 @@ fn format_subdiagnostics_two_digit_line_numbers() {
         Some(&map),
         "\
 warning: it
-   ┌─ :10:5
+   ┌─ ⟨anonymous⟩:10:5
    │
 10 │ ****  ****
    │     ══
@@ -451,7 +451,7 @@ warning: it
 #[test]
 fn format_multi_line_subdiagnostics() {
     let mut map = SourceMap::default();
-    map.add_str(None, "****  ****");
+    map.add_str(Anonymous, "****  ****");
 
     let diagnostic = Diagnostic::warning()
         .message("it")
@@ -464,7 +464,7 @@ fn format_multi_line_subdiagnostics() {
         Some(&map),
         "\
 warning: it
-  ┌─ :1:5
+  ┌─ ⟨anonymous⟩:1:5
   │
 1 │ ****  ****
   │     ══
@@ -480,7 +480,7 @@ warning: it
 #[test]
 fn format_multiple_primary_highlights() {
     let mut map = SourceMap::default();
-    map.add_str(None, "gamma\n");
+    map.add_str(Anonymous, "gamma\n");
 
     let diagnostic = Diagnostic::error().primary_spans([span(1, 2), span(3, 4), span(5, 6)]);
 
@@ -489,17 +489,17 @@ fn format_multiple_primary_highlights() {
         Some(&map),
         "\
 error
-  ┌─ :1:1
+  ┌─ ⟨anonymous⟩:1:1
   │
 1 │ gamma
   │ ═
   │
-  ├─ :1:3
+  ├─ ⟨anonymous⟩:1:3
   │
 1 │ gamma
   │   ═
   │
-  ├─ :1:5
+  ├─ ⟨anonymous⟩:1:5
   │
 1 │ gamma
   │     ═",
@@ -509,7 +509,7 @@ error
 #[test]
 fn format_zero_length_highlight() {
     let mut map = SourceMap::default();
-    map.add_str(None, "sample\n");
+    map.add_str(Anonymous, "sample\n");
 
     let diagnostic = Diagnostic::debug().message("nil").primary_span(span(3, 3));
 
@@ -518,7 +518,7 @@ fn format_zero_length_highlight() {
         Some(&map),
         "\
 internal debugging message: nil
-  ┌─ :1:3
+  ┌─ ⟨anonymous⟩:1:3
   │
 1 │ sample
   │  ⟫⟪",
@@ -528,7 +528,7 @@ internal debugging message: nil
 #[test]
 fn format_zero_length_highlight_start_of_line() {
     let mut map = SourceMap::default();
-    map.add_str(None, "sample\n");
+    map.add_str(Anonymous, "sample\n");
 
     let diagnostic = Diagnostic::debug().message("nil").primary_span(span(1, 1));
 
@@ -537,7 +537,7 @@ fn format_zero_length_highlight_start_of_line() {
         Some(&map),
         "\
 internal debugging message: nil
-  ┌─ :1:1
+  ┌─ ⟨anonymous⟩:1:1
   │
 1 │  sample
   │ ⟫⟪",
@@ -547,7 +547,7 @@ internal debugging message: nil
 #[test]
 fn format_zero_length_secondary_highlight() {
     let mut map = SourceMap::default();
-    map.add_str(None, "sample\n");
+    map.add_str(Anonymous, "sample\n");
 
     let diagnostic = Diagnostic::debug()
         .message("nil")
@@ -558,7 +558,7 @@ fn format_zero_length_secondary_highlight() {
         Some(&map),
         "\
 internal debugging message: nil
-  ┌─ :1:3
+  ┌─ ⟨anonymous⟩:1:3
   │
 1 │ sample
   │  ⟩⟨",
@@ -568,7 +568,10 @@ internal debugging message: nil
 #[test]
 fn format_highlight_line_break() {
     let mut map = SourceMap::default();
-    map.add_str(None, "This is a sentence.\nThis is a follow-up sentence.\n");
+    map.add_str(
+        Anonymous,
+        "This is a sentence.\nThis is a follow-up sentence.\n",
+    );
 
     let diagnostic = Diagnostic::error().labeled_primary_span(span(20, 20), "EOL");
 
@@ -577,7 +580,7 @@ fn format_highlight_line_break() {
         Some(&map),
         "\
 error
-  ┌─ :1:20
+  ┌─ ⟨anonymous⟩:1:20
   │
 1 │ This is a sentence.
   │                   ⟫⟪ EOL",
@@ -587,7 +590,7 @@ error
 #[test]
 fn format_highlight_end_of_input() {
     let mut map = SourceMap::default();
-    map.add_str(None, "This is a sentence.");
+    map.add_str(Anonymous, "This is a sentence.");
 
     let diagnostic = Diagnostic::error().labeled_primary_span(span(20, 20), "EOI");
 
@@ -596,7 +599,7 @@ fn format_highlight_end_of_input() {
         Some(&map),
         "\
 error
-  ┌─ :1:20
+  ┌─ ⟨anonymous⟩:1:20
   │
 1 │ This is a sentence.
   │                   ⟫⟪ EOI",
@@ -608,7 +611,7 @@ error
 #[test]
 fn format_highlight_end_of_input_with_trailing_line_break() {
     let mut map = SourceMap::default();
-    map.add_str(None, "This is a sentence.\n");
+    map.add_str(Anonymous, "This is a sentence.\n");
 
     let diagnostic = Diagnostic::error().labeled_primary_span(span(21, 21), "EOI");
 
@@ -617,7 +620,7 @@ fn format_highlight_end_of_input_with_trailing_line_break() {
         Some(&map),
         "\
 error
-  ┌─ :1:21
+  ┌─ ⟨anonymous⟩:1:21
   │
 1 │ This is a sentence.
   │                   ⟫⟪ EOI",
@@ -631,7 +634,7 @@ error
 #[test]
 fn format_highlight_containing_final_line_break() {
     let mut map = SourceMap::default();
-    map.add_str(None, "This is a sentence.\n");
+    map.add_str(Anonymous, "This is a sentence.\n");
 
     let diagnostic = Diagnostic::warning()
         .message("weird corner case")
@@ -642,7 +645,7 @@ fn format_highlight_containing_final_line_break() {
         Some(&map),
         "\
 warning: weird corner case
-  ┌─ :1:1
+  ┌─ ⟨anonymous⟩:1:1
   │
 1 │ This is a sentence.
   │ ═══════════════════",
@@ -656,7 +659,7 @@ warning: weird corner case
 #[test]
 fn format_highlight_containing_final_end_of_input() {
     let mut map = SourceMap::default();
-    map.add_str(None, "EVERYTHING\n");
+    map.add_str(Anonymous, "EVERYTHING\n");
 
     let diagnostic = Diagnostic::bug().primary_span(span(1, 13));
 
@@ -665,7 +668,7 @@ fn format_highlight_containing_final_end_of_input() {
         Some(&map),
         "\
 internal compiler error
-  ┌─ :1:1
+  ┌─ ⟨anonymous⟩:1:1
   │
 1 │ EVERYTHING
   │ ══════════",
@@ -675,7 +678,7 @@ internal compiler error
 #[test]
 fn format_highlight_in_empty_file() {
     let mut map = SourceMap::default();
-    map.add_str(Some("empty.txt".into()), "");
+    map.add_str("empty.txt", "");
 
     let diagnostic = Diagnostic::error()
         .message("this file has to contain something reasonable")
@@ -725,7 +728,7 @@ error: there is something wrong with this file
 #[test]
 fn format_path_together_with_highlight() {
     let mut map = SourceMap::default();
-    map.add_str(Some("root.cfg".into()), "allow_plain_text = false\n");
+    map.add_str("root.cfg", "allow_plain_text = false\n");
 
     let diagnostic = Diagnostic::error()
         .message("this file is not acceptable")
@@ -769,7 +772,7 @@ warning: this file looks spooky
 #[ignore = "weird corner case"]
 fn format_two_line_break_highlight_containing_first() {
     let mut map = SourceMap::default();
-    map.add_str(None, "alpha\nbeta\n\ngamma");
+    map.add_str(Anonymous, "alpha\nbeta\n\ngamma");
 
     let diagnostic = Diagnostic::bug().primary_span(span(1, 12));
 
@@ -779,7 +782,7 @@ fn format_two_line_break_highlight_containing_first() {
         Some(&map),
         "\
 internal compiler error
-  ┌─ :1:1
+  ┌─ ⟨anonymous⟩:1:1
   │
 1 │   alpha
   │ ╔═╝
@@ -793,7 +796,7 @@ internal compiler error
 #[ignore = "weird corner case"]
 fn format_two_line_breaks_highlight_containing_second() {
     let mut map = SourceMap::default();
-    map.add_str(None, "alpha\n\n");
+    map.add_str(Anonymous, "alpha\n\n");
 
     let diagnostic = Diagnostic::bug().primary_span(span(1, 8));
 
@@ -803,7 +806,7 @@ fn format_two_line_breaks_highlight_containing_second() {
         Some(&map),
         "\
 internal compiler error
-  ┌─ :1:1
+  ┌─ ⟨anonymous⟩:1:1
   │
 1 │ alpha
   │ ═════",

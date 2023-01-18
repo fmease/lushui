@@ -286,8 +286,10 @@ impl<'a> Lowerer<'a> {
             Some(declarations) => declarations,
             None => {
                 let mut path = self.session.shared_map()[module.file]
+                    .name()
                     .path()
                     .unwrap()
+                    .as_path()
                     .parent()
                     .unwrap()
                     .to_owned();
@@ -308,10 +310,8 @@ impl<'a> Lowerer<'a> {
 
                 path.set_extension(FILE_EXTENSION);
 
-                let file = self
-                    .session
-                    .map()
-                    .load(path.clone(), Some(self.component.index()));
+                // @Task create & use a different API that doesn't "recanonicalize" the path
+                let file = self.session.map().load(&path, Some(self.component.index()));
                 let file = match file {
                     Ok(file) => file,
                     Err(error) => {
@@ -522,7 +522,7 @@ impl<'a> Lowerer<'a> {
 
         let attributes = self.lower_attributes(&expression.attributes, &expression);
 
-        let expression = match expression.bare {
+        match expression.bare {
             PiTypeLiteral(pi) => {
                 let domain = self.lower_expression(pi.domain.expression);
                 let codomain = self.lower_expression(pi.codomain);
@@ -735,9 +735,7 @@ impl<'a> Lowerer<'a> {
                 .into(),
             ),
             Error(error) => PossiblyErroneous::error(error),
-        };
-
-        expression
+        }
     }
 
     /// Lower a pattern.
@@ -1282,8 +1280,8 @@ impl BareAttributeExt for lowered_ast::BareAttribute {
                                 Diagnostic::error()
                                     .code(ErrorCode::E008)
                                     .message(format!(
-                                        "attribute argument does not fit integer interval {}",
-                                        NAT32_INTERVAL_REPRESENTATION
+                                        "attribute argument does not fit integer interval \
+                                        {NAT32_INTERVAL_REPRESENTATION}",
                                     ))
                                     .primary_span(depth)
                                     .report(session.reporter()),

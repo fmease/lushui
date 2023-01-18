@@ -16,6 +16,7 @@ use std::{cell::Cell, ffi::OsStr, fmt, path::Path};
 pub use string_cache::DefaultAtom as Atom;
 
 pub mod cycle;
+pub mod path;
 
 // @Question should this reside somewhere else?
 pub const FILE_EXTENSION: &str = "lushui";

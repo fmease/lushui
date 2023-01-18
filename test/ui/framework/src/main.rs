@@ -3,7 +3,7 @@
     const_option,
     once_cell,
     let_chains,
-    str_split_as_str,
+    str_split_remainder,
     drain_filter
 )]
 
@@ -344,7 +344,7 @@ fn handle_test_folder_entry(
     }
 
     // parse the test configuration
-    let file = map.load(path::shorten(path).into(), None).unwrap();
+    let file = map.load(&path::shorten(path), None).unwrap();
     let configuration = match Configuration::parse(&map[file], type_, map) {
         Ok(configuration) => configuration,
         Err(error) => {

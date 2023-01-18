@@ -1,36 +1,36 @@
 #![feature(decl_macro, default_free_fn, once_cell)]
 
-use ast::Explicitness;
 use derivation::{Elements, FromStr, Str};
 use diagnostics::{error::Result, Reporter};
 use hir::{
-    interfaceable,
     special::{self, Bindings},
-    DeclarationIndex, Entity, EntityKind, Expression, LocalDeclarationIndex,
+    DeclarationIndex, Entity, Expression, LocalDeclarationIndex,
 };
 use index_map::IndexMap;
-use lexer::word::WordExt;
-use span::Spanned;
-use span::{SourceMap, Span};
-use std::fmt;
-use std::path::Path;
-use std::sync::LazyLock;
+use span::{SourceMap, Span, Spanned};
 use std::{
     default::default,
+    fmt,
     ops::Index,
-    path::PathBuf,
-    sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
+    path::Path,
+    sync::{Arc, LazyLock, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 use token::Word;
-use utilities::{condition, ComponentIndex, HashMap};
+use utilities::{
+    path::{CanonicalPath, CanonicalPathBuf},
+    ComponentIndex, HashMap,
+};
+
+pub mod interfaceable;
 
 pub struct BuildSession {
     /// The components which have already been built in this session.
     components: HashMap<ComponentIndex, Component>,
     /// The packages whose components have not necessarily been built yet in this session but are about to.
-    packages: IndexMap<PackageIndex, Package>,
+    packages: HashMap<ManifestPath, Package>,
     /// The mapping from component to corresponding package.
-    component_packages: HashMap<ComponentIndex, PackageIndex>,
+    // @Task remove
+    component_packages: HashMap<ComponentIndex, ManifestPath>,
     // @Task support multiple target components (depending on a user-supplied component filter)
     target_component: ComponentOutline,
     /// Intrinsic and known bindings.
@@ -43,8 +43,8 @@ impl BuildSession {
     pub const OUTPUT_FOLDER_NAME: &'static str = "build";
 
     pub fn new(
-        packages: IndexMap<PackageIndex, Package>,
-        component_packages: HashMap<ComponentIndex, PackageIndex>,
+        packages: HashMap<ManifestPath, Package>,
+        component_packages: HashMap<ComponentIndex, ManifestPath>,
         target_component: ComponentOutline,
         map: &Arc<RwLock<SourceMap>>,
         reporter: Reporter,
@@ -79,7 +79,7 @@ impl BuildSession {
         }
     }
 
-    pub fn target_package(&self) -> Option<PackageIndex> {
+    pub fn target_package(&self) -> Option<ManifestPath> {
         self.package_of(self.target_component.index)
     }
 
@@ -87,7 +87,7 @@ impl BuildSession {
         &self.target_component
     }
 
-    pub fn package_of(&self, component: ComponentIndex) -> Option<PackageIndex> {
+    pub fn package_of(&self, component: ComponentIndex) -> Option<ManifestPath> {
         self.component_packages.get(&component).copied()
     }
 
@@ -143,199 +143,12 @@ impl Index<ComponentIndex> for BuildSession {
     }
 }
 
-impl Index<PackageIndex> for BuildSession {
+impl Index<ManifestPath> for BuildSession {
     type Output = Package;
 
-    fn index(&self, index: PackageIndex) -> &Self::Output {
-        &self.packages[index]
+    fn index(&self, path: ManifestPath) -> &Self::Output {
+        &self.packages[&path]
     }
-}
-
-pub trait InterfaceableBindingExt: Sized {
-    fn from_expression(expression: &Expression, session: &BuildSession) -> Option<Self>;
-    fn into_expression(self, session: &BuildSession) -> Result<Expression>;
-}
-
-impl InterfaceableBindingExt for interfaceable::Type {
-    // @Task improve this code with the new enum logic
-    fn from_expression(expression: &Expression, session: &BuildSession) -> Option<Self> {
-        use special::NumericType::*;
-        use special::Type::*;
-
-        macro is_special($binding:ident, $name:ident) {
-            session.special.is(&$binding.0, $name)
-        }
-
-        Some(match &expression.bare {
-            // @Note this lookup looks incredibly inefficient
-            hir::BareExpression::Binding(binding) => condition! {
-                is_special!(binding, Unit) => Self::Unit,
-                is_special!(binding, Bool) => Self::Bool,
-                is_special!(binding, Nat) => Self::Nat,
-                is_special!(binding, Nat32) => Self::Nat32,
-                is_special!(binding, Nat64) => Self::Nat64,
-                is_special!(binding, Int) => Self::Int,
-                is_special!(binding, Int32) => Self::Int32,
-                is_special!(binding, Int64) => Self::Int64,
-                is_special!(binding, Text) => Self::Text,
-                else => return None,
-            },
-            hir::BareExpression::Application(application) => match &application.callee.bare {
-                hir::BareExpression::Binding(binding) if is_special!(binding, Option) => {
-                    Self::Option(Box::new(Self::from_expression(
-                        &application.argument,
-                        session,
-                    )?))
-                }
-                _ => return None,
-            },
-            _ => return None,
-        })
-    }
-
-    fn into_expression(self, session: &BuildSession) -> Result<Expression> {
-        use special::{NumericType::*, Type::*};
-
-        macro special($name:ident) {
-            session.require_special($name, None)
-        }
-
-        match self {
-            Self::Unit => special!(Unit),
-            Self::Bool => special!(Bool),
-            Self::Nat => special!(Nat),
-            Self::Nat32 => special!(Nat32),
-            Self::Nat64 => special!(Nat64),
-            Self::Int => special!(Int),
-            Self::Int32 => special!(Int32),
-            Self::Int64 => special!(Int64),
-            Self::Text => special!(Text),
-            Self::Option(type_) => Ok(application(
-                special!(Option)?,
-                type_.into_expression(session)?,
-            )),
-        }
-    }
-}
-
-impl InterfaceableBindingExt for interfaceable::Value {
-    fn from_expression(expression: &Expression, session: &BuildSession) -> Option<Self> {
-        use hir::BareExpression::*;
-        use special::Constructor::*;
-
-        macro is_special($binding:ident, $name:ident) {
-            session.special.is(&$binding.0, $name)
-        }
-
-        Some(match &expression.bare {
-            Text(text) => {
-                use hir::Text::*;
-
-                match &**text {
-                    // @Note not great
-                    Text(text) => Self::Text(text.clone()),
-                }
-            }
-            Number(number) => {
-                use hir::Number::*;
-
-                match &**number {
-                    Nat(nat) => Self::Nat(nat.clone()),
-                    Nat32(nat) => Self::Nat32(*nat),
-                    Nat64(nat) => Self::Nat64(*nat),
-                    Int(int) => Self::Int(int.clone()),
-                    Int32(int) => Self::Int32(*int),
-                    Int64(int) => Self::Int64(*int),
-                }
-            }
-            Binding(binding) => condition! {
-                is_special!(binding, UnitUnit) => Self::Unit,
-                is_special!(binding, BoolFalse) => Self::Bool(false),
-                is_special!(binding, BoolTrue) => Self::Bool(true),
-                else => return None,
-            },
-
-            Application(application0) => match &application0.callee.bare {
-                Binding(binding) if is_special!(binding, OptionNone) => Self::Option {
-                    value: None,
-                    type_: interfaceable::Type::from_expression(&application0.argument, session)?,
-                },
-                Application(application1) => match &application1.callee.bare {
-                    Binding(binding) if is_special!(binding, OptionSome) => Self::Option {
-                        value: Some(Box::new(Self::from_expression(
-                            &application0.argument,
-                            session,
-                        )?)),
-                        type_: interfaceable::Type::from_expression(
-                            &application1.argument,
-                            session,
-                        )?,
-                    },
-                    _ => return None,
-                },
-                _ => return None,
-            },
-            _ => return None,
-        })
-    }
-
-    fn into_expression(self, session: &BuildSession) -> Result<Expression> {
-        use hir::Number::*;
-        use special::{Constructor::*, Type::*};
-
-        Ok(match self {
-            Self::Unit => session.require_special(Unit, None)?,
-            Self::Bool(value) => {
-                session.require_special(if value { BoolTrue } else { BoolFalse }, None)?
-            }
-            Self::Text(value) => Expression::bare(hir::Text::Text(value).into()),
-            Self::Nat(value) => Expression::bare(Nat(value).into()),
-            Self::Nat32(value) => Expression::bare(Nat32(value).into()),
-            Self::Nat64(value) => Expression::bare(Nat64(value).into()),
-            Self::Int(value) => Expression::bare(Int(value).into()),
-            Self::Int32(value) => Expression::bare(Int32(value).into()),
-            Self::Int64(value) => Expression::bare(Int64(value).into()),
-            Self::Option { type_, value } => match value {
-                Some(value) => application(
-                    application(
-                        session.require_special(OptionSome, None)?,
-                        type_.into_expression(session)?,
-                    ),
-                    value.into_expression(session)?,
-                ),
-                None => application(
-                    session.require_special(OptionNone, None)?,
-                    type_.into_expression(session)?,
-                ),
-            },
-            Self::IO { index, arguments } => Expression::new(
-                default(),
-                default(),
-                hir::IO {
-                    index,
-                    arguments: arguments
-                        .into_iter()
-                        .map(|argument| argument.into_expression(session))
-                        .collect::<Result<Vec<_>>>()?,
-                }
-                .into(),
-            ),
-        })
-    }
-}
-
-#[allow(dead_code)] // @Temporary
-fn application(callee: Expression, argument: Expression) -> Expression {
-    Expression::new(
-        default(),
-        default(),
-        hir::Application {
-            callee,
-            argument,
-            explicitness: Explicitness::Explicit,
-        }
-        .into(),
-    )
 }
 
 pub type Components = IndexMap<ComponentIndex, Component>;
@@ -346,8 +159,7 @@ pub type Components = IndexMap<ComponentIndex, Component>;
 pub struct Component {
     name: Word,
     index: ComponentIndex,
-    // @Beacon @Task make this a Spanned<AbsolutePathBuf>,
-    path: Spanned<PathBuf>,
+    path: Spanned<CanonicalPathBuf>,
     // @Task document this! @Note this is used by the lang-server which gets the document content by the client
     //       and which should not open the file at the given path to avoid TOC-TOU bugs / data races
     pub content: Option<Arc<String>>,
@@ -365,7 +177,7 @@ impl Component {
     pub fn new(
         name: Word,
         index: ComponentIndex,
-        path: Spanned<PathBuf>,
+        path: Spanned<CanonicalPathBuf>,
         content: Option<Arc<String>>,
         type_: ComponentType,
         dependencies: HashMap<Word, ComponentIndex>,
@@ -381,15 +193,20 @@ impl Component {
         }
     }
 
-    pub fn test() -> Self {
+    #[cfg(feature = "test")]
+    pub fn mock() -> Self {
         use hir::Exposure;
 
-        let name: Word = Word::parse("test".into()).ok().unwrap();
+        const NAME: &str = "test";
+        const PATH: &str = "/test"; // @Task use a different path on Windows
+
+        let name = Word::new_unchecked(NAME.into());
+        let path = CanonicalPathBuf::new_unchecked(std::path::PathBuf::from(PATH));
 
         let mut component = Self::new(
             name.clone(),
             ComponentIndex(0),
-            Spanned::new(default(), PathBuf::new()),
+            Spanned::new(default(), path),
             None,
             ComponentType::Library,
             HashMap::default(),
@@ -398,7 +215,7 @@ impl Component {
             source: Spanned::new(default(), name).into(),
             parent: None,
             exposure: Exposure::Unrestricted,
-            kind: EntityKind::module(),
+            kind: hir::EntityKind::module(),
             attributes: default(),
         });
 
@@ -413,7 +230,7 @@ impl Component {
         self.index
     }
 
-    pub fn path(&self) -> Spanned<&std::path::Path> {
+    pub fn path(&self) -> Spanned<&CanonicalPath> {
         self.path.as_deref()
     }
 
@@ -432,7 +249,7 @@ impl Component {
     /// Test if this component is the standard library `core`.
     pub fn is_core_library(&self, session: &BuildSession) -> bool {
         session.package_of(self.index).map_or(false, |package| {
-            session[package].is_core() && self.is_library()
+            session.packages[&package].is_core() && self.is_library()
         })
     }
 
@@ -552,44 +369,36 @@ impl fmt::Display for ComponentType {
 #[derive(Debug)]
 pub struct Package {
     pub name: Word,
-    // @Beacon @Task make this an “AbsolutePathBuf”
-    pub path: PathBuf,
+    pub path: ManifestPath,
     pub version: Version,
     pub description: String,
     pub components: HashMap<Word, PossiblyUnresolvedComponent>,
 }
 
 impl Package {
+    pub fn folder(&self) -> &CanonicalPath {
+        self.path.folder()
+    }
+
     /// Test if this package is the standard library `core`.
     fn is_core(&self) -> bool {
-        self.path == core_package_path()
+        self.path == ManifestPath::core()
     }
 }
 
-/// The path to the folder of packages shipped with the compiler.
-pub fn distributed_packages_path() -> &'static Path {
-    // @Task make this configurable via CLI option & env var & config file
-    static PATH: LazyLock<PathBuf> = LazyLock::new(|| {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../library")
-            .canonicalize()
-            .unwrap()
-    });
-
-    &PATH
-}
-
-pub fn core_package_path() -> &'static Path {
-    static PATH: LazyLock<PathBuf> =
-        LazyLock::new(|| distributed_packages_path().join(CORE_PACKAGE_NAME));
-
-    &PATH
-}
-
-pub const CORE_PACKAGE_NAME: &str = "core";
+pub const CORE_PACKAGE_NAME: &str = "core"; // @Task intern this on prefill
 
 pub fn core_package_name() -> Word {
     Word::new_unchecked("core".into())
+}
+
+/// The path to the folder of packages shipped with the compiler.
+pub fn distributed_packages_path() -> &'static CanonicalPath {
+    static PATH: LazyLock<CanonicalPathBuf> = LazyLock::new(|| {
+        CanonicalPathBuf::new(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../../library")).unwrap()
+    });
+
+    &PATH
 }
 
 #[derive(Debug)]
@@ -601,11 +410,37 @@ pub enum PossiblyUnresolvedComponent {
     Resolved(ComponentIndex),
 }
 
-#[derive(PartialEq, Eq, Clone, Copy, index_map::Index)]
-pub struct PackageIndex(usize);
+// @Task make this type more ergonomic to use
 
-impl fmt::Debug for PackageIndex {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}p", self.0)
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct ManifestPath(pub internment::Intern<CanonicalPathBuf>);
+
+impl ManifestPath {
+    pub const FILE_NAME: &str = "package.metadata";
+
+    pub fn folder(&self) -> &CanonicalPath {
+        self.0.parent().unwrap()
+    }
+
+    pub fn core() -> Self {
+        static PATH: LazyLock<ManifestPath> = LazyLock::new(|| {
+            let mut path = distributed_packages_path().to_path_buf();
+            path.extend([CORE_PACKAGE_NAME, ManifestPath::FILE_NAME]);
+            ManifestPath::from(CanonicalPathBuf::new_unchecked(path))
+        });
+
+        *PATH
+    }
+}
+
+impl From<&CanonicalPath> for ManifestPath {
+    fn from(path: &CanonicalPath) -> Self {
+        Self(internment::Intern::from_ref(path))
+    }
+}
+
+impl From<CanonicalPathBuf> for ManifestPath {
+    fn from(path: CanonicalPathBuf) -> Self {
+        Self(path.into())
     }
 }

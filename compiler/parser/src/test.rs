@@ -12,7 +12,7 @@ use ast::{
 use diagnostics::{error::Result, Reporter};
 use index_map::Index as _;
 use lexer::lex;
-use span::{span, SourceFileIndex, SourceMap, Span, Spanned};
+use span::{span, FileName, SourceFileIndex, SourceMap, Span, Spanned};
 use std::{
     default::default,
     sync::{Arc, RwLock},
@@ -21,7 +21,7 @@ use utilities::{displayed, smallvec, SmallVec};
 
 fn parse_expression(source: &str) -> Result<Expression> {
     let mut map = SourceMap::default();
-    let file = map.add(None, Arc::new(source.to_owned()), None);
+    let file = map.add_str(FileName::Anonymous, source);
     let map = Arc::new(RwLock::new(map));
     let reporter = Reporter::stderr().with_map(map.clone());
     let map = map.read().unwrap();
@@ -36,7 +36,7 @@ fn parse_expression(source: &str) -> Result<Expression> {
 
 fn parse_pattern(source: &str) -> Result<Pattern> {
     let mut map = SourceMap::default();
-    let file = map.add(None, Arc::new(source.to_owned()), None);
+    let file = map.add_str(FileName::Anonymous, source);
     let map = Arc::new(RwLock::new(map));
     let reporter = Reporter::stderr().with_map(map.clone());
     let map = map.read().unwrap();
@@ -51,7 +51,7 @@ fn parse_pattern(source: &str) -> Result<Pattern> {
 
 fn parse_declaration(source: &str) -> Result<Declaration> {
     let mut map = SourceMap::default();
-    let file = map.add(None, Arc::new(source.to_owned()), None);
+    let file = map.add_str(FileName::Anonymous, source);
     let map = Arc::new(RwLock::new(map));
     let reporter = Reporter::stderr().with_map(map.clone());
     let map = map.read().unwrap();

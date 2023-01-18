@@ -16,6 +16,7 @@ joinery = "3.1.0"
 minifier = "0.2.1"
 resolver = { path = "../resolver" }
 session = { path = "../session" }
+span = { path = "../span" }
 syntax = { path = "../syntax" }
 token = { path = "../token" }
 unicode-segmentation = "1.9.0"

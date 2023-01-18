@@ -12,9 +12,9 @@ use colored::Colorize;
 use diagnostics::{error::Result, reporter::ErasedReportedError, Diagnostic, ErrorCode, Reporter};
 use hir_format::Display as _;
 use lowered_ast::Display as _;
-use package::{find_package, resolve_file, resolve_package, MANIFEST_FILE_NAME};
+use package::{find_package, resolve_file, resolve_package};
 use resolver::ProgramEntryExt;
-use session::{BuildSession, Component, ComponentType, Components};
+use session::{BuildSession, Component, ComponentType, Components, ManifestPath};
 use span::SourceMap;
 use std::{
     borrow::Cow,
@@ -85,15 +85,15 @@ fn execute_command(
                     if path.is_file() {
                         // give a more useful diagnostic than the generic "could not load" one
                         return Err(Diagnostic::error()
-                            .message(format!(
-                                "the path ‘{}’ does not refer to a folder",
-                                path.display()
+                            .path(path.clone())
+                            .message("the path does not refer to a folder")
+                            .help(format!(
+                                "consider running ‘lushui file {} {} [OPTIONS]’ instead \
+                                 (where ‘file’ precedes the subcommand)\n\
+                                 to operate on single source files",
+                                mode.name(),
+                                path.display(),
                             ))
-                            .help(
-                                "consider running ‘lushui file <SUBCOMMAND> <PATH> [OPTIONS]’ \
-                                 (with ‘file’ preceeding the subcommand)\n\
-                                 instead to operate on single source files",
-                            )
                             .report(&reporter));
                     }
 
@@ -117,7 +117,8 @@ fn execute_command(
                                 "neither the current folder nor any of its parents is a package",
                             )
                             .note(format!(
-                                "none of the folders contain a package manifest file named ‘{MANIFEST_FILE_NAME}’",
+                                "none of the folders contain a package manifest file named ‘{}’",
+                                ManifestPath::FILE_NAME,
                             ))
                             .report(&reporter));
                     };
@@ -132,15 +133,15 @@ fn execute_command(
             if options.path.is_dir() {
                 // give a more useful diagnostic than the generic "could not load" one
                 return Err(Diagnostic::error()
-                    .message(format!(
-                        "the path ‘{}’ does not refer to a file",
-                        options.path.display()
+                    .path(options.path.clone())
+                    .message("the path does not refer to a file")
+                    .help(format!(
+                        "consider running ‘lushui {} {} [OPTIONS]’ instead \
+                        (where ‘file’ does not precede the subcommand)\n\
+                        to operate on packages",
+                        mode.name(),
+                        options.path.display(),
                     ))
-                    .help(
-                        "consider running ‘lushui <SUBCOMMAND> <PATH> [OPTIONS]’ \
-                         (without ‘file’ preceeding the subcommand)\n\
-                         instead to operate on packages",
-                    )
                     .report(&reporter));
             }
 
@@ -261,7 +262,7 @@ fn build_component(
     // "Erroneous" components should not lead to further errors in the name resolver etc.
     let file = session
         .map()
-        .load(path.bare.to_owned(), Some(component.index()))
+        .load(path.bare, Some(component.index()))
         .map_err(|error| {
             use std::fmt::Write;
 
@@ -399,7 +400,7 @@ fn build_component(
                     Backend::Cranelift => {
                         // @Task spawn Command where the path is session.build_folder() + ...
                         return Err(Diagnostic::error().message(
-                            "running executables built with the Cranelift backend is not yet supported",
+                            "running executables built with the Cranelift backend is not supported yet",
                         )
                         .report(session.reporter()));
                     }
@@ -407,7 +408,7 @@ fn build_component(
                     Backend::Llvm => {
                         // @Task spawn Command where the path is session.build_folder() + ...
                         return Err(Diagnostic::error().message(
-                            "running executables built with the LLVM backend is not yet supported",
+                            "running executables built with the LLVM backend is not supported yet",
                         )
                         .report(session.reporter()));
                     }
@@ -469,17 +470,13 @@ fn build_component(
 }
 
 fn check_metadata_file(path: &Path, map: &Arc<RwLock<SourceMap>>, reporter: &Reporter) -> Result {
-    let file = map
-        .write()
-        .unwrap()
-        .load(path.to_owned(), None)
-        .map_err(|error| {
-            Diagnostic::error()
-                .message("could not load the file")
-                .path(path.into())
-                .note(error.format())
-                .report(reporter)
-        })?;
+    let file = map.write().unwrap().load(path, None).map_err(|error| {
+        Diagnostic::error()
+            .message("could not load the file")
+            .path(path.into())
+            .note(error.format())
+            .report(reporter)
+    })?;
 
     metadata::parse(file, map, reporter).map(drop)
 }

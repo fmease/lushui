@@ -1,4 +1,3 @@
-# TEST fail check
 # @Beacon @Task list all offending components / packages, not just the first one
 
 name: a,

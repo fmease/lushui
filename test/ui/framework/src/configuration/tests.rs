@@ -3,7 +3,7 @@ use crate::{
     configuration::{Configuration, TestTag},
     TestType::{self, *},
 };
-use span::{span, SourceMap, Spanned};
+use span::{span, FileName, SourceMap, Spanned};
 use std::default::default;
 
 fn parse_configuration<'m>(
@@ -11,7 +11,7 @@ fn parse_configuration<'m>(
     type_: TestType,
     map: &'m mut SourceMap,
 ) -> Result<Configuration<'m>, Error> {
-    let file = map.add_str(None, source);
+    let file = map.add_str(FileName::Anonymous, source);
     Configuration::parse(&map[file], type_, map)
 }
 

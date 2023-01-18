@@ -101,7 +101,9 @@ fn compile(
     let path = match session.target_package() {
         // @Task ensure that the build folder exists
         Some(package) => {
-            let mut path = session[package].path.join(BuildSession::OUTPUT_FOLDER_NAME);
+            let mut path = session[package]
+                .folder()
+                .join(BuildSession::OUTPUT_FOLDER_NAME);
             path.push(name);
             path.set_extension("o");
             path
@@ -125,7 +127,9 @@ fn link(path: &Path, component: &Component, session: &BuildSession) -> Result {
         .arg("-o")
         .arg(match session.target_package() {
             Some(package) => {
-                let mut path = session[package].path.join(BuildSession::OUTPUT_FOLDER_NAME);
+                let mut path = session[package]
+                    .folder()
+                    .join(BuildSession::OUTPUT_FOLDER_NAME);
                 path.push(name);
                 path
             }

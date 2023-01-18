@@ -17,7 +17,7 @@ where
 
     for node in graph.keys() {
         if let Entry::Vacant(entry) = visited.entry(node) {
-            entry.insert(Status::Ongoing);
+            entry.insert(Status::Visited);
             cycles.extend(find_cycle_by_key(
                 graph,
                 &get_key,
@@ -45,7 +45,7 @@ where
     let node = key(entry);
 
     let cycle = match visited.get(&node) {
-        Some(Status::Ongoing) => {
+        Some(Status::Visited) => {
             let cycle: Cycle<'_, U> = worklist
                 .iter()
                 .copied()
@@ -58,7 +58,7 @@ where
         Some(Status::Finished) => None,
         None => {
             worklist.push(node);
-            visited.insert(node, Status::Ongoing);
+            visited.insert(node, Status::Visited);
             find_cycle_by_key(graph, key, worklist, visited)
         }
     };
@@ -80,7 +80,7 @@ where
 
     for node in graph.keys() {
         if let Entry::Vacant(entry) = visited.entry(node) {
-            entry.insert(Status::Ongoing);
+            entry.insert(Status::Visited);
             cycles.extend(find_cycle(graph, &mut vec![node], &mut visited));
         }
     }
@@ -101,7 +101,7 @@ where
     let node = graph.get(worklist.last().unwrap())?;
 
     let cycle = match visited.get(&node) {
-        Some(Status::Ongoing) => {
+        Some(Status::Visited) => {
             let cycle: Cycle<'_, _> = worklist
                 .iter()
                 .copied()
@@ -113,7 +113,7 @@ where
         Some(Status::Finished) => None,
         None => {
             worklist.push(node);
-            visited.insert(node, Status::Ongoing);
+            visited.insert(node, Status::Visited);
             find_cycle(graph, worklist, visited)
         }
     };
@@ -124,7 +124,7 @@ where
 }
 
 enum Status {
-    Ongoing,
+    Visited,
     Finished,
 }
 

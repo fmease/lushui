@@ -14,7 +14,7 @@ use hir::{Attribute, AttributeName, Attributes, BareAttribute};
 use hir_format::ComponentExt;
 use joinery::JoinableIterator;
 use node::{Attributable, Document, Element, Node, VoidElement};
-use session::{BuildSession, Component, DeclarationIndexExt, IdentifierExt, Package, PackageIndex};
+use session::{BuildSession, Component, DeclarationIndexExt, IdentifierExt, ManifestPath, Package};
 use std::{
     collections::BTreeSet,
     default::default,
@@ -122,7 +122,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
         match session.target_package() {
             Some(package) => {
                 let package = &session[package];
-                let mut path = package.path.clone();
+                let mut path = package.folder().to_path_buf();
                 path.push(BuildSession::OUTPUT_FOLDER_NAME);
                 path.push(OUTPUT_FOLDER_NAME);
                 path.push(package.name.as_str());
@@ -472,7 +472,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
         }
     }
 
-    fn package_page(&self, package: PackageIndex) -> Page {
+    fn package_page(&self, package: ManifestPath) -> Page {
         let url_prefix = "./";
         let package = &self.session[package];
         let name = &package.name;

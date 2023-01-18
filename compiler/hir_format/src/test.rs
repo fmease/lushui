@@ -65,7 +65,7 @@ impl ComponentExt for Component {
 #[test]
 fn pi_type_application_argument() {
     let session = BuildSession::test();
-    let mut component = Component::test();
+    let mut component = Component::mock();
 
     let array = component
         .add("Array", EntityKind::untyped_data_type())
@@ -108,7 +108,7 @@ fn pi_type_application_argument() {
 #[test]
 fn pi_type_named_parameter() {
     let session = BuildSession::test();
-    let mut component = Component::test();
+    let mut component = Component::mock();
 
     let array = component.add("Array", EntityKind::untyped_data_type());
     let int = component.add("Int", EntityKind::untyped_data_type());
@@ -155,7 +155,7 @@ fn pi_type_named_parameter() {
 #[test]
 fn pi_type_implicit_parameter() {
     let session = BuildSession::test();
-    let mut component = Component::test();
+    let mut component = Component::mock();
 
     let type_ = component
         .add("Type", EntityKind::untyped_data_type())
@@ -184,7 +184,7 @@ fn pi_type_implicit_parameter() {
 #[test]
 fn pi_type_higher_order_argument() {
     let session = BuildSession::test();
-    let mut component = Component::test();
+    let mut component = Component::mock();
     let int = component
         .add("Int", EntityKind::untyped_data_type())
         .into_item();
@@ -223,7 +223,7 @@ fn pi_type_higher_order_argument() {
 #[test]
 fn pi_type_two_curried_arguments() {
     let session = BuildSession::test();
-    let mut component = Component::test();
+    let mut component = Component::mock();
     let int = component
         .add("Int", EntityKind::untyped_data_type())
         .into_item();
@@ -268,7 +268,7 @@ fn pi_type_two_curried_arguments() {
 #[test]
 fn pi_type_lambda_domain() {
     let session = BuildSession::test();
-    let mut component = Component::test();
+    let mut component = Component::mock();
 
     let type_ = component
         .add("Type", EntityKind::untyped_data_type())
@@ -310,7 +310,7 @@ fn pi_type_lambda_domain() {
 #[test]
 fn application_three_curried_arguments() {
     let session = BuildSession::test();
-    let mut component = Component::test();
+    let mut component = Component::mock();
 
     let beta = component.add("beta", EntityKind::UntypedFunction);
     let type_ = component
@@ -365,7 +365,7 @@ fn application_three_curried_arguments() {
 #[test]
 fn application_lambda_last_argument() {
     let session = BuildSession::test();
-    let mut component = Component::test();
+    let mut component = Component::mock();
 
     let take = component.add("take", EntityKind::UntypedFunction);
     let it = Identifier::parameter("it");
@@ -405,7 +405,7 @@ fn application_lambda_last_argument() {
 #[test]
 fn application_lambda_argument() {
     let session = BuildSession::test();
-    let mut component = Component::test();
+    let mut component = Component::mock();
 
     let take = component.add("take", EntityKind::UntypedFunction);
     let it = Identifier::parameter("it");
@@ -452,7 +452,7 @@ fn application_lambda_argument() {
 #[test]
 fn application_implicit_argument() {
     let session = BuildSession::test();
-    let mut component = Component::test();
+    let mut component = Component::mock();
 
     let identity = component.add("identity", EntityKind::UntypedFunction);
     let type_ = component
@@ -479,7 +479,7 @@ fn application_implicit_argument() {
 #[test]
 fn application_complex_implicit_argument() {
     let session = BuildSession::test();
-    let mut component = Component::test();
+    let mut component = Component::mock();
 
     let identity = component.add("identity", EntityKind::UntypedFunction);
     let text = component.add("Text", EntityKind::untyped_data_type());
@@ -513,7 +513,7 @@ fn application_complex_implicit_argument() {
 #[test]
 fn application_intrinsic_application_callee() {
     let session = BuildSession::test();
-    let component = Component::test();
+    let component = Component::mock();
 
     assert_format(
         "eta 10 omicron",
@@ -547,7 +547,7 @@ fn application_intrinsic_application_callee() {
 #[test]
 fn lambda_body_type_annotation() {
     let session = BuildSession::test();
-    let mut component = Component::test();
+    let mut component = Component::mock();
 
     let output = component.add("Output", EntityKind::untyped_data_type());
 
@@ -574,7 +574,7 @@ fn lambda_body_type_annotation() {
 #[test]
 fn lambda_parameter_type_annotation_body_type_annotation() {
     let session = BuildSession::test();
-    let mut component = Component::test();
+    let mut component = Component::mock();
 
     let input = component.add("Input", EntityKind::untyped_data_type());
     let output = component.add("Output", EntityKind::untyped_data_type());
@@ -605,7 +605,7 @@ fn lambda_parameter_type_annotation_body_type_annotation() {
 #[test]
 fn lambda_implicit_parameter() {
     let session = BuildSession::test();
-    let mut component = Component::test();
+    let mut component = Component::mock();
 
     let type_ = component
         .add("Type", EntityKind::untyped_data_type())
@@ -634,7 +634,7 @@ fn lambda_implicit_parameter() {
 #[test]
 fn lambda_implicit_unannotated_parameter() {
     let session = BuildSession::test();
-    let component = Component::test();
+    let component = Component::mock();
     let a = Identifier::parameter("a");
 
     assert_format(
@@ -673,7 +673,7 @@ fn lambda_implicit_unannotated_parameter() {
 #[test]
 fn lambda_pi_type_body() {
     let session = BuildSession::test();
-    let mut component = Component::test();
+    let mut component = Component::mock();
 
     let type_ = component
         .add("Type", EntityKind::untyped_data_type())
@@ -715,7 +715,7 @@ fn lambda_pi_type_body() {
 #[test]
 fn intrinsic_application_no_arguments() {
     let session = BuildSession::test();
-    let mut component = Component::test();
+    let mut component = Component::mock();
 
     let add = component.add("add", EntityKind::UntypedFunction);
 
@@ -738,7 +738,7 @@ fn intrinsic_application_no_arguments() {
 #[test]
 fn intrinsic_application_two_arguments() {
     let session = BuildSession::test();
-    let mut component = Component::test();
+    let mut component = Component::mock();
 
     let add = component.add("add", EntityKind::UntypedFunction);
 
@@ -783,7 +783,7 @@ fn intrinsic_application_two_arguments() {
 #[test]
 fn attributes() {
     let session = BuildSession::test();
-    let component = Component::test();
+    let component = Component::mock();
 
     assert_format(
         "== @static @unsafe 3 @static (increment 1)",
@@ -834,7 +834,7 @@ fn attributes() {
 #[test]
 fn path() {
     let session = BuildSession::test();
-    let mut component = Component::test();
+    let mut component = Component::mock();
 
     let overarching = component.add("overarching", EntityKind::module());
     let middle = component.add_below(
@@ -859,7 +859,7 @@ fn path() {
 #[test]
 fn path_identifier_symbol_symbol_identifier_segments() {
     let session = BuildSession::test();
-    let mut component = Component::test();
+    let mut component = Component::mock();
 
     let overarching = component.add("overarching", EntityKind::module());
     let noisy = component.add_below(

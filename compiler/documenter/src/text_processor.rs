@@ -3,6 +3,7 @@ use crossbeam::thread::{Scope, ScopedJoinHandle};
 use diagnostics::error::Result;
 use resolver::resolve_path;
 use session::{BuildSession, Component};
+use span::FileName;
 use std::{
     cell::RefCell,
     default::default,
@@ -280,10 +281,11 @@ impl<'a> Request<'a> {
     ) -> Result<String> {
         Ok(match self {
             Request::DeclarationUrl(path) => {
-                let file =
-                    session
-                        .map()
-                        .add(None, Arc::new(path.to_owned()), Some(component.index()));
+                let file = session.map().add(
+                    FileName::Anonymous,
+                    Arc::new(path.to_owned()),
+                    Some(component.index()),
+                );
                 let path = parse_path(file, session)?;
                 let index = resolve_path(&path, component.root(), component, session)?;
                 let url_suffix = declaration_url_fragment(index, component, session);

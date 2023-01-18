@@ -27,6 +27,7 @@ use tower_lsp::{
     },
     Client,
 };
+use utilities::path::CanonicalPath;
 use utilities::{ComponentIndex, FormatError, HashMap};
 
 mod diagnostics;
@@ -197,7 +198,7 @@ impl tower_lsp::LanguageServer for Server {
         Ok((|| {
             let uri = parameters.text_document_position_params.text_document.uri;
 
-            let path = Path::new(uri.path());
+            let path = CanonicalPath::new_unchecked(uri.path());
             // @Task error on unsupported URI scheme!
             let content = self.documents.read().unwrap().get(&uri).unwrap().clone();
 
@@ -287,15 +288,13 @@ fn build_component(
     // @Beacon @Task this shouldm't need to be that ugly!!!
 
     let file = match content {
-        Some(content) => {
-            session
-                .map()
-                .add(Some(path.bare.to_owned()), content, Some(component.index()))
-        }
+        Some(content) => session
+            .map()
+            .add(path.bare.to_owned(), content, Some(component.index())),
         None => {
             session
                 .map()
-                .load(path.bare.to_owned(), Some(component.index()))
+                .load(path.bare, Some(component.index()))
                 .map_err(|error| {
                     use std::fmt::Write;
 

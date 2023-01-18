@@ -452,6 +452,8 @@ impl TypedValueParser for ColorModeParser {
     }
 }
 
+#[derive(Str)]
+#[format(dash_case)]
 pub(crate) enum BuildMode {
     Check,
     Compile { options: CompilationOptions },

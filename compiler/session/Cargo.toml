@@ -4,13 +4,16 @@ version = "0.0.0"
 edition = "2021"
 publish = false
 
+[features]
+test = []
+
 [dependencies]
 derivation = { path = "../../project/library/derivation" }
 index_map = { path = "../../project/library/index_map" }
 ast = { path = "../ast" }
 diagnostics = { path = "../diagnostics" }
 hir = { path = "../hir" }
-lexer = { path = "../lexer" }
+internment = "0.7.0"
 span = { path = "../span" }
 token = { path = "../token" }
 utilities = { path = "../utilities" }

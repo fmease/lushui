@@ -1,22 +1,22 @@
 error: could not load the dependency ‘who’
-   ┌─ ${TEST_FOLDER}/packages/faulty-package-path/nowhere/package.metadata
-   │
-   ├─ ${TEST_FOLDER}/packages/faulty-package-path/package.metadata:10:39
-   │
-10 │         dependencies: { who: { path: "nowhere" }, really-who: { path: void } },
-   │                                       ═══════
-   │
-  note: No such file or directory (os error 2)
+  ┌─ ${TEST_FOLDER}/packages/faulty-package-path/nowhere/package.metadata
+  │
+  ├─ ${TEST_FOLDER}/packages/faulty-package-path/package.metadata:9:39
+  │
+9 │         dependencies: { who: { path: "nowhere" }, really-who: { path: void } },
+  │                                       ═══════
+  │
+ note: No such file or directory (os error 2)
 
 error: could not load the dependency ‘really-who’
-   ┌─ ${TEST_FOLDER}/packages/faulty-package-path/void/package.metadata
-   │
-   ├─ ${TEST_FOLDER}/packages/faulty-package-path/package.metadata:10:71
-   │
-10 │         dependencies: { who: { path: "nowhere" }, really-who: { path: void } },
-   │                                                                       ════
-   │
-  note: No such file or directory (os error 2)
+  ┌─ ${TEST_FOLDER}/packages/faulty-package-path/void/package.metadata
+  │
+  ├─ ${TEST_FOLDER}/packages/faulty-package-path/package.metadata:9:71
+  │
+9 │         dependencies: { who: { path: "nowhere" }, really-who: { path: void } },
+  │                                                                       ════
+  │
+ note: No such file or directory (os error 2)
 
 error: aborting due to 2 previous errors
 

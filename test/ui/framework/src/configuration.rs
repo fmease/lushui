@@ -219,7 +219,8 @@ fn parse_parameter(mut source: Spanned<&str>, type_: TestType) -> Result<Paramet
         };
 
         revisions.push(revision);
-        source.bare = split.as_str();
+        // @Task verify
+        source.bare = split.remainder().unwrap_or("");
     }
 
     let mut arguments = source.bare.split(' ');

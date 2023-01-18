@@ -6,6 +6,7 @@ use clap::{
 use derivation::Elements;
 use diagnostics::{Diagnostic, Reporter};
 use std::{ffi::OsStr, num::NonZeroUsize, path::PathBuf, time::Duration};
+use utilities::FormatError;
 
 pub(crate) fn arguments() -> Result<Arguments, ()> {
     let available_parallelism =
@@ -95,7 +96,8 @@ pub(crate) fn arguments() -> Result<Arguments, ()> {
 
                 Diagnostic::error()
                     .message("could not load the test file")
-                    .note(format!("‘{}’: {error}", path.display()))
+                    .path(path.clone())
+                    .note(error.format())
                     .report(&Reporter::stderr());
             }
         }

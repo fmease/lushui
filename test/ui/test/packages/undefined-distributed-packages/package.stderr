@@ -1,9 +1,9 @@
 error: could not load the dependency ‘who’
    ┌─ ${DISTRIBUTED_LIBRARIES_FOLDER}/dis/package.metadata
    │
-   ├─ ${TEST_FOLDER}/packages/undefined-distributed-packages/package.metadata:14:13
+   ├─ ${TEST_FOLDER}/packages/undefined-distributed-packages/package.metadata:13:13
    │
-14 │             who: { component: "dis", provider: distribution },
+13 │             who: { component: "dis", provider: distribution },
    │             ═══
    │
   note: No such file or directory (os error 2)
@@ -11,9 +11,9 @@ error: could not load the dependency ‘who’
 error: could not load the dependency ‘kore’
    ┌─ ${DISTRIBUTED_LIBRARIES_FOLDER}/kore/package.metadata
    │
-   ├─ ${TEST_FOLDER}/packages/undefined-distributed-packages/package.metadata:12:13
+   ├─ ${TEST_FOLDER}/packages/undefined-distributed-packages/package.metadata:11:13
    │
-12 │             kore: { provider: distribution },
+11 │             kore: { provider: distribution },
    │             ════
    │
   note: No such file or directory (os error 2)
@@ -21,9 +21,9 @@ error: could not load the dependency ‘kore’
 error: could not load the dependency ‘core’
    ┌─ ${DISTRIBUTED_LIBRARIES_FOLDER}/kore/package.metadata
    │
-   ├─ ${TEST_FOLDER}/packages/undefined-distributed-packages/package.metadata:13:13
+   ├─ ${TEST_FOLDER}/packages/undefined-distributed-packages/package.metadata:12:13
    │
-13 │             core: { component: kore, provider: distribution },
+12 │             core: { component: kore, provider: distribution },
    │             ════
    │
   note: No such file or directory (os error 2)

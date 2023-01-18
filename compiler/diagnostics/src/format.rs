@@ -13,10 +13,11 @@ use super::{Highlight, Role, Severity, Subdiagnostic, Subseverity, UnboxedUntagg
 use colored::{Color, ColoredString, Colorize};
 use span::{
     source_map::{LineWithHighlight, LinesWithHighlight},
-    SourceMap,
+    FileName, SourceMap,
 };
-use std::{fmt, iter::once, path::Path};
+use std::{fmt, iter::once};
 use unicode_width::UnicodeWidthStr;
+use utilities::displayed;
 
 #[cfg(test)]
 mod test;
@@ -119,7 +120,7 @@ impl<'a> Formatter<'a> {
 
         let needs_downward_connection = !self.diagnostic.subdiagnostics.is_empty();
         for (index, (highlight, lines)) in highlights.iter().zip(rows_of_lines).enumerate() {
-            let path = lines.path.map(Path::to_string_lossy).unwrap_or_default();
+            let file = displayed(|f| format_file_name(lines.file, f));
             let line = lines.first.number;
             let column = lines.first.highlight.start;
 
@@ -135,7 +136,7 @@ impl<'a> Formatter<'a> {
                 f,
                 "{padding} {}",
                 format!(
-                    "{connector}{} {path}:{line}:{column}",
+                    "{connector}{} {file}:{line}:{column}",
                     Line::Horizontal.single()
                 )
                 .color(palette::FRAME)
@@ -454,6 +455,15 @@ impl Line {
             Role::Primary => self.double(),
             Role::Secondary => self.single(),
         }
+    }
+}
+
+fn format_file_name(name: &FileName, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match name {
+        FileName::Anonymous => write!(f, "{}", "⟨anonymous⟩".italic()),
+        FileName::Stdin => write!(f, "{}", "⟨stdin⟩".italic()),
+        FileName::Path(path) => write!(f, "{}", path.display()),
+        FileName::Str(name) => write!(f, "{name}"),
     }
 }
 

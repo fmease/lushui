@@ -1,15 +1,12 @@
 use super::{ByteIndex, LocalByteIndex, LocalSpan, Span, Spanning};
 use index_map::IndexMap;
-use std::{
-    borrow::Borrow,
-    default::default,
-    io,
-    ops::Range,
-    path::{Path, PathBuf},
-    sync::Arc,
-};
+use std::{default::default, io, ops::Range, path::Path, sync::Arc};
 use unicode_width::UnicodeWidthStr;
-use utilities::ComponentIndex;
+use utilities::{
+    obtain,
+    path::{CanonicalPath, CanonicalPathBuf},
+    ComponentIndex,
+};
 
 #[cfg(test)]
 mod test;
@@ -59,27 +56,37 @@ impl SourceMap {
     /// Open a file given its path and add it as a [`SourceFile`] to the map.
     pub fn load(
         &mut self,
-        path: PathBuf,
+        path: &Path,
         component: Option<ComponentIndex>,
-    ) -> Result<SourceFileIndex, io::Error> {
+    ) -> io::Result<SourceFileIndex> {
+        let path = CanonicalPathBuf::new(path)?;
         let source = std::fs::read_to_string(&path)?;
-        Ok(self.add(Some(path), Arc::new(source), component))
+        Ok(self.add(path, Arc::new(source), component))
+    }
+
+    // @Task better name
+    pub fn read(
+        &mut self,
+        path: CanonicalPathBuf,
+        component: Option<ComponentIndex>,
+    ) -> io::Result<SourceFileIndex> {
+        let source = std::fs::read_to_string(&path)?;
+        Ok(self.add(path, Arc::new(source), component))
     }
 
     /// Add text to the map creating a [`SourceFile`] in the process.
     pub fn add(
         &mut self,
-        path: Option<PathBuf>,
+        name: impl Into<FileName>,
         source: Arc<String>,
         component: Option<ComponentIndex>,
     ) -> SourceFileIndex {
         self.files
-            .insert(SourceFile::new(path, source, self.next_offset(), component))
+            .insert(SourceFile::new(name, source, self.next_offset(), component))
     }
 
-    // @Task docs
-    pub fn add_str(&mut self, path: Option<PathBuf>, source: &'static str) -> SourceFileIndex {
-        self.add(path, Arc::new(source.to_owned()), None)
+    pub fn add_str(&mut self, name: impl Into<FileName>, source: &str) -> SourceFileIndex {
+        self.add(name, Arc::new(source.to_owned()), None)
     }
 
     pub fn file(&self, span: Span) -> &SourceFile {
@@ -93,8 +100,10 @@ impl SourceMap {
     }
 
     // @Beacon @Temporary
-    pub fn file_by_path(&self, path: &Path) -> Option<&SourceFile> {
-        self.files.values().find(|file| file.path() == Some(path))
+    pub fn file_by_path(&self, path: &CanonicalPath) -> Option<&SourceFile> {
+        self.files
+            .values()
+            .find(|file| file.name.path() == Some(path))
     }
 
     /// Resolve a span to the string content it points to.
@@ -270,7 +279,7 @@ impl SourceMap {
         }
 
         LinesWithHighlight {
-            path: file.path.as_deref(),
+            file: &file.name,
             first: first_line.unwrap().resolve(file).unwrap(),
             last: last_line.map(|line| line.resolve(file).unwrap()),
         }
@@ -281,7 +290,7 @@ impl std::ops::Index<SourceFileIndex> for SourceMap {
     type Output = SourceFile;
 
     fn index(&self, index: SourceFileIndex) -> &Self::Output {
-        &self.files.borrow()[index]
+        &self.files[index]
     }
 }
 
@@ -291,7 +300,7 @@ pub struct SourceFileIndex(usize);
 #[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct LinesWithHighlight<'a> {
-    pub path: Option<&'a Path>,
+    pub file: &'a FileName,
     pub first: LineWithHighlight<'a>,
     /// This is `None` if the last is the first line.
     pub last: Option<LineWithHighlight<'a>>,
@@ -324,11 +333,12 @@ pub struct Highlight {
 /// Obtained by and contained within a [source map](SourceMap).
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct SourceFile {
-    path: Option<PathBuf>,
+    name: FileName,
     /// The component the source file belongs to, if any.
     // @Beacon @Task make this a plain String again!
     content: Arc<String>,
     span: Span,
+    // @Task rename to owner & maybe make this a dyn* Any?
     #[cfg_attr(not(feature = "lsp"), allow(dead_code))]
     component: Option<ComponentIndex>,
 }
@@ -338,21 +348,21 @@ impl SourceFile {
     ///
     /// The [byte index](ByteIndex) `start` locates the file in a [source map](SourceMap).
     fn new(
-        path: Option<PathBuf>,
+        name: impl Into<FileName>,
         content: Arc<String>,
         start: ByteIndex,
         component: Option<ComponentIndex>,
     ) -> Self {
         Self {
             span: Span::with_length(start, content.len().try_into().unwrap()),
-            path,
+            name: name.into(),
             component,
             content,
         }
     }
 
-    pub fn path(&self) -> Option<&Path> {
-        self.path.as_deref()
+    pub fn name(&self) -> &FileName {
+        &self.name
     }
 
     pub fn component(&self) -> Option<ComponentIndex> {
@@ -379,5 +389,31 @@ impl std::ops::Index<LocalSpan> for SourceFile {
 
     fn index(&self, index: LocalSpan) -> &Self::Output {
         &self.content[Range::from(index)]
+    }
+}
+
+#[derive(PartialEq, Eq, Debug)]
+pub enum FileName {
+    Anonymous,
+    Stdin,
+    Path(CanonicalPathBuf),
+    Str(&'static str),
+}
+
+impl FileName {
+    pub fn path(&self) -> Option<&CanonicalPath> {
+        obtain!(self, Self::Path(path) => path)
+    }
+}
+
+impl From<CanonicalPathBuf> for FileName {
+    fn from(path: CanonicalPathBuf) -> Self {
+        Self::Path(path)
+    }
+}
+
+impl From<&'static str> for FileName {
+    fn from(name: &'static str) -> Self {
+        Self::Str(name)
     }
 }

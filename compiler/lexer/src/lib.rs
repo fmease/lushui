@@ -1,7 +1,7 @@
 //! The lexical analyzer (lexer).
 #![feature(default_free_fn, decl_macro)]
 
-use span::{LocalByteIndex, LocalSpan, SourceFile, SourceMap, Span, Spanned};
+use span::{FileName, LocalByteIndex, LocalSpan, SourceFile, SourceMap, Span, Spanned};
 use std::{cmp::Ordering, default::default, iter::Peekable, mem, str::CharIndices, sync::Arc};
 use token::{
     BareToken, Bracket, BracketKind, BracketOrientation, Indentation, IndentationError, Provenance,
@@ -537,7 +537,7 @@ impl<'a> Lexer<'a> {
 
 fn lex_string(source: String) -> Outcome {
     let mut map = SourceMap::default();
-    let file = map.add(None, Arc::new(source), None);
+    let file = map.add(FileName::Anonymous, Arc::new(source), None);
     Lexer::new(
         &map[file],
         &Options {

@@ -69,6 +69,7 @@ pub fn parse_root_module_file(
 ) -> Result<Declaration> {
     // @Task don't use unwrap(), handle errors properly
     let name = map[file]
+        .name()
         .path()
         .unwrap()
         .file_stem()
