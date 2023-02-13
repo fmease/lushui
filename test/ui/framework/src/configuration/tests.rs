@@ -17,7 +17,7 @@ fn parse_configuration<'m>(
 
 // @Temporary
 fn parse_parameter(source: &str, type_: TestType) -> Result<Parameter<'_>, Error> {
-    super::parse_parameter(Spanned::new(default(), source), type_)
+    super::parse_parameter(Spanned::bare(source), type_)
 }
 
 #[test]

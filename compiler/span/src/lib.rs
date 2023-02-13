@@ -1,6 +1,5 @@
 //! Data structures and procedures for handling source locations.
 #![feature(
-    associated_type_bounds,
     adt_const_params,
     decl_macro,
     default_free_fn,

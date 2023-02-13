@@ -85,7 +85,7 @@ pub fn parse_root_module_file(
             ))
             .report(reporter)
     })?;
-    let binder = Spanned::new(default(), binder).into();
+    let binder = Spanned::bare(binder).into();
 
     parse_module_file(tokens, file, binder, map, reporter)
 }

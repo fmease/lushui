@@ -312,7 +312,7 @@ impl BuildQueue {
             Component::new(
                 name.clone(),
                 index,
-                Spanned::new(default(), file_path),
+                Spanned::bare(file_path),
                 content,
                 type_,
                 dependencies,

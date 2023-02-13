@@ -79,16 +79,12 @@ fn pi_type_application_argument() {
 
     assert_format(
         "topmost.Array topmost.Int -> topmost.Type",
-        &Expression::new(
-            default(),
-            default(),
+        &Expression::bare(
             hir::PiType {
                 explicitness: Explicit,
                 laziness: None,
                 parameter: None,
-                domain: Expression::new(
-                    default(),
-                    default(),
+                domain: Expression::bare(
                     hir::Application {
                         callee: array,
                         argument: int,
@@ -117,16 +113,12 @@ fn pi_type_named_parameter() {
 
     assert_format(
         "(alpha: topmost.Array topmost.Int) -> topmost.Container alpha",
-        &Expression::new(
-            default(),
-            default(),
+        &Expression::bare(
             hir::PiType {
                 explicitness: Explicit,
                 laziness: None,
                 parameter: Some(alpha.clone()),
-                domain: Expression::new(
-                    default(),
-                    default(),
+                domain: Expression::bare(
                     hir::Application {
                         callee: array.into_item(),
                         argument: int.into_item(),
@@ -134,9 +126,7 @@ fn pi_type_named_parameter() {
                     }
                     .into(),
                 ),
-                codomain: Expression::new(
-                    default(),
-                    default(),
+                codomain: Expression::bare(
                     hir::Application {
                         callee: container.into_item(),
                         argument: alpha.into_item(),
@@ -163,9 +153,7 @@ fn pi_type_implicit_parameter() {
 
     assert_format(
         "'(whatever: topmost.Type) -> topmost.Type",
-        &Expression::new(
-            default(),
-            default(),
+        &Expression::bare(
             hir::PiType {
                 explicitness: Implicit,
                 laziness: None,
@@ -191,16 +179,12 @@ fn pi_type_higher_order_argument() {
 
     assert_format(
         "(topmost.Int -> topmost.Int) -> topmost.Int",
-        &Expression::new(
-            default(),
-            default(),
+        &Expression::bare(
             hir::PiType {
                 explicitness: Explicit,
                 laziness: None,
                 parameter: None,
-                domain: Expression::new(
-                    default(),
-                    default(),
+                domain: Expression::bare(
                     hir::PiType {
                         explicitness: Explicit,
                         laziness: None,
@@ -236,17 +220,13 @@ fn pi_type_two_curried_arguments() {
 
     assert_format(
         "topmost.Int -> topmost.Text -> topmost.Type",
-        &Expression::new(
-            default(),
-            default(),
+        &Expression::bare(
             hir::PiType {
                 explicitness: Explicit,
                 laziness: None,
                 parameter: None,
                 domain: int,
-                codomain: Expression::new(
-                    default(),
-                    default(),
+                codomain: Expression::bare(
                     hir::PiType {
                         explicitness: Explicit,
                         laziness: None,
@@ -278,16 +258,12 @@ fn pi_type_lambda_domain() {
 
     assert_format(
         r"(\x => x) -> topmost.Type",
-        &Expression::new(
-            default(),
-            default(),
+        &Expression::bare(
             hir::PiType {
                 explicitness: Explicit,
                 laziness: None,
                 parameter: None,
-                domain: Expression::new(
-                    default(),
-                    default(),
+                domain: Expression::bare(
                     hir::Lambda {
                         parameter: x.clone(),
                         parameter_type_annotation: None,
@@ -319,17 +295,11 @@ fn application_three_curried_arguments() {
 
     assert_format(
         "alpha topmost.beta (gamma topmost.Type) 0",
-        &Expression::new(
-            default(),
-            default(),
+        &Expression::bare(
             hir::Application {
-                callee: Expression::new(
-                    default(),
-                    default(),
+                callee: Expression::bare(
                     hir::Application {
-                        callee: Expression::new(
-                            default(),
-                            default(),
+                        callee: Expression::bare(
                             hir::Application {
                                 callee: Identifier::parameter("alpha").into_item(),
                                 argument: beta.into_item(),
@@ -337,9 +307,7 @@ fn application_three_curried_arguments() {
                             }
                             .into(),
                         ),
-                        argument: Expression::new(
-                            default(),
-                            default(),
+                        argument: Expression::bare(
                             hir::Application {
                                 callee: Identifier::parameter("gamma").into_item(),
                                 argument: type_,
@@ -351,7 +319,7 @@ fn application_three_curried_arguments() {
                     }
                     .into(),
                 ),
-                argument: Expression::new(default(), default(), Number::Nat(0u8.into()).into()),
+                argument: Expression::bare(Number::Nat(0u8.into()).into()),
                 explicitness: Explicit,
             }
             .into(),
@@ -373,14 +341,10 @@ fn application_lambda_last_argument() {
     // we might want to format this special case as `topmost.take \it => it` in the future
     assert_format(
         r"topmost.take (\it => it)",
-        &Expression::new(
-            default(),
-            default(),
+        &Expression::bare(
             hir::Application {
                 callee: take.into_item(),
-                argument: Expression::new(
-                    default(),
-                    default(),
+                argument: Expression::bare(
                     hir::Lambda {
                         parameter: it.clone(),
                         parameter_type_annotation: None,
@@ -412,18 +376,12 @@ fn application_lambda_argument() {
 
     assert_format(
         r#"topmost.take (\it => it) "who""#,
-        &Expression::new(
-            default(),
-            default(),
+        &Expression::bare(
             hir::Application {
-                callee: Expression::new(
-                    default(),
-                    default(),
+                callee: Expression::bare(
                     hir::Application {
                         callee: take.into_item(),
-                        argument: Expression::new(
-                            default(),
-                            default(),
+                        argument: Expression::bare(
                             hir::Lambda {
                                 parameter: it.clone(),
                                 parameter_type_annotation: None,
@@ -439,7 +397,7 @@ fn application_lambda_argument() {
                     }
                     .into(),
                 ),
-                argument: Expression::new(default(), default(), Text::Text("who".into()).into()),
+                argument: Expression::bare(Text::Text("who".into()).into()),
                 explicitness: Explicit,
             }
             .into(),
@@ -461,9 +419,7 @@ fn application_implicit_argument() {
 
     assert_format(
         r"topmost.identity 'topmost.Type",
-        &Expression::new(
-            default(),
-            default(),
+        &Expression::bare(
             hir::Application {
                 callee: identity.into_item(),
                 argument: type_,
@@ -486,14 +442,10 @@ fn application_complex_implicit_argument() {
 
     assert_format(
         r"topmost.identity '(prepare topmost.Text)",
-        &Expression::new(
-            default(),
-            default(),
+        &Expression::bare(
             hir::Application {
                 callee: identity.into_item(),
-                argument: Expression::new(
-                    default(),
-                    default(),
+                argument: Expression::bare(
                     hir::Application {
                         callee: Identifier::parameter("prepare").into_item(),
                         argument: text.into_item(),
@@ -517,20 +469,12 @@ fn application_intrinsic_application_callee() {
 
     assert_format(
         "eta 10 omicron",
-        &Expression::new(
-            default(),
-            default(),
+        &Expression::bare(
             hir::Application {
-                callee: Expression::new(
-                    default(),
-                    default(),
+                callee: Expression::bare(
                     hir::IntrinsicApplication {
                         callee: Identifier::parameter("eta"),
-                        arguments: vec![Expression::new(
-                            default(),
-                            default(),
-                            Number::Nat(10u8.into()).into(),
-                        )],
+                        arguments: vec![Expression::bare(Number::Nat(10u8.into()).into())],
                     }
                     .into(),
                 ),
@@ -553,14 +497,12 @@ fn lambda_body_type_annotation() {
 
     assert_format(
         r"\input: topmost.Output => 0",
-        &Expression::new(
-            default(),
-            default(),
+        &Expression::bare(
             hir::Lambda {
                 parameter: Identifier::parameter("input"),
                 parameter_type_annotation: None,
                 body_type_annotation: Some(output.into_item()),
-                body: Expression::new(default(), default(), Number::Nat(0u8.into()).into()),
+                body: Expression::bare(Number::Nat(0u8.into()).into()),
                 explicitness: Explicit,
                 laziness: None,
             }
@@ -584,9 +526,7 @@ fn lambda_parameter_type_annotation_body_type_annotation() {
 
     assert_format(
         r"\(input: topmost.Input): topmost.Output => topmost.Type",
-        &Expression::new(
-            default(),
-            default(),
+        &Expression::bare(
             hir::Lambda {
                 parameter: Identifier::parameter("input"),
                 parameter_type_annotation: Some(input.into_item()),
@@ -613,9 +553,7 @@ fn lambda_implicit_parameter() {
 
     assert_format(
         r"\'(Input: topmost.Type) => topmost.Type",
-        &Expression::new(
-            default(),
-            default(),
+        &Expression::bare(
             hir::Lambda {
                 parameter: Identifier::parameter("Input"),
                 parameter_type_annotation: Some(type_.clone()),
@@ -639,16 +577,12 @@ fn lambda_implicit_unannotated_parameter() {
 
     assert_format(
         r"\'A => \a => a",
-        &Expression::new(
-            default(),
-            default(),
+        &Expression::bare(
             hir::Lambda {
                 parameter: Identifier::parameter("A"),
                 parameter_type_annotation: None,
                 body_type_annotation: None,
-                body: Expression::new(
-                    default(),
-                    default(),
+                body: Expression::bare(
                     hir::Lambda {
                         parameter: a.clone(),
                         parameter_type_annotation: None,
@@ -683,16 +617,12 @@ fn lambda_pi_type_body() {
 
     assert_format(
         r"\x => x -> topmost.Type",
-        &Expression::new(
-            default(),
-            default(),
+        &Expression::bare(
             hir::Lambda {
                 parameter: x.clone(),
                 parameter_type_annotation: None,
                 body_type_annotation: None,
-                body: Expression::new(
-                    default(),
-                    default(),
+                body: Expression::bare(
                     hir::PiType {
                         explicitness: Explicit,
                         laziness: None,
@@ -721,9 +651,7 @@ fn intrinsic_application_no_arguments() {
 
     assert_format(
         "add",
-        &Expression::new(
-            default(),
-            default(),
+        &Expression::bare(
             hir::IntrinsicApplication {
                 callee: add,
                 arguments: Vec::new(),
@@ -744,33 +672,21 @@ fn intrinsic_application_two_arguments() {
 
     assert_format(
         "add (add 1 3000) 0",
-        &Expression::new(
-            default(),
-            default(),
+        &Expression::bare(
             hir::IntrinsicApplication {
                 callee: add.clone(),
                 arguments: vec![
-                    Expression::new(
-                        default(),
-                        default(),
+                    Expression::bare(
                         hir::IntrinsicApplication {
                             callee: add,
                             arguments: vec![
-                                Expression::new(
-                                    default(),
-                                    default(),
-                                    Number::Nat(1u8.into()).into(),
-                                ),
-                                Expression::new(
-                                    default(),
-                                    default(),
-                                    Number::Nat(3000u16.into()).into(),
-                                ),
+                                Expression::bare(Number::Nat(1u8.into()).into()),
+                                Expression::bare(Number::Nat(3000u16.into()).into()),
                             ],
                         }
                         .into(),
                     ),
-                    Expression::new(default(), default(), Number::Nat(0u8.into()).into()),
+                    Expression::bare(Number::Nat(0u8.into()).into()),
                 ],
             }
             .into(),
@@ -787,13 +703,9 @@ fn attributes() {
 
     assert_format(
         "== @static @unsafe 3 @static (increment 1)",
-        &Expression::new(
-            default(),
-            default(),
+        &Expression::bare(
             hir::Application {
-                callee: Expression::new(
-                    default(),
-                    default(),
+                callee: Expression::bare(
                     hir::Application {
                         callee: Identifier::parameter("==").into_item(),
                         argument: Expression::new(
@@ -813,11 +725,7 @@ fn attributes() {
                     default(),
                     hir::Application {
                         callee: Identifier::parameter("increment").into_item(),
-                        argument: Expression::new(
-                            default(),
-                            default(),
-                            Number::Nat(1u8.into()).into(),
-                        ),
+                        argument: Expression::bare(Number::Nat(1u8.into()).into()),
                         explicitness: Explicit,
                     }
                     .into(),

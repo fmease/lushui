@@ -1,3 +1,5 @@
+#![allow(rustdoc::broken_intra_doc_links)] // @Temporary, workaround for #107950
+
 use utility::{SerializeExt, TokenStream1};
 
 mod discriminant;

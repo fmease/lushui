@@ -206,13 +206,13 @@ impl Component {
         let mut component = Self::new(
             name.clone(),
             ComponentIndex(0),
-            Spanned::new(default(), path),
+            Spanned::bare(path),
             None,
             ComponentType::Library,
             HashMap::default(),
         );
         component.bindings.insert(Entity {
-            source: Spanned::new(default(), name).into(),
+            source: Spanned::bare(name).into(),
             parent: None,
             exposure: Exposure::Unrestricted,
             kind: hir::EntityKind::module(),
@@ -249,7 +249,7 @@ impl Component {
     /// Test if this component is the standard library `core`.
     pub fn is_core_library(&self, session: &BuildSession) -> bool {
         session.package_of(self.index).map_or(false, |package| {
-            session.packages[&package].is_core() && self.is_library()
+            session[package].is_core() && self.is_library()
         })
     }
 
