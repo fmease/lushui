@@ -187,4 +187,4 @@ available as `asciidoctor` (a custom installation path is not supported at the m
 
 == License
 
-Except as otherwise noted, the contents of this repository are licensed under the http://www.apache.org/licenses/LICENSE-2.0[Apache License, Version 2.0] (see the link:LICENSE[license file]). Some files include explicit license notices.
+Except as otherwise noted, the contents of this repository are licensed under the http://www.apache.org/licenses/LICENSE-2.0[Apache License, Version 2.0] (see the link:LICENSE[license file]). Some files include or are accompanied by explicit license notices.
