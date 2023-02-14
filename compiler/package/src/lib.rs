@@ -13,7 +13,7 @@ use session::{
     BuildSession, Component, ComponentType, Components, ManifestPath, Package,
     PossiblyUnresolvedComponent::*, CORE_PACKAGE_NAME,
 };
-use span::{SourceMap, Spanned, WeaklySpanned};
+use span::{Affinity, SourceMap, Spanned};
 use std::{
     default::default,
     ops::{Index, IndexMut},
@@ -205,12 +205,12 @@ impl BuildQueue {
                         Component::new(
                             name.bare.clone(),
                             index,
-                            // @Beacon @Temporary new_unchecked @Bug its use is incorrect! @Task canonicalize (I guess?)
-                            component.bare.path.as_ref().map(|relative_path| {
-                                CanonicalPathBuf::new_unchecked(
-                                    manifest_path.folder().join(relative_path),
-                                )
-                            }),
+                            component
+                                .bare
+                                .path
+                                .as_ref()
+                                .map(|relative_path| manifest_path.folder().join(relative_path))
+                                .into(),
                             None,
                             type_.bare,
                             dependencies,
@@ -268,17 +268,17 @@ impl BuildQueue {
         type_: ComponentType,
         no_core: bool,
     ) -> Result {
-        let file_path = match CanonicalPathBuf::new(file_path) {
-            Ok(path) => path,
-            Err(error) => {
-                // @Task better message
-                return Err(Diagnostic::error()
-                    .message("could not load the file")
-                    .path(file_path.into())
-                    .note(error.format())
-                    .report(&self.reporter));
-            }
-        };
+        // let file_path = match CanonicalPathBuf::new(file_path) {
+        //     Ok(path) => path,
+        //     Err(error) => {
+        //         // @Task better message
+        //         return Err(Diagnostic::error()
+        //             .message("could not load the file")
+        //             .path(file_path.into())
+        //             .note(error.format())
+        //             .report(&self.reporter));
+        //     }
+        // };
 
         let name = parse_component_name_from_file_path(&file_path, &self.reporter)?;
         let mut dependencies = HashMap::default();
@@ -312,7 +312,7 @@ impl BuildQueue {
             Component::new(
                 name.clone(),
                 index,
-                Spanned::bare(file_path),
+                file_path.to_owned().into(),
                 content,
                 type_,
                 dependencies,
@@ -360,7 +360,7 @@ impl BuildQueue {
         &mut self,
         dependent_component_name: &Word,
         dependent_path: ManifestPath,
-        component_exonym: &WeaklySpanned<Word>,
+        component_exonym: &Spanned<Word, { Affinity::Weak }>,
         declaration: &Spanned<DependencyDeclaration>,
     ) -> Result<ComponentIndex, error::DependencyResolutionError> {
         let dependency = match self.resolve_dependency_declaration(
@@ -394,7 +394,7 @@ impl BuildQueue {
             .bare
             .component
             .as_ref()
-            .map_or(component_exonym.as_ref().strong(), Spanned::as_ref);
+            .map_or(component_exonym.as_ref().to_strong(), Spanned::as_ref);
 
         // @Question do we want to a allow declarations of the form ‘<secondary-lib>: { … }’ w/o an explicit ‘component: <secondary-lib>’?
 
@@ -542,7 +542,7 @@ impl BuildQueue {
         let library = match manifest
             .components
             .as_ref()
-            .and_then(|components| components.bare.get(&component_endonym.cloned().weak()))
+            .and_then(|components| components.bare.get(&component_endonym.cloned().to_weak()))
         {
             Some(component) if component.bare.type_.bare == ComponentType::Library => {
                 &component.bare
@@ -565,11 +565,6 @@ impl BuildQueue {
 
         let name = component_endonym.bare;
 
-        // @Beacon @Temporary new_unchecked @Bug its use is incorrect! @Task re-canonicalize (I guess?)
-        let library_component_path = library.path.as_ref().map(|relative_path| {
-            CanonicalPathBuf::new_unchecked(manifest_path.folder().join(relative_path))
-        });
-
         // @Question should we prefill all components here too?
         self[manifest_path]
             .components
@@ -583,7 +578,11 @@ impl BuildQueue {
             Component::new(
                 name.clone(),
                 index,
-                library_component_path,
+                library
+                    .path
+                    .as_ref()
+                    .map(|relative_path| manifest_path.folder().join(relative_path))
+                    .into(),
                 None,
                 library.type_.bare,
                 dependencies,

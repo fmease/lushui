@@ -279,7 +279,10 @@ fn build_component(
             Diagnostic::error()
                 .message(message)
                 .path(path.bare.into())
-                .primary_span(path)
+                .with(|error| match path.span {
+                    Some(span) => error.primary_span(span),
+                    None => error,
+                })
                 .note(error.format())
                 .report(session.reporter())
         })?;

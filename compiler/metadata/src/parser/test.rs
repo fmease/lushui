@@ -4,7 +4,7 @@
 
 use super::{Record, Value};
 use diagnostics::{error::Result, Reporter};
-use span::{span, FileName, SourceMap, WeaklySpanned};
+use span::{span, FileName, SourceMap, Spanned};
 use std::{
     default::default,
     sync::{Arc, RwLock},
@@ -177,15 +177,15 @@ fn record() {
             span(1, 34),
             Record::from_iter([
                 (
-                    WeaklySpanned::new(span(2, 5), "uno".into()),
+                    Spanned::weak(span(2, 5), "uno".into()),
                     Value::new(span(7, 10), ".".into()),
                 ),
                 (
-                    WeaklySpanned::new(span(11, 17), "dos:".into()),
+                    Spanned::weak(span(11, 17), "dos:".into()),
                     Value::new(span(19, 21), 19.into()),
                 ),
                 (
-                    WeaklySpanned::new(span(26, 30), "tres".into()),
+                    Spanned::weak(span(26, 30), "tres".into()),
                     Value::new(span(31, 33), Record::default().into()),
                 ),
             ])
@@ -201,7 +201,7 @@ fn record_trailing_comma() {
         Value::new(
             span(1, 7),
             Record::from_iter([(
-                WeaklySpanned::new(span(2, 3), "x".into()),
+                Spanned::weak(span(2, 3), "x".into()),
                 Value::new(span(4, 5), 1.into()),
             )])
             .into(),
@@ -225,23 +225,23 @@ left:right,
             span(1, 73),
             Record::from_iter([
                 (
-                    WeaklySpanned::new(span(1, 6), "alpha".into()),
+                    Spanned::weak(span(1, 6), "alpha".into()),
                     Value::new(span(8, 11), 234.into()),
                 ),
                 (
-                    WeaklySpanned::new(span(28, 32), "beta".into()),
+                    Spanned::weak(span(28, 32), "beta".into()),
                     Value::new(span(34, 39), false.into()),
                 ),
                 (
-                    WeaklySpanned::new(span(42, 46), "left".into()),
+                    Spanned::weak(span(42, 46), "left".into()),
                     Value::new(span(47, 52), "right".into()),
                 ),
                 (
-                    WeaklySpanned::new(span(54, 62), "gam ma".into()),
+                    Spanned::weak(span(54, 62), "gam ma".into()),
                     Value::new(
                         span(65, 72),
                         Record::from_iter([(
-                            WeaklySpanned::new(span(66, 68), String::new()),
+                            Spanned::weak(span(66, 68), String::new()),
                             Value::new(span(69, 71), [].into()),
                         )])
                         .into(),
@@ -266,11 +266,11 @@ k-eys: \"\",
             span(1, 24),
             Record::from_iter([
                 (
-                    WeaklySpanned::new(span(1, 7), "fun_ky".into()),
+                    Spanned::weak(span(1, 7), "fun_ky".into()),
                     Value::new(span(9, 11), "".into()),
                 ),
                 (
-                    WeaklySpanned::new(span(13, 18), "k-eys".into()),
+                    Spanned::weak(span(13, 18), "k-eys".into()),
                     Value::new(span(20, 22), "".into()),
                 ),
             ])
@@ -286,7 +286,7 @@ fn keyword_record_key() {
         Value::new(
             span(1, 13),
             Record::from_iter([(
-                WeaklySpanned::new(span(3, 7), "true".into()),
+                Spanned::weak(span(3, 7), "true".into()),
                 Value::new(span(10, 11), 0.into()),
             )])
             .into(),
@@ -301,7 +301,7 @@ fn top_level_keyword_record_key() {
         Value::new(
             span(1, 11),
             Record::from_iter([(
-                WeaklySpanned::new(span(1, 6), "false".into()),
+                Spanned::weak(span(1, 6), "false".into()),
                 Value::new(span(7, 11), true.into()),
             )])
             .into(),

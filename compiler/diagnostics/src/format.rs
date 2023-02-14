@@ -463,7 +463,7 @@ fn format_file_name(name: &FileName, f: &mut fmt::Formatter<'_>) -> fmt::Result 
         FileName::Anonymous => write!(f, "{}", "⟨anonymous⟩".italic()),
         FileName::Stdin => write!(f, "{}", "⟨stdin⟩".italic()),
         FileName::Path(path) => write!(f, "{}", path.display()),
-        FileName::Str(name) => write!(f, "{name}"),
+        FileName::Verbatim(name) => write!(f, "{name}"),
     }
 }
 

@@ -397,7 +397,7 @@ pub enum FileName {
     Anonymous,
     Stdin,
     Path(CanonicalPathBuf),
-    Str(&'static str),
+    Verbatim(&'static str),
 }
 
 impl FileName {
@@ -414,6 +414,6 @@ impl From<CanonicalPathBuf> for FileName {
 
 impl From<&'static str> for FileName {
     fn from(name: &'static str) -> Self {
-        Self::Str(name)
+        Self::Verbatim(name)
     }
 }

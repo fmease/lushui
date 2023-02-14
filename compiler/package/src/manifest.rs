@@ -9,7 +9,7 @@ use lexer::word::WordExt;
 use metadata::{convert, Record, RecordWalker, WithTextContentSpanExt};
 use session::{ComponentType, Version};
 
-use span::{SourceFileIndex, SourceMap, Spanned, WeaklySpanned};
+use span::{Affinity, SourceFileIndex, SourceMap, Spanned};
 use std::{fmt, path::PathBuf, str::FromStr};
 use token::Word;
 use utilities::{try_all, AndThenMapExt, Conjunction, HashMap, ListingExt, QuoteExt};
@@ -106,7 +106,8 @@ fn parse_components(
         };
         let mut component = RecordWalker::new(component, reporter);
 
-        let name = parse_name(name.strong(), NameKind::Component, reporter).map(Spanned::weak);
+        let name =
+            parse_name(name.to_strong(), NameKind::Component, reporter).map(Spanned::to_weak);
 
         let public = component.take_optional("public");
 
@@ -176,13 +177,14 @@ fn parse_dependencies(
     untyped_dependencies: Spanned<Record>,
     map: &SourceMap,
     reporter: &Reporter,
-) -> Result<Spanned<HashMap<WeaklySpanned<Word>, Spanned<DependencyDeclaration>>>> {
+) -> Result<Spanned<HashMap<Spanned<Word, { Affinity::Weak }>, Spanned<DependencyDeclaration>>>> {
     let mut health = Health::Untainted;
     let mut dependencies = HashMap::default();
 
     for (component_exonym, declaration) in untyped_dependencies.bare {
-        let component_exonym = component_exonym.strong().with_text_content_span(map);
-        let exonym = parse_name(component_exonym, NameKind::Component, reporter).map(Spanned::weak);
+        let component_exonym = component_exonym.to_strong().with_text_content_span(map);
+        let exonym =
+            parse_name(component_exonym, NameKind::Component, reporter).map(Spanned::to_weak);
 
         let declaration = match convert(declaration, reporter) {
             Ok(declaration) => declaration,
@@ -273,7 +275,7 @@ pub(super) struct PackageProfile {
     pub(super) description: Option<Spanned<String>>,
 }
 
-pub(super) type Components = HashMap<WeaklySpanned<Word>, Spanned<ComponentManifest>>;
+pub(super) type Components = HashMap<Spanned<Word, { Affinity::Weak }>, Spanned<ComponentManifest>>;
 
 pub(super) struct ComponentManifest {
     pub(super) type_: Spanned<ComponentType>,
@@ -281,7 +283,7 @@ pub(super) struct ComponentManifest {
     /// The path to the component root (relative to the package).
     pub(super) path: Spanned<PathBuf>,
     pub(super) dependencies:
-        Option<Spanned<HashMap<WeaklySpanned<Word>, Spanned<DependencyDeclaration>>>>,
+        Option<Spanned<HashMap<Spanned<Word, { Affinity::Weak }>, Spanned<DependencyDeclaration>>>>,
 }
 
 #[derive(Clone, Debug)]

@@ -7,12 +7,12 @@ use hir::{
     DeclarationIndex, Entity, Expression, LocalDeclarationIndex,
 };
 use index_map::IndexMap;
-use span::{SourceMap, Span, Spanned};
+use span::{PossiblySpanned, SourceMap, Span, Spanned};
 use std::{
     default::default,
     fmt,
     ops::Index,
-    path::Path,
+    path::{Path, PathBuf},
     sync::{Arc, LazyLock, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 use token::Word;
@@ -159,7 +159,7 @@ pub type Components = IndexMap<ComponentIndex, Component>;
 pub struct Component {
     name: Word,
     index: ComponentIndex,
-    path: Spanned<CanonicalPathBuf>,
+    path: PossiblySpanned<PathBuf>,
     // @Task document this! @Note this is used by the lang-server which gets the document content by the client
     //       and which should not open the file at the given path to avoid TOC-TOU bugs / data races
     pub content: Option<Arc<String>>,
@@ -177,7 +177,7 @@ impl Component {
     pub fn new(
         name: Word,
         index: ComponentIndex,
-        path: Spanned<CanonicalPathBuf>,
+        path: PossiblySpanned<PathBuf>,
         content: Option<Arc<String>>,
         type_: ComponentType,
         dependencies: HashMap<Word, ComponentIndex>,
@@ -201,12 +201,12 @@ impl Component {
         const PATH: &str = "/test"; // @Task use a different path on Windows
 
         let name = Word::new_unchecked(NAME.into());
-        let path = CanonicalPathBuf::new_unchecked(std::path::PathBuf::from(PATH));
+        let path = std::path::PathBuf::from(PATH);
 
         let mut component = Self::new(
             name.clone(),
             ComponentIndex(0),
-            Spanned::bare(path),
+            PossiblySpanned::new(None, path),
             None,
             ComponentType::Library,
             HashMap::default(),
@@ -230,7 +230,7 @@ impl Component {
         self.index
     }
 
-    pub fn path(&self) -> Spanned<&CanonicalPath> {
+    pub fn path(&self) -> PossiblySpanned<&Path> {
         self.path.as_deref()
     }
 

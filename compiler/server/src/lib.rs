@@ -27,7 +27,7 @@ use tower_lsp::{
     },
     Client,
 };
-use utilities::path::CanonicalPath;
+use utilities::path::{CanonicalPath, CanonicalPathBuf};
 use utilities::{ComponentIndex, FormatError, HashMap};
 
 mod diagnostics;
@@ -288,9 +288,12 @@ fn build_component(
     // @Beacon @Task this shouldm't need to be that ugly!!!
 
     let file = match content {
-        Some(content) => session
-            .map()
-            .add(path.bare.to_owned(), content, Some(component.index())),
+        Some(content) => session.map().add(
+            // @Task don't call new_unchecked here!
+            CanonicalPathBuf::new_unchecked(path.bare.to_owned()),
+            content,
+            Some(component.index()),
+        ),
         None => {
             session
                 .map()
@@ -312,7 +315,10 @@ fn build_component(
                     Diagnostic::error()
                         .message(message)
                         .path(path.bare.into())
-                        .primary_span(path)
+                        .with(|error| match path.span {
+                            Some(span) => error.primary_span(span),
+                            None => error,
+                        })
                         .note(error.format())
                         .report(session.reporter())
                 })?
