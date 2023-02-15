@@ -4,7 +4,7 @@
 
 use diagnostics::{error::Result, Diagnostic};
 use hir::{special::Type, DeclarationIndex};
-use hir_format::ComponentExt;
+use hir_format::SessionExt;
 use inkwell::{
     builder::Builder,
     context::Context,
@@ -14,7 +14,7 @@ use inkwell::{
     values::{BasicValueEnum, FunctionValue, GlobalValue, IntValue, UnnamedAddress},
 };
 use resolver::ProgramEntryExt;
-use session::{BuildSession, Component, DeclarationIndexExt};
+use session::Session;
 use std::{
     cell::RefCell,
     default::default,
@@ -29,17 +29,10 @@ const PROGRAM_ENTRY_NAME: &str = "main";
 pub fn compile_and_link(
     options: Options,
     component_root: &hir::Declaration,
-    component: &Component,
-    session: &BuildSession,
+    session: &Session<'_>,
 ) -> Result<()> {
-    if !component.is_target(session) {
-        return Err(Diagnostic::error()
-            .message("extern components cannot be built yet with the LLVM backend")
-            .report(session.reporter()));
-    }
-
     let context = inkwell::context::Context::create();
-    let module = compile(component_root, &context, options, component, session);
+    let module = compile(component_root, &context, options, session);
 
     if options.emit_llvm_ir {
         // @Question shouldn't we print to stdout??
@@ -53,7 +46,7 @@ pub fn compile_and_link(
             .report(session.reporter()));
     }
 
-    if let Err(error) = link(module, component, session) {
+    if let Err(error) = link(module, session) {
         return Err(Diagnostic::error()
             .message("could not link object files")
             .with(|it| match error {
@@ -88,10 +81,9 @@ fn compile<'ctx>(
     component_root: &hir::Declaration,
     context: &'ctx Context,
     options: Options,
-    component: &Component,
-    session: &BuildSession,
+    session: &Session<'_>,
 ) -> Module<'ctx> {
-    let generator = Generator::new(context, options, component, session);
+    let generator = Generator::new(context, options, session);
     generator.start_compile_declaration(component_root);
     generator.finish_compile_declaration(component_root);
     generator.module
@@ -99,20 +91,17 @@ fn compile<'ctx>(
 
 // @Task support linkers other than clang
 //       (e.g. "`cc`", `gcc` (requires the use of `llc`))
-fn link(
-    module: inkwell::module::Module<'_>,
-    component: &Component,
-    session: &BuildSession,
-) -> Result<(), LinkingError> {
+fn link(module: inkwell::module::Module<'_>, session: &Session<'_>) -> Result<(), LinkingError> {
     let buffer = module.write_bitcode_to_memory();
-    let name = component.name().as_str();
+    let name = session.component().name().as_str();
 
-    let output_file_path = match session.target_package() {
+    let output_file_path = match session.root_package() {
         // @Task ensure that the build folder exists
         Some(package) => {
-            let mut path = session[package]
+            let mut path = session
+                .look_up_package(package)
                 .folder()
-                .join(BuildSession::OUTPUT_FOLDER_NAME);
+                .join(Session::OUTPUT_FOLDER_NAME);
             path.push(name);
             path
         }
@@ -173,17 +162,11 @@ struct Generator<'a, 'ctx> {
     module: Module<'ctx>,
     bindings: RefCell<HashMap<DeclarationIndex, Entity<'a, 'ctx>>>,
     options: Options,
-    component: &'a Component,
-    session: &'a BuildSession,
+    session: &'a Session<'a>,
 }
 
 impl<'a, 'ctx> Generator<'a, 'ctx> {
-    fn new(
-        context: &'ctx Context,
-        options: Options,
-        component: &'a Component,
-        session: &'a BuildSession,
-    ) -> Self {
+    fn new(context: &'ctx Context, options: Options, session: &'a Session<'a>) -> Self {
         let module = context.create_module("main");
         module.set_triple(&TargetMachine::get_default_triple());
         let builder = context.create_builder();
@@ -194,7 +177,6 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
             module,
             bindings: default(),
             options,
-            component,
             session,
         }
     }
@@ -211,8 +193,8 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
 
                 // @Task somewhere store the info if we've already found the program entry or not
                 let is_program_entry = function.binder.as_str()
-                    == Component::PROGRAM_ENTRY_IDENTIFIER
-                    && self.look_up_parent(index).unwrap() == self.component.root();
+                    == Session::PROGRAM_ENTRY_IDENTIFIER
+                    && self.session.parent_of(index).unwrap() == self.session.component().root();
 
                 let classification = function.expression.as_ref().map(|expression| {
                     let classification = if is_program_entry {
@@ -291,7 +273,8 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
                         );
                     }
                     None => {
-                        let hir::EntityKind::IntrinsicFunction { function: intrinsic, .. } = self.look_up(index).kind else {
+                        let hir::EntityKind::IntrinsicFunction { function: intrinsic, .. } = self.session.look_up(index).kind
+                        else {
                             unreachable!();
                         };
 
@@ -390,7 +373,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
 
     fn name(&self, index: DeclarationIndex) -> Str {
         if self.options.emit_llvm_ir {
-            self.component.index_to_path(index, self.session).into()
+            self.session.index_to_path(index).into()
         } else {
             "".into()
         }
@@ -458,7 +441,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
             }
             Number(number) => Some(self.compile_number(number).into()),
             Text(_) => todo!("compiling text"),
-            Binding(binding) if self.session.special.is(&binding.0, Type::Type) => None,
+            Binding(binding) if self.session.specials().is(&binding.0, Type::Type) => None,
             Binding(binding) => {
                 use hir::Index::*;
 
@@ -525,7 +508,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
                         use hir::special::{Binding, NumericType::*, Type::*};
 
                         // @Task don't unwrap
-                        let Binding::Type(type_) = self.session.special.get(index).unwrap() else {
+                        let Binding::Type(type_) = self.session.specials().get(index).unwrap() else {
                             unreachable!();
                         };
 
@@ -578,29 +561,14 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
             Error(_) => todo!(),
         }
     }
-
-    // @Task dedup with name resolver, documenter, interpreter
-    fn look_up(&self, index: DeclarationIndex) -> &'a hir::Entity {
-        match index.local(self.component) {
-            Some(index) => &self.component[index],
-            None => &self.session[index],
-        }
-    }
-
-    fn look_up_parent(&self, index: DeclarationIndex) -> Option<DeclarationIndex> {
-        Some(DeclarationIndex::new(
-            index.component(),
-            self.look_up(index).parent?,
-        ))
-    }
 }
 
 trait ExpressionExt {
-    fn classify(&self, session: &BuildSession) -> ExpressionClassification<'_>;
+    fn classify(&self, session: &Session<'_>) -> ExpressionClassification<'_>;
 }
 
 impl ExpressionExt for hir::Expression {
-    fn classify(&self, session: &BuildSession) -> ExpressionClassification<'_> {
+    fn classify(&self, session: &Session<'_>) -> ExpressionClassification<'_> {
         use hir::BareExpression::*;
         use ExpressionClassification::*;
 
@@ -611,7 +579,7 @@ impl ExpressionExt for hir::Expression {
             },
             Application(_) | IntrinsicApplication(_) => Thunk,
             Number(_) | Text(_) => Constant,
-            Binding(binding) if session.special.is(&binding.0, Type::Type) => Constant,
+            Binding(binding) if session.specials().is(&binding.0, Type::Type) => Constant,
             // @Note we could make this more nuanced (prefering Constant if possible)
             Binding(_) => Thunk,
             Lambda(lambda) => Function(lambda),

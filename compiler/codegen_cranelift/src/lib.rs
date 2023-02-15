@@ -10,7 +10,7 @@ use cranelift::{
 use cranelift_module::{Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule};
 use diagnostics::{error::Result, Diagnostic};
-use session::{BuildSession, Component};
+use session::Session;
 use std::{
     path::{Path, PathBuf},
     process::Command,
@@ -21,22 +21,14 @@ const PROGRAM_ENTRY_NAME: &str = "main";
 pub fn compile_and_link(
     options: Options,
     component_root: &hir::Declaration,
-    component: &Component,
-    session: &BuildSession,
+    session: &Session<'_>,
 ) -> Result {
-    if !component.is_target(session) {
-        return Err(Diagnostic::error()
-            .message("extern components cannot be built yet with the Cranelift backend")
-            .report(session.reporter()));
-    }
-
     if options.emit_clif || options.verify_clif {
         todo!(); //@Temporary
     }
 
-    let path = compile(options, component_root, component, session);
-
-    link(&path, component, session)
+    let path = compile(options, component_root, session);
+    link(&path, session)
 }
 
 #[derive(Clone, Copy, Default)]
@@ -48,8 +40,7 @@ pub struct Options {
 fn compile(
     _options: Options,
     _component_root: &hir::Declaration,
-    component: &Component,
-    session: &BuildSession,
+    session: &Session<'_>,
 ) -> PathBuf {
     let isa = cranelift_native::builder()
         .unwrap()
@@ -96,14 +87,15 @@ fn compile(
 
     let product = module.finish();
 
-    let name = component.name().as_str();
+    let name = session.component().name().as_str();
 
-    let path = match session.target_package() {
+    let path = match session.root_package() {
         // @Task ensure that the build folder exists
         Some(package) => {
-            let mut path = session[package]
+            let mut path = session
+                .look_up_package(package)
                 .folder()
-                .join(BuildSession::OUTPUT_FOLDER_NAME);
+                .join(Session::OUTPUT_FOLDER_NAME);
             path.push(name);
             path.set_extension("o");
             path
@@ -118,18 +110,19 @@ fn compile(
 
 // @Task support linkers other than clang
 //       (e.g. "`cc`", `gcc` (requires us to manually link to `libc` I think))
-fn link(path: &Path, component: &Component, session: &BuildSession) -> Result {
-    let name = component.name().as_str();
+fn link(path: &Path, session: &Session<'_>) -> Result {
+    let name = session.component().name().as_str();
 
     // @Task error handling!
     let output = Command::new("clang")
         .arg(path)
         .arg("-o")
-        .arg(match session.target_package() {
+        .arg(match session.root_package() {
             Some(package) => {
-                let mut path = session[package]
+                let mut path = session
+                    .look_up_package(package)
                     .folder()
-                    .join(BuildSession::OUTPUT_FOLDER_NAME);
+                    .join(Session::OUTPUT_FOLDER_NAME);
                 path.push(name);
                 path
             }

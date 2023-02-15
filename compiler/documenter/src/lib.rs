@@ -14,7 +14,11 @@ use hir::{Attribute, AttributeName, Attributes, BareAttribute};
 use hir_format::ComponentExt;
 use joinery::JoinableIterator;
 use node::{Attributable, Document, Element, Node, VoidElement};
-use session::{BuildSession, Component, DeclarationIndexExt, IdentifierExt, ManifestPath, Package};
+use session::{
+    component::{DeclarationIndexExt, IdentifierExt},
+    package::{ManifestPath, Package},
+    Context, Session,
+};
 use std::{
     collections::BTreeSet,
     default::default,
@@ -45,11 +49,10 @@ const DEVELOPING: bool = true;
 pub fn document_component(
     component_root: &hir::Declaration,
     options: Options,
-    component: &Component,
-    session: &BuildSession,
+    session: &Session<'_>,
 ) -> Result<()> {
     crossbeam::scope(|scope| {
-        let mut documenter = Documenter::new(options, component, session, scope).unwrap();
+        let mut documenter = Documenter::new(options, session, scope).unwrap();
 
         // @Beacon @Bug this re-creates these special pages with every component!
         //         @Task do it only once!
@@ -59,7 +62,7 @@ pub fn document_component(
         documenter.pages.push(documenter.attributes_page());
 
         // @Task don't document the same package twice!
-        if let Some(package) = session.package_of(component.index()) {
+        if let Some(package) = session.package() {
             documenter.pages.push(documenter.package_page(package));
         }
 
@@ -73,10 +76,10 @@ pub fn document_component(
     .unwrap()
 }
 
-pub fn index_page(session: &BuildSession) -> PathBuf {
-    let mut path = Documenter::folder(session);
-    if session.target_package().is_none() {
-        path.push(session.target_component().name.as_str());
+pub fn index_page(context: &Context) -> PathBuf {
+    let mut path = Documenter::folder(context);
+    if context.root_package().is_none() {
+        path.push(context.root_component().name.as_str());
     }
     path.push("index.html");
     path
@@ -84,8 +87,7 @@ pub fn index_page(session: &BuildSession) -> PathBuf {
 
 struct Documenter<'a, 'scope> {
     options: Options,
-    component: &'a Component,
-    session: &'a BuildSession,
+    session: &'a Session<'a>,
     text_processor: TextProcessor<'scope>,
     pages: Vec<Page>,
     search_items: Vec<SearchItem>,
@@ -95,21 +97,19 @@ struct Documenter<'a, 'scope> {
 impl<'a, 'scope> Documenter<'a, 'scope> {
     fn new(
         options: Options,
-        component: &'a Component,
-        session: &'a BuildSession,
+        session: &'a Session<'a>,
         scope: &'scope Scope<'a>,
     ) -> Result<Self, std::io::Error> {
-        let path = Self::folder(session);
+        let path = Self::folder(session.context());
 
         if !path.exists() {
             fs::create_dir_all(&path)?;
         }
 
-        let text_processor = TextProcessor::new(&path, &options, component, session, scope)?;
+        let text_processor = TextProcessor::new(&path, &options, session, scope)?;
 
         Ok(Self {
             options,
-            component,
             session,
             text_processor,
             pages: default(),
@@ -118,18 +118,19 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
         })
     }
 
-    fn folder(session: &BuildSession) -> PathBuf {
-        match session.target_package() {
+    fn folder(context: &Context) -> PathBuf {
+        match context.root_package() {
             Some(package) => {
-                let package = &session[package];
+                let package = &context.package(package);
                 let mut path = package.folder().to_path_buf();
-                path.push(BuildSession::OUTPUT_FOLDER_NAME);
+                path.push(Session::OUTPUT_FOLDER_NAME);
                 path.push(OUTPUT_FOLDER_NAME);
                 path.push(package.name.as_str());
                 path
             }
-            None => Path::new(session.target_component().name.as_str())
-                .with_extension(OUTPUT_FOLDER_NAME),
+            None => {
+                Path::new(context.root_component().name.as_str()).with_extension(OUTPUT_FOLDER_NAME)
+            }
         }
     }
 
@@ -182,7 +183,8 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
             fs::write(&page.path, &page.content)?;
         }
 
-        let component_path = self.path.join(self.component.name().as_str());
+        let component_name = self.session.component().name().as_str();
+        let component_path = self.path.join(component_name);
 
         if !component_path.exists() {
             fs::create_dir(&component_path)?;
@@ -200,15 +202,18 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                     SearchItem::Declaration(index) => {
                         // @Beacon @Task don't use the to_string variant, so we don't need to split() JS (which would be
                         // incorrect on top of that!)
-                        let path = self.component.local_index_with_root_to_extern_path(
-                            index.local(self.component).unwrap(),
-                            self.component.name().to_string(),
-                        );
+                        let path = self
+                            .session
+                            .component()
+                            .local_index_with_root_to_extern_path(
+                                index.local(self.session).unwrap(),
+                                component_name.to_owned(),
+                            );
 
                         write!(
                             search_index,
                             "[{path:?},{:?}],",
-                            format::declaration_url_fragment(index, self.component, self.session)
+                            format::declaration_url_fragment(index, self.session)
                         )
                         .unwrap();
                     }
@@ -334,7 +339,6 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                         type_: format::format_expression(
                             &function.type_annotation,
                             url_prefix,
-                            self.component,
                             self.session,
                         ),
                     });
@@ -352,7 +356,6 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                                 type_: format::format_expression(
                                     &constructor.type_annotation,
                                     url_prefix,
-                                    self.component,
                                     self.session,
                                 ),
                             });
@@ -367,7 +370,6 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                         type_: format::format_expression(
                             &type_.type_annotation,
                             url_prefix,
-                            self.component,
                             self.session,
                         ),
                         constructors: formatted_constructors,
@@ -398,7 +400,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
             &subsections,
             url_prefix,
             default(),
-            BTreeSet::from([&self.session.target_component().name]),
+            BTreeSet::from([&self.session.root_component().name]),
         ));
 
         // main content
@@ -423,7 +425,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
             path: self.path.join("identifiers.html"),
             content: render_page(
                 head(
-                    self.component.name(),
+                    self.session.component().name(),
                     url_prefix,
                     "Reserved Identifiers".into(),
                 ),
@@ -442,7 +444,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
             &subsections,
             url_prefix,
             default(),
-            BTreeSet::from([&self.session.target_component().name]),
+            BTreeSet::from([&self.session.root_component().name]),
         ));
 
         // main content
@@ -466,7 +468,11 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
         Page {
             path: self.path.join("attributes.html"),
             content: render_page(
-                head(self.component.name(), url_prefix, "Attributes".into()),
+                head(
+                    self.session.component().name(),
+                    url_prefix,
+                    "Attributes".into(),
+                ),
                 body,
             ),
         }
@@ -474,7 +480,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
 
     fn package_page(&self, package: ManifestPath) -> Page {
         let url_prefix = "./";
-        let package = &self.session[package];
+        let package = self.session.look_up_package(package);
         let name = &package.name;
 
         let mut body = Element::new("body").child(ledge(url_prefix, Some(package), None));
@@ -484,7 +490,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
             &default(),
             url_prefix,
             default(),
-            BTreeSet::from([&self.session.target_component().name]),
+            BTreeSet::from([&self.session.root_component().name]),
         ));
 
         // main content
@@ -537,21 +543,20 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
     }
 
     fn add_module_page(&self, module: &hir::Module, attributes: &Attributes) -> Page {
-        let index = module
-            .binder
-            .local_declaration_index(self.component)
-            .unwrap();
-        let mut path_segments = self.component.local_index_to_path_segments(index);
-        path_segments.push_front(self.component.name().as_str());
+        let index = module.binder.local_declaration_index(self.session).unwrap();
+        let component_name = self.session.component().name();
+
+        let mut path_segments = self.session.component().local_index_to_path_segments(index);
+        path_segments.push_front(component_name.as_str());
         let page_depth = path_segments.len();
         let url_prefix = format!("./{}", "../".repeat(page_depth));
 
         let mut body = Element::new("body").child(ledge(
             &url_prefix,
             self.session
-                .package_of(self.component.index())
-                .map(|package| &self.session[package]),
-            Some(self.component.name()),
+                .package()
+                .map(|package| self.session.look_up_package(package)),
+            Some(component_name),
         ));
 
         let mut container = Element::div("container");
@@ -560,8 +565,8 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
         container.add_child(sidebar(
             &subsections,
             &url_prefix,
-            self.component.dependencies.keys().collect(),
-            BTreeSet::from([&self.session.target_component().name]),
+            self.session.component().dependencies().keys().collect(),
+            BTreeSet::from([&self.session.root_component().name]),
         ));
 
         // main content
@@ -572,7 +577,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
             {
                 let mut heading = Element::new("h1");
 
-                heading.add_child(match index == self.component.root_local() {
+                heading.add_child(match index == self.session.component().root_local() {
                     true => "Component",
                     false => "Module",
                 });
@@ -613,16 +618,17 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
         body.add_child(container);
 
         let title = self
-            .component
-            .local_index_with_root_to_extern_path(index, self.component.name().to_string());
+            .session
+            .component()
+            .local_index_with_root_to_extern_path(index, component_name.to_string());
 
-        let mut path = self.path.join(self.component.name().as_str());
+        let mut path = self.path.join(component_name.as_str());
         path.extend(path_segments.into_iter().skip(1));
         path.push("index.html");
 
         Page {
             path,
-            content: render_page(head(self.component.name(), &url_prefix, title.into()), body),
+            content: render_page(head(component_name, &url_prefix, title.into()), body),
         }
     }
 }

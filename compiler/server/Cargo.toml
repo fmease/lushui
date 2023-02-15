@@ -8,6 +8,7 @@ publish = false
 [dependencies]
 diagnostics = { path = "../diagnostics" }
 hir = { path = "../hir" }
+index_map = { path = "../../project/library/index_map" }
 lowerer = { path = "../lowerer" }
 package = { path = "../package" }
 resolver = { path = "../resolver" }

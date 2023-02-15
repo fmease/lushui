@@ -25,9 +25,10 @@ use hir::{
     AttributeName, Attributes, DeBruijnIndex, DeclarationIndex, Entity, EntityKind, Exposure,
     ExposureReach, Identifier, Index, LocalDeclarationIndex, PartiallyResolvedPath,
 };
-use hir_format::{ComponentExt as _, DefaultContext, Display};
+use hir_format::{Display, SessionExt};
 use session::{
-    BuildSession, Component, DeclarationIndexExt, IdentifierExt, LocalDeclarationIndexExt,
+    component::{Component, DeclarationIndexExt, IdentifierExt, LocalDeclarationIndexExt},
+    Session,
 };
 use span::{Span, Spanned, Spanning};
 use std::{cmp::Ordering, default::default, fmt, mem, sync::Mutex};
@@ -51,10 +52,9 @@ use utilities::{
 // time (to re-define root (I think)))
 pub fn resolve_declarations(
     root_module: lowered_ast::Declaration,
-    component: &mut Component,
-    session: &mut BuildSession,
+    session: &mut Session<'_>,
 ) -> Result<hir::Declaration> {
-    let mut resolver = ResolverMut::new(component, session);
+    let mut resolver = ResolverMut::new(session);
 
     if let Err(error) = resolver.start_resolve_declaration(&root_module, None, default()) {
         for (binder, naming_conflicts) in mem::take(&mut resolver.naming_conflicts) {
@@ -62,7 +62,7 @@ pub fn resolve_declarations(
                 .code(ErrorCode::E020)
                 .message(format!(
                     "‘{}’ is defined multiple times in this scope",
-                    resolver.component[binder].source,
+                    resolver.session.look_up_local(binder).source,
                 ))
                 .labeled_primary_spans(naming_conflicts, "conflicting definition")
                 .report(resolver.session.reporter());
@@ -88,19 +88,17 @@ pub fn resolve_declarations(
 pub fn resolve_path(
     path: &ast::Path,
     namespace: DeclarationIndex,
-    component: &Component,
-    session: &BuildSession,
+    session: &Session<'_>,
 ) -> Result<DeclarationIndex> {
-    Resolver::new(component, session)
+    Resolver::new(session)
         .resolve_path::<target::Any>(path, PathResolutionContext::new(namespace))
-        .map_err(|error| Resolver::new(component, session).report_resolution_error(error))
+        .map_err(|error| Resolver::new(session).report_resolution_error(error))
 }
 
 // @Question can we merge Resolver and ResolverMut if we introduce a separate
-// lifetime for Resolver.component?
-struct ResolverMut<'a> {
-    component: &'a mut Component,
-    session: &'a mut BuildSession,
+// lifetime for Resolver.session.at?
+struct ResolverMut<'sess, 'ctx> {
+    session: &'sess mut Session<'ctx>,
     /// For resolving out of order use-declarations.
     partially_resolved_use_bindings: HashMap<LocalDeclarationIndex, PartiallyResolvedUseBinding>,
     /// Naming conflicts used for error reporting.
@@ -111,10 +109,9 @@ struct ResolverMut<'a> {
     health: Health,
 }
 
-impl<'a> ResolverMut<'a> {
-    fn new(component: &'a mut Component, session: &'a mut BuildSession) -> Self {
+impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
+    fn new(session: &'sess mut Session<'ctx>) -> Self {
         Self {
-            component,
             session,
             partially_resolved_use_bindings: HashMap::default(),
             naming_conflicts: HashMap::default(),
@@ -124,7 +121,6 @@ impl<'a> ResolverMut<'a> {
 
     fn as_ref(&self) -> Resolver<'_> {
         Resolver {
-            component: self.component,
             session: self.session,
         }
     }
@@ -179,21 +175,20 @@ impl<'a> ResolverMut<'a> {
                     Some(module),
                 )?;
 
-                let binder = Identifier::new(index.global(self.component), function.binder.clone());
+                let binder = Identifier::new(index.global(self.session), function.binder.clone());
 
                 if let Some(intrinsic) = declaration.attributes.get::<{ AttributeName::Intrinsic }>()
-                && let Err(error) = self.session
-                    .special
-                    .define(
-                        special::Kind::Intrinsic,
-                        binder,
-                        match &intrinsic.bare.name {
-                            Some(name) => special::DefinitionStyle::Explicit { name },
-                            None => special::DefinitionStyle::Implicit { namespace: Some(self.component[module].source.as_str()) },
+                && let Err(error) = self.session.define_special(
+                    special::Kind::Intrinsic,
+                    binder,
+                    match &intrinsic.bare.name {
+                        Some(name) => special::DefinitionStyle::Explicit { name },
+                        None => special::DefinitionStyle::Implicit {
+                            namespace: Some(module),
                         },
-                        intrinsic.span,
-                    )
-                {
+                    },
+                    intrinsic.span,
+                ) {
                     let _: ErasedReportedError = error.handle(&mut *self);
                 }
             }
@@ -210,11 +205,11 @@ impl<'a> ResolverMut<'a> {
                     Some(module),
                 )?;
 
-                let binder = Identifier::new(index.global(self.component), type_.binder.clone());
+                let binder = Identifier::new(index.global(self.session), type_.binder.clone());
 
                 let known = declaration.attributes.get::<{ AttributeName::Known }>();
                 if let Some(known) = known
-                && let Err(error) = self.session.special.define(
+                && let Err(error) = self.session.define_special(
                     special::Kind::Known,
                     binder.clone(),
                     match &known.bare.name {
@@ -227,18 +222,15 @@ impl<'a> ResolverMut<'a> {
                 }
 
                 if let Some(intrinsic) = declaration.attributes.get::<{ AttributeName::Intrinsic }>()
-                && let Err(error) = self.session
-                    .special
-                    .define(
-                        special::Kind::Intrinsic,
-                        binder,
-                        match &intrinsic.bare.name {
-                            Some(name) => special::DefinitionStyle::Explicit { name },
-                            None => special::DefinitionStyle::Implicit { namespace: None },
-                        },
-                        intrinsic.span,
-                    )
-                {
+                && let Err(error) = self.session.define_special(
+                    special::Kind::Intrinsic,
+                    binder,
+                    match &intrinsic.bare.name {
+                        Some(name) => special::DefinitionStyle::Explicit { name },
+                        None => special::DefinitionStyle::Implicit { namespace: None },
+                    },
+                    intrinsic.span,
+                ) {
                     let _: ErasedReportedError = error.handle(&mut *self);
                 }
 
@@ -276,7 +268,9 @@ impl<'a> ResolverMut<'a> {
                 let Context::DataDeclaration { index: namespace, transparency, known } = context else { unreachable!() };
 
                 let exposure = match transparency.unwrap() {
-                    Transparency::Transparent => self.component[namespace].exposure.clone(),
+                    Transparency::Transparent => {
+                        self.session.look_up_local(namespace).exposure.clone()
+                    }
                     // as if a @(public super) was attached to the constructor
                     Transparency::Abstract => ExposureReach::Resolved(module).into(),
                 };
@@ -290,19 +284,18 @@ impl<'a> ResolverMut<'a> {
                 )?;
 
                 let binder =
-                    Identifier::new(index.global(self.component), constructor.binder.clone());
+                    Identifier::new(index.global(self.session), constructor.binder.clone());
 
                 // @Task support `@(known name)` on constructors
                 if let Some(known) = known
-                && let Err(error) = self.session
-                    .special
-                    .define(
-                        special::Kind::Known,
-                        binder,
-                        special::DefinitionStyle::Implicit { namespace: Some(self.component[namespace].source.as_str()) },
-                        known,
-                    )
-                {
+                && let Err(error) = self.session.define_special(
+                    special::Kind::Known,
+                    binder,
+                    special::DefinitionStyle::Implicit {
+                        namespace: Some(namespace),
+                    },
+                    known,
+                ) {
                     let _: ErasedReportedError = error.handle(&mut *self);
                 }
             }
@@ -374,15 +367,17 @@ impl<'a> ResolverMut<'a> {
         namespace: Option<LocalDeclarationIndex>,
     ) -> Result<LocalDeclarationIndex, DefinitionError> {
         if let Some(namespace) = namespace {
-            if let Some(index) = self.component[namespace]
+            if let Some(index) = self
+                .session
+                .look_up_local(namespace)
                 .namespace()
                 .unwrap()
                 .binders
                 .iter()
-                .map(|&index| index.local(self.component).unwrap())
-                .find(|&index| self.component[index].source == binder)
+                .map(|&index| index.local(self.session).unwrap())
+                .find(|&index| self.session.look_up_local(index).source == binder)
             {
-                let previous = &self.component.bindings[index].source;
+                let previous = &self.session.component().bindings[index].source;
 
                 self.naming_conflicts
                     .entry(index)
@@ -397,7 +392,7 @@ impl<'a> ResolverMut<'a> {
             }
         }
 
-        let index = self.component.bindings.insert(Entity {
+        let index = self.session.define_unchecked(Entity {
             source: binder,
             kind: binding,
             exposure,
@@ -406,8 +401,9 @@ impl<'a> ResolverMut<'a> {
         });
 
         if let Some(namespace) = namespace {
-            let index = index.global(self.component);
-            self.component[namespace]
+            let index = index.global(self.session);
+            self.session
+                .look_up_local_mut(namespace)
                 .namespace_mut()
                 .unwrap()
                 .binders
@@ -485,7 +481,7 @@ impl<'a> ResolverMut<'a> {
                                 constructor,
                                 Some(module),
                                 Context::DataDeclaration {
-                                    index: binder.local_declaration_index(self.component).unwrap(),
+                                    index: binder.local_declaration_index(self.session).unwrap(),
                                     transparency: None,
                                     known: None,
                                 },
@@ -535,9 +531,9 @@ impl<'a> ResolverMut<'a> {
                     Some(module) => self
                         .as_ref()
                         .reobtain_resolved_identifier::<target::Module>(&submodule.binder, module)
-                        .local(self.component)
+                        .local(self.session)
                         .unwrap(),
-                    None => self.component.root_local(),
+                    None => self.session.component().root_local(),
                 };
 
                 let declarations = submodule
@@ -556,7 +552,7 @@ impl<'a> ResolverMut<'a> {
                     declaration.attributes,
                     declaration.span,
                     hir::Module {
-                        binder: Identifier::new(index.global(self.component), submodule.binder),
+                        binder: Identifier::new(index.global(self.session), submodule.binder),
                         file: submodule.file,
                         declarations,
                     }
@@ -603,17 +599,17 @@ impl<'a> ResolverMut<'a> {
             let mut partially_resolved_use_bindings = HashMap::default();
 
             for (&index, item) in &self.partially_resolved_use_bindings {
-                let namespace = item.target.namespace.global(self.component);
+                let namespace = item.target.namespace.global(self.session);
 
                 match self.as_ref().resolve_path::<target::Any>(
                     &item.target.path,
                     PathResolutionContext::new(namespace),
                 ) {
                     Ok(target) => {
-                        self.component.bindings[index].kind = EntityKind::Use { target };
+                        self.session.look_up_local_mut(index).kind = EntityKind::Use { target };
                     }
                     Err(error @ (UnresolvedBinding { .. } | Erased(_))) => {
-                        self.component.bindings[index].kind =
+                        self.session.look_up_local_mut(index).kind =
                             PossiblyErroneous::error(ErasedReportedError::new_unchecked());
                         let error = self.as_ref().report_resolution_error(error);
                         self.health.taint(error);
@@ -627,7 +623,7 @@ impl<'a> ResolverMut<'a> {
                             PartiallyResolvedUseBinding {
                                 // unwrap: The binder should always be local since external components
                                 //         always contain resolved bindings.
-                                binder: binder.local(self.component).unwrap(),
+                                binder: binder.local(self.session).unwrap(),
                                 target: item.target.clone(),
                             },
                         );
@@ -639,7 +635,7 @@ impl<'a> ResolverMut<'a> {
             if partially_resolved_use_bindings.len() == self.partially_resolved_use_bindings.len() {
                 for &index in partially_resolved_use_bindings.keys() {
                     // @Beacon @Beacon @Beacon @Task don't use new_unchecked here!
-                    self.component[index].kind =
+                    self.session.look_up_local_mut(index).kind =
                         PossiblyErroneous::error(ErasedReportedError::new_unchecked());
                 }
 
@@ -651,11 +647,7 @@ impl<'a> ResolverMut<'a> {
                 ) {
                     let paths = cycle
                         .iter()
-                        .map(|&index| {
-                            self.component
-                                .index_to_path(index.global(self.component), self.session)
-                                .quote()
-                        })
+                        .map(|&&index| self.session.local_index_to_path(index).quote())
                         .list(Conjunction::And);
                     Diagnostic::error()
                         .code(ErrorCode::E024)
@@ -667,7 +659,7 @@ impl<'a> ResolverMut<'a> {
                         .primary_spans(
                             cycle
                                 .into_iter()
-                                .map(|&index| self.component[index].source.span()),
+                                .map(|&index| self.session.look_up_local(index).source.span()),
                         )
                         .report(self.session.reporter());
                 }
@@ -684,10 +676,10 @@ impl<'a> ResolverMut<'a> {
     }
 
     fn resolve_exposure_reaches(&mut self) {
-        for (index, entity) in &self.component.bindings {
+        for (index, entity) in &self.session.component().bindings {
             if let Exposure::Restricted(exposure) = &entity.exposure {
                 // unwrap: root always has Exposure::Unrestricted, it won't reach this branch
-                let definition_site_namespace = entity.parent.unwrap().global(self.component);
+                let definition_site_namespace = entity.parent.unwrap().global(self.session);
 
                 if let Err(error) = self
                     .as_ref()
@@ -702,16 +694,18 @@ impl<'a> ResolverMut<'a> {
                 target: target_index,
             } = entity.kind
             {
-                let target = self.as_ref().look_up(target_index);
+                let target = self.session.look_up(target_index);
 
-                if entity.exposure.compare(&target.exposure, self.component)
+                if entity
+                    .exposure
+                    .compare(&target.exposure, self.session.component())
                     == Some(Ordering::Greater)
                 {
                     let error = Diagnostic::error()
                         .code(ErrorCode::E009)
                         .message(format!(
                             "re-export of the more private binding ‘{}’",
-                            self.component.index_to_path(target_index, self.session)
+                            self.session.index_to_path(target_index)
                         ))
                         .labeled_primary_span(
                             &entity.source,
@@ -726,8 +720,7 @@ impl<'a> ResolverMut<'a> {
 expected the exposure of ‘{}’
            to be at most {}
       but it actually is {}",
-                            self.component
-                                .index_to_path(index.global(self.component), self.session),
+                            self.session.local_index_to_path(index),
                             self.as_ref().display(&target.exposure),
                             self.as_ref().display(&entity.exposure),
                         ))
@@ -739,7 +732,7 @@ expected the exposure of ‘{}’
     }
 }
 
-impl Handler for &mut ResolverMut<'_> {
+impl Handler for &mut ResolverMut<'_, '_> {
     fn handle<T: PossiblyErroneous>(self, diagnostic: Diagnostic) -> T {
         let error = diagnostic.report(self.session.reporter());
         self.health.taint(error);
@@ -748,13 +741,12 @@ impl Handler for &mut ResolverMut<'_> {
 }
 
 struct Resolver<'a> {
-    component: &'a Component,
-    session: &'a BuildSession,
+    session: &'a Session<'a>,
 }
 
 impl<'a> Resolver<'a> {
-    fn new(component: &'a Component, session: &'a BuildSession) -> Self {
-        Self { component, session }
+    fn new(session: &'a Session<'a>) -> Self {
+        Self { session }
     }
 
     fn resolve_expression(
@@ -1012,7 +1004,7 @@ impl<'a> Resolver<'a> {
         let type_ = match type_ {
             Some(type_) => self
                 .session
-                .special.get(type_.bare)
+                .specials().get(type_.bare)
                 // @Task write more concisely
                 .and_then(|intrinsic| obtain!(intrinsic, special::Binding::Type(Type::Numeric(type_)) => type_))
                 .ok_or_else(|| {
@@ -1063,7 +1055,7 @@ impl<'a> Resolver<'a> {
         let _type = match type_ {
             Some(type_) => self
                 .session
-                .special
+                .specials()
                 .get(type_.bare)
                 .filter(|&intrinsic| matches!(intrinsic, special::Binding::Type(Type::Text)))
                 .ok_or_else(|| {
@@ -1109,7 +1101,7 @@ impl<'a> Resolver<'a> {
         // @Task test this!
         let type_ = self
             .session
-            .special.get(type_.bare)
+            .specials().get(type_.bare)
             .and_then(|known| obtain!(known, special::Binding::Type(special::Type::Sequential(type_)) => type_))
             .ok_or_else(|| {
                 self.literal_used_for_unsupported_type(&sequence.bare.elements, "sequence", type_)
@@ -1146,12 +1138,12 @@ impl<'a> Resolver<'a> {
         // @Task use `require` instead once it returns an Identifier instead of an Item
         let empty = self
             .session
-            .special
+            .specials()
             .get(special::Constructor::ListEmpty)
             .unwrap();
         let prepend = self
             .session
-            .special
+            .specials()
             .get(special::Constructor::ListPrepend)
             .unwrap();
 
@@ -1237,12 +1229,12 @@ impl<'a> Resolver<'a> {
         // @Task use `require` instead once it returns an Identifier instead of an Item
         let empty = self
             .session
-            .special
+            .specials()
             .get(special::Constructor::VectorEmpty)
             .unwrap();
         let prepend = self
             .session
-            .special
+            .specials()
             .get(special::Constructor::VectorPrepend)
             .unwrap();
 
@@ -1338,15 +1330,15 @@ impl<'a> Resolver<'a> {
         // @Task use `require` instead once it returns an Identifier instead of an Item
         let empty = self
             .session
-            .special
+            .specials()
             .get(special::Constructor::TupleEmpty)
             .unwrap();
         let prepend = self
             .session
-            .special
+            .specials()
             .get(special::Constructor::TuplePrepend)
             .unwrap();
-        let type_ = self.session.special.get(special::Type::Type).unwrap();
+        let type_ = self.session.specials().get(special::Type::Type).unwrap();
 
         // @Task check if all those attributes & spans make sense
         let mut result =
@@ -1423,7 +1415,7 @@ impl<'a> Resolver<'a> {
             .code(ErrorCode::E043)
             .message(format!(
                 "a {name} literal is not a valid constructor for type ‘{}’",
-                self.look_up(type_.bare).source
+                self.session.look_up(type_.bare).source
             ))
             .labeled_primary_span(literal, "this literal may not construct the type")
             .labeled_secondary_span(type_, "the data type")
@@ -1435,13 +1427,13 @@ impl<'a> Resolver<'a> {
         literal: Span,
         scope: &FunctionScope<'_>,
     ) -> Result<DeclarationIndex> {
-        let namespace = scope.module().global(self.component);
+        let namespace = scope.module().global(self.session);
         let binding = self
             .resolve_path::<target::Any>(path, PathResolutionContext::new(namespace))
             .map_err(|error| self.report_resolution_error(error))?;
 
         {
-            let entity = self.look_up(binding);
+            let entity = self.session.look_up(binding);
             if !entity.is_data_type() {
                 // @Task code
                 return Err(Diagnostic::error()
@@ -1457,14 +1449,6 @@ impl<'a> Resolver<'a> {
         }
 
         Ok(binding)
-    }
-
-    // @Task dedup with documenter, code generator, interpreter
-    fn look_up(&self, index: DeclarationIndex) -> &'a Entity {
-        match index.local(self.component) {
-            Some(index) => &self.component[index],
-            None => &self.session[index],
-        }
     }
 
     /// Resolve a syntactic path given a namespace.
@@ -1500,7 +1484,12 @@ impl<'a> Resolver<'a> {
                             .report(self.session.reporter())
                     })?;
 
-                    let Some(component) = self.component.dependencies.get(&component.bare).copied() else {
+                    let Some(&component) = self
+                        .session
+                        .component()
+                        .dependencies()
+                        .get(&component.bare)
+                    else {
                         // @Task If it's not a single source file, suggest adding to `dependencies` section in
                         // the package manifest
                         // @Task suggest similarly named dependencies!
@@ -1512,10 +1501,11 @@ impl<'a> Resolver<'a> {
                         return Err(Diagnostic::error()
                             .message(format!("the component ‘{component}’ is not defined"))
                             .primary_span(component)
-                            .report(self.session.reporter()).into());
+                            .report(self.session.reporter())
+                            .into());
                     };
 
-                    let component = &self.session[component];
+                    let component = &self.session.look_up_component(component);
                     let root = component.root();
 
                     return match &*path.segments {
@@ -1530,10 +1520,10 @@ impl<'a> Resolver<'a> {
                         [] => unreachable!(),
                     };
                 }
-                Topmost => self.component.root(),
+                Topmost => self.session.component().root(),
                 Super => self
-                    .resolve_super(hanger, context.namespace.local(self.component).unwrap())?
-                    .global(self.component),
+                    .resolve_super(hanger, context.namespace.local(self.session).unwrap())?
+                    .global(self.session),
                 Self_ => context.namespace,
             };
 
@@ -1550,7 +1540,7 @@ impl<'a> Resolver<'a> {
         }
 
         let index = self.resolve_identifier(&path.segments[0], context)?;
-        let entity = self.look_up(index);
+        let entity = self.session.look_up(index);
 
         match &*path.segments {
             [identifier] => {
@@ -1587,7 +1577,7 @@ impl<'a> Resolver<'a> {
         hanger: &ast::Hanger,
         module: LocalDeclarationIndex,
     ) -> Result<LocalDeclarationIndex> {
-        self.component[module].parent.ok_or_else(|| {
+        self.session.look_up_local(module).parent.ok_or_else(|| {
             Diagnostic::error()
                 .code(ErrorCode::E021) // @Question use a dedicated code?
                 .message("the root module does not have a parent module")
@@ -1602,13 +1592,14 @@ impl<'a> Resolver<'a> {
         context: PathResolutionContext,
     ) -> Result<DeclarationIndex, ResolutionError> {
         let index = self
+            .session
             .look_up(context.namespace)
             .namespace()
             .unwrap()
             .binders
             .iter()
             .copied()
-            .find(|&index| &self.look_up(index).source == identifier)
+            .find(|&index| &self.session.look_up(index).source == identifier)
             .ok_or_else(|| ResolutionError::UnresolvedBinding {
                 identifier: identifier.clone(),
                 namespace: context.namespace,
@@ -1622,13 +1613,13 @@ impl<'a> Resolver<'a> {
 
         if !context.allow_deprecated
         && let Some(deprecated) = self
-            .look_up(index)
+            .session.look_up(index)
             .attributes
             .get::<{ AttributeName::Deprecated }>()
         {
             let mut message = format!(
                 "use of deprecated binding ‘{}’",
-                self.component.index_to_path(index, self.session),
+                self.session.index_to_path(index),
             );
 
             if let Some(reason) = &deprecated.bare.reason {
@@ -1654,26 +1645,26 @@ impl<'a> Resolver<'a> {
         identifier: &ast::Identifier,
         origin_namespace: DeclarationIndex,
     ) -> Result<(), ResolutionError> {
-        let entity = self.look_up(index);
+        let entity = self.session.look_up(index);
 
         if let Exposure::Restricted(exposure) = &entity.exposure {
             // unwrap: root always has Exposure::Unrestricted
             let definition_site_namespace = entity.parent.unwrap();
             let reach = self.resolve_restricted_exposure(
                 exposure,
-                definition_site_namespace.global(self.component),
+                definition_site_namespace.global(self.session),
             )?;
 
-            if !self.component.is_allowed_to_access(
+            if !self.session.component().is_allowed_to_access(
                 origin_namespace,
-                definition_site_namespace.global(self.component),
+                definition_site_namespace.global(self.session),
                 reach,
             ) {
                 return Err(Diagnostic::error()
                     .code(ErrorCode::E029)
                     .message(format!(
                         "binding ‘{}’ is private",
-                        self.component.index_to_path(index, self.session)
+                        self.session.index_to_path(index)
                     ))
                     .primary_span(identifier)
                     .report(self.session.reporter())
@@ -1694,7 +1685,7 @@ impl<'a> Resolver<'a> {
     ) -> Result<DeclarationIndex, ResolutionError> {
         use EntityKind::*;
 
-        match self.look_up(index).kind {
+        match self.session.look_up(index).kind {
             Use { target } => Ok(target),
             UnresolvedUse => Err(ResolutionError::UnresolvedUseBinding {
                 binder: index,
@@ -1723,13 +1714,14 @@ impl<'a> Resolver<'a> {
                 let reach = self
                     .resolve_path::<target::Module>(
                         path,
-                        PathResolutionContext::new(namespace.global(self.component))
+                        PathResolutionContext::new(namespace.global(self.session))
                             .ignore_exposure(),
                     )
                     .map_err(|error| self.report_resolution_error(error))?;
 
                 let reach_is_ancestor = self
-                    .component
+                    .session
+                    .component()
                     .some_ancestor_equals(definition_site_namespace, reach);
 
                 if !reach_is_ancestor {
@@ -1743,11 +1735,11 @@ impl<'a> Resolver<'a> {
                 drop(exposure_);
                 *exposure.lock().unwrap() =
                     // @Question unwrap() correct?
-                    ExposureReach::Resolved(reach.local(self.component).unwrap());
+                    ExposureReach::Resolved(reach.local(self.session).unwrap());
 
                 reach
             }
-            &ExposureReach::Resolved(reach) => reach.global(self.component),
+            &ExposureReach::Resolved(reach) => reach.global(self.session),
         })
     }
 
@@ -1777,16 +1769,18 @@ impl<'a> Resolver<'a> {
         identifier: &ast::Identifier,
         namespace: LocalDeclarationIndex,
     ) -> Target::Output {
-        let index = self.component[namespace]
+        let index = self
+            .session
+            .look_up_local(namespace)
             .namespace()
             .unwrap()
             .binders
             .iter()
-            .map(|index| index.local(self.component).unwrap())
-            .find(|&index| &self.component[index].source == identifier)
+            .map(|index| index.local(self.session).unwrap())
+            .find(|&index| &self.session.look_up_local(index).source == identifier)
             .unwrap();
         let index = self
-            .collapse_use_chain(index.global(self.component), identifier.span())
+            .collapse_use_chain(index.global(self.session), identifier.span())
             .unwrap_or_else(|_| unreachable!());
 
         Target::output(index, identifier)
@@ -1854,7 +1848,7 @@ impl<'a> Resolver<'a> {
         } else {
             self.resolve_path::<target::Value>(
                 query,
-                PathResolutionContext::new(scope.module().global(self.component)),
+                PathResolutionContext::new(scope.module().global(self.session)),
             )
             .map_err(|error| {
                 self.report_resolution_error_searching_lookalikes(error, |identifier, _| {
@@ -1876,12 +1870,13 @@ impl<'a> Resolver<'a> {
         predicate: impl Fn(&'s Entity) -> bool,
         namespace: DeclarationIndex,
     ) -> Option<&'s str> {
-        self.look_up(namespace)
+        self.session
+            .look_up(namespace)
             .namespace()
             .unwrap()
             .binders
             .iter()
-            .map(|&index| self.look_up(index))
+            .map(|&index| self.session.look_up(index))
             .filter(|entity| !entity.is_error() && predicate(entity))
             .map(|entity| entity.source.as_str())
             .find(|some_identifier| is_similar(some_identifier, identifier))
@@ -1906,7 +1901,7 @@ impl<'a> Resolver<'a> {
             &Module(module) => self.find_similarly_named_declaration(
                 identifier,
                 |_| true,
-                module.global(self.component),
+                module.global(self.session),
             ),
             FunctionParameter { parent, binder } => {
                 if is_similar(identifier, binder.as_str()) {
@@ -1952,15 +1947,15 @@ impl<'a> Resolver<'a> {
                 match usage {
                     IdentifierUsage::Unqualified => message += "this scope",
                     IdentifierUsage::Qualified => {
-                        if namespace == self.component.root() {
+                        if namespace == self.session.component().root() {
                             message += "the root module";
                         } else {
-                            message += match self.look_up(namespace).is_module() {
+                            message += match self.session.look_up(namespace).is_module() {
                                 true => "module",
                                 false => "namespace",
                             };
                             message += " ‘";
-                            message += &self.component.index_to_path(namespace, self.session);
+                            message += &self.session.index_to_path(namespace);
                             message += "’";
                         }
                     }
@@ -1991,7 +1986,7 @@ impl<'a> Resolver<'a> {
                 Diagnostic::error()
                     .message(format!(
                         "exposure reach ‘{}’ is circular",
-                        self.component.index_to_path(binder, self.session)
+                        self.session.index_to_path(binder)
                     ))
                     .primary_span(extra)
                     .report(self.session.reporter())
@@ -2016,7 +2011,7 @@ impl<'a> Resolver<'a> {
                     namespace
                         .binders
                         .iter()
-                        .any(|&index| &self.look_up(index).source == subbinder)
+                        .any(|&index| &self.session.look_up(index).source == subbinder)
                 })
             },
             parent,
@@ -2054,35 +2049,32 @@ impl<'a> Resolver<'a> {
             })
     }
 
-    fn display<'f>(
-        &'f self,
-        value: &'f impl Display<Context<'f> = DefaultContext<'f>>,
-    ) -> impl std::fmt::Display + 'f {
-        displayed(|f| value.write((self.component, self.session), f))
+    fn display<'f>(&'f self, value: &'f impl Display) -> impl std::fmt::Display + 'f {
+        displayed(|f| value.write(self.session, f))
     }
 }
 
 pub trait ProgramEntryExt {
     const PROGRAM_ENTRY_IDENTIFIER: &'static str = "main";
 
-    fn look_up_program_entry(&self, session: &BuildSession) -> Option<Identifier>;
+    fn look_up_program_entry(&self) -> Option<Identifier>;
 }
 
-impl ProgramEntryExt for Component {
-    fn look_up_program_entry(&self, session: &BuildSession) -> Option<Identifier> {
-        let resolver = Resolver::new(self, session);
+impl ProgramEntryExt for Session<'_> {
+    fn look_up_program_entry(&self) -> Option<Identifier> {
+        let resolver = Resolver::new(self);
 
         let identifier =
             ast::Identifier::new_unchecked(Self::PROGRAM_ENTRY_IDENTIFIER.into(), default());
         let index = resolver
             .resolve_identifier(
                 &identifier,
-                PathResolutionContext::new(self.root())
+                PathResolutionContext::new(self.component().root())
                     .ignore_exposure()
                     .allow_deprecated(),
             )
             .ok()?;
-        let entity = &resolver.look_up(index);
+        let entity = &self.look_up(index);
 
         if !entity.is_function() {
             return None;

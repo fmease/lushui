@@ -4,7 +4,10 @@ use hir::{
     Attribute, Attributes, BareAttribute, Entity, EntityKind, Exposure, Expression, Identifier,
     LocalDeclarationIndex, Number, Text,
 };
-use session::{BuildSession, Component, IdentifierExt, LocalDeclarationIndexExt};
+use session::{
+    component::{Component, IdentifierExt, LocalDeclarationIndexExt},
+    Context, Session,
+};
 use span::Span;
 use std::default::default;
 use utilities::{difference, displayed};
@@ -12,13 +15,8 @@ use utilities::{difference, displayed};
 // @Beacon @Task do something smart if spaces differ (which cannot have color)
 // like replacing them with a different character like the Unicode space symbol
 // or however it is called ("SP")
-fn assert_format(
-    expected: &str,
-    actual: &Expression,
-    component: &Component,
-    session: &BuildSession,
-) {
-    let actual = displayed(|f| actual.write((component, session), f)).to_string();
+fn assert_format(expected: &str, actual: &Expression, session: &Session<'_>) {
+    let actual = displayed(|f| actual.write(session, f)).to_string();
 
     assert!(
         actual == expected,
@@ -64,9 +62,7 @@ impl ComponentExt for Component {
 
 #[test]
 fn pi_type_application_argument() {
-    let session = BuildSession::test();
     let mut component = Component::mock();
-
     let array = component
         .add("Array", EntityKind::untyped_data_type())
         .into_item();
@@ -76,6 +72,9 @@ fn pi_type_application_argument() {
     let type_ = component
         .add("Type", EntityKind::untyped_data_type())
         .into_item();
+
+    let mut context = Context::mock();
+    let session = Session::new(component, &mut context);
 
     assert_format(
         "topmost.Array topmost.Int -> topmost.Type",
@@ -96,20 +95,20 @@ fn pi_type_application_argument() {
             }
             .into(),
         ),
-        &component,
         &session,
     );
 }
 
 #[test]
 fn pi_type_named_parameter() {
-    let session = BuildSession::test();
     let mut component = Component::mock();
-
     let array = component.add("Array", EntityKind::untyped_data_type());
     let int = component.add("Int", EntityKind::untyped_data_type());
     let container = component.add("Container", EntityKind::untyped_data_type());
     let alpha = Identifier::parameter("alpha");
+
+    let mut context = Context::mock();
+    let session = Session::new(component, &mut context);
 
     assert_format(
         "(alpha: topmost.Array topmost.Int) -> topmost.Container alpha",
@@ -137,19 +136,19 @@ fn pi_type_named_parameter() {
             }
             .into(),
         ),
-        &component,
         &session,
     );
 }
 
 #[test]
 fn pi_type_implicit_parameter() {
-    let session = BuildSession::test();
     let mut component = Component::mock();
-
     let type_ = component
         .add("Type", EntityKind::untyped_data_type())
         .into_item();
+
+    let mut context = Context::mock();
+    let session = Session::new(component, &mut context);
 
     assert_format(
         "'(whatever: topmost.Type) -> topmost.Type",
@@ -163,7 +162,6 @@ fn pi_type_implicit_parameter() {
             }
             .into(),
         ),
-        &component,
         &session,
     );
 }
@@ -171,11 +169,13 @@ fn pi_type_implicit_parameter() {
 /// Compare with [`pi_type_two_curried_arguments`].
 #[test]
 fn pi_type_higher_order_argument() {
-    let session = BuildSession::test();
     let mut component = Component::mock();
     let int = component
         .add("Int", EntityKind::untyped_data_type())
         .into_item();
+
+    let mut context = Context::mock();
+    let session = Session::new(component, &mut context);
 
     assert_format(
         "(topmost.Int -> topmost.Int) -> topmost.Int",
@@ -198,7 +198,6 @@ fn pi_type_higher_order_argument() {
             }
             .into(),
         ),
-        &component,
         &session,
     );
 }
@@ -206,7 +205,6 @@ fn pi_type_higher_order_argument() {
 /// Compare with [`pi_type_higher_order_argument`].
 #[test]
 fn pi_type_two_curried_arguments() {
-    let session = BuildSession::test();
     let mut component = Component::mock();
     let int = component
         .add("Int", EntityKind::untyped_data_type())
@@ -217,6 +215,9 @@ fn pi_type_two_curried_arguments() {
     let type_ = component
         .add("Type", EntityKind::untyped_data_type())
         .into_item();
+
+    let mut context = Context::mock();
+    let session = Session::new(component, &mut context);
 
     assert_format(
         "topmost.Int -> topmost.Text -> topmost.Type",
@@ -239,7 +240,6 @@ fn pi_type_two_curried_arguments() {
             }
             .into(),
         ),
-        &component,
         &session,
     );
 }
@@ -247,14 +247,14 @@ fn pi_type_two_curried_arguments() {
 /// Compare with [`lambda_pi_type_body`].
 #[test]
 fn pi_type_lambda_domain() {
-    let session = BuildSession::test();
     let mut component = Component::mock();
-
     let type_ = component
         .add("Type", EntityKind::untyped_data_type())
         .into_item();
-
     let x = Identifier::parameter("x");
+
+    let mut context = Context::mock();
+    let session = Session::new(component, &mut context);
 
     assert_format(
         r"(\x => x) -> topmost.Type",
@@ -278,20 +278,20 @@ fn pi_type_lambda_domain() {
             }
             .into(),
         ),
-        &component,
         &session,
     );
 }
 
 #[test]
 fn application_three_curried_arguments() {
-    let session = BuildSession::test();
     let mut component = Component::mock();
-
     let beta = component.add("beta", EntityKind::UntypedFunction);
     let type_ = component
         .add("Type", EntityKind::untyped_data_type())
         .into_item();
+
+    let mut context = Context::mock();
+    let session = Session::new(component, &mut context);
 
     assert_format(
         "alpha topmost.beta (gamma topmost.Type) 0",
@@ -324,7 +324,6 @@ fn application_three_curried_arguments() {
             }
             .into(),
         ),
-        &component,
         &session,
     );
 }
@@ -332,11 +331,12 @@ fn application_three_curried_arguments() {
 /// Compare with [`application_lambda_argument`].
 #[test]
 fn application_lambda_last_argument() {
-    let session = BuildSession::test();
     let mut component = Component::mock();
-
     let take = component.add("take", EntityKind::UntypedFunction);
     let it = Identifier::parameter("it");
+
+    let mut context = Context::mock();
+    let session = Session::new(component, &mut context);
 
     // we might want to format this special case as `topmost.take \it => it` in the future
     assert_format(
@@ -360,7 +360,6 @@ fn application_lambda_last_argument() {
             }
             .into(),
         ),
-        &component,
         &session,
     );
 }
@@ -368,11 +367,12 @@ fn application_lambda_last_argument() {
 /// Compare with [`application_lambda_last_argument`].
 #[test]
 fn application_lambda_argument() {
-    let session = BuildSession::test();
     let mut component = Component::mock();
-
     let take = component.add("take", EntityKind::UntypedFunction);
     let it = Identifier::parameter("it");
+
+    let mut context = Context::mock();
+    let session = Session::new(component, &mut context);
 
     assert_format(
         r#"topmost.take (\it => it) "who""#,
@@ -402,20 +402,20 @@ fn application_lambda_argument() {
             }
             .into(),
         ),
-        &component,
         &session,
     );
 }
 
 #[test]
 fn application_implicit_argument() {
-    let session = BuildSession::test();
     let mut component = Component::mock();
-
     let identity = component.add("identity", EntityKind::UntypedFunction);
     let type_ = component
         .add("Type", EntityKind::untyped_data_type())
         .into_item();
+
+    let mut context = Context::mock();
+    let session = Session::new(component, &mut context);
 
     assert_format(
         r"topmost.identity 'topmost.Type",
@@ -427,18 +427,18 @@ fn application_implicit_argument() {
             }
             .into(),
         ),
-        &component,
         &session,
     );
 }
 
 #[test]
 fn application_complex_implicit_argument() {
-    let session = BuildSession::test();
     let mut component = Component::mock();
-
     let identity = component.add("identity", EntityKind::UntypedFunction);
     let text = component.add("Text", EntityKind::untyped_data_type());
+
+    let mut context = Context::mock();
+    let session = Session::new(component, &mut context);
 
     assert_format(
         r"topmost.identity '(prepare topmost.Text)",
@@ -457,15 +457,14 @@ fn application_complex_implicit_argument() {
             }
             .into(),
         ),
-        &component,
         &session,
     );
 }
 
 #[test]
 fn application_intrinsic_application_callee() {
-    let session = BuildSession::test();
-    let component = Component::mock();
+    let mut context = Context::mock();
+    let session = Session::new(Component::mock(), &mut context);
 
     assert_format(
         "eta 10 omicron",
@@ -483,17 +482,17 @@ fn application_intrinsic_application_callee() {
             }
             .into(),
         ),
-        &component,
         &session,
     );
 }
 
 #[test]
 fn lambda_body_type_annotation() {
-    let session = BuildSession::test();
     let mut component = Component::mock();
-
     let output = component.add("Output", EntityKind::untyped_data_type());
+
+    let mut context = Context::mock();
+    let session = Session::new(component, &mut context);
 
     assert_format(
         r"\input: topmost.Output => 0",
@@ -508,21 +507,21 @@ fn lambda_body_type_annotation() {
             }
             .into(),
         ),
-        &component,
         &session,
     );
 }
 
 #[test]
 fn lambda_parameter_type_annotation_body_type_annotation() {
-    let session = BuildSession::test();
     let mut component = Component::mock();
-
     let input = component.add("Input", EntityKind::untyped_data_type());
     let output = component.add("Output", EntityKind::untyped_data_type());
     let type_ = component
         .add("Type", EntityKind::untyped_data_type())
         .into_item();
+
+    let mut context = Context::mock();
+    let session = Session::new(component, &mut context);
 
     assert_format(
         r"\(input: topmost.Input): topmost.Output => topmost.Type",
@@ -537,19 +536,19 @@ fn lambda_parameter_type_annotation_body_type_annotation() {
             }
             .into(),
         ),
-        &component,
         &session,
     );
 }
 
 #[test]
 fn lambda_implicit_parameter() {
-    let session = BuildSession::test();
     let mut component = Component::mock();
-
     let type_ = component
         .add("Type", EntityKind::untyped_data_type())
         .into_item();
+
+    let mut context = Context::mock();
+    let session = Session::new(component, &mut context);
 
     assert_format(
         r"\'(Input: topmost.Type) => topmost.Type",
@@ -564,16 +563,16 @@ fn lambda_implicit_parameter() {
             }
             .into(),
         ),
-        &component,
         &session,
     );
 }
 
 #[test]
 fn lambda_implicit_unannotated_parameter() {
-    let session = BuildSession::test();
-    let component = Component::mock();
     let a = Identifier::parameter("a");
+
+    let mut context = Context::mock();
+    let session = Session::new(Component::mock(), &mut context);
 
     assert_format(
         r"\'A => \a => a",
@@ -598,7 +597,6 @@ fn lambda_implicit_unannotated_parameter() {
             }
             .into(),
         ),
-        &component,
         &session,
     );
 }
@@ -606,14 +604,14 @@ fn lambda_implicit_unannotated_parameter() {
 /// Compare with [`pi_type_lambda_domain`].
 #[test]
 fn lambda_pi_type_body() {
-    let session = BuildSession::test();
     let mut component = Component::mock();
-
     let type_ = component
         .add("Type", EntityKind::untyped_data_type())
         .into_item();
-
     let x = Identifier::parameter("x");
+
+    let mut context = Context::mock();
+    let session = Session::new(component, &mut context);
 
     assert_format(
         r"\x => x -> topmost.Type",
@@ -637,17 +635,17 @@ fn lambda_pi_type_body() {
             }
             .into(),
         ),
-        &component,
         &session,
     );
 }
 
 #[test]
 fn intrinsic_application_no_arguments() {
-    let session = BuildSession::test();
     let mut component = Component::mock();
-
     let add = component.add("add", EntityKind::UntypedFunction);
+
+    let mut context = Context::mock();
+    let session = Session::new(component, &mut context);
 
     assert_format(
         "add",
@@ -658,17 +656,17 @@ fn intrinsic_application_no_arguments() {
             }
             .into(),
         ),
-        &component,
         &session,
     );
 }
 
 #[test]
 fn intrinsic_application_two_arguments() {
-    let session = BuildSession::test();
     let mut component = Component::mock();
-
     let add = component.add("add", EntityKind::UntypedFunction);
+
+    let mut context = Context::mock();
+    let session = Session::new(component, &mut context);
 
     assert_format(
         "add (add 1 3000) 0",
@@ -691,15 +689,14 @@ fn intrinsic_application_two_arguments() {
             }
             .into(),
         ),
-        &component,
         &session,
     );
 }
 
 #[test]
 fn attributes() {
-    let session = BuildSession::test();
-    let component = Component::mock();
+    let mut context = Context::mock();
+    let session = Session::new(Component::mock(), &mut context);
 
     assert_format(
         "== @static @unsafe 3 @static (increment 1)",
@@ -734,16 +731,13 @@ fn attributes() {
             }
             .into(),
         ),
-        &component,
         &session,
     )
 }
 
 #[test]
 fn path() {
-    let session = BuildSession::test();
     let mut component = Component::mock();
-
     let overarching = component.add("overarching", EntityKind::module());
     let middle = component.add_below(
         "middle",
@@ -756,19 +750,19 @@ fn path() {
         middle.local_declaration_index(&component).unwrap(),
     );
 
+    let mut context = Context::mock();
+    let session = Session::new(component, &mut context);
+
     assert_format(
         "topmost.overarching.middle.sink",
         &sink.into_item(),
-        &component,
         &session,
     );
 }
 
 #[test]
 fn path_identifier_symbol_symbol_identifier_segments() {
-    let session = BuildSession::test();
     let mut component = Component::mock();
-
     let overarching = component.add("overarching", EntityKind::module());
     let noisy = component.add_below(
         "&/.~##",
@@ -786,10 +780,12 @@ fn path_identifier_symbol_symbol_identifier_segments() {
         zickzack.local_declaration_index(&component).unwrap(),
     );
 
+    let mut context = Context::mock();
+    let session = Session::new(component, &mut context);
+
     assert_format(
         "topmost.overarching.&/.~## . ^^^ .sink",
         &sink.into_item(),
-        &component,
         &session,
     );
 }

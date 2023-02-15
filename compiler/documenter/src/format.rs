@@ -3,43 +3,36 @@ use super::{
     node::{Attributable, Element},
 };
 use hir::DeclarationIndex;
-use hir_format::{ComponentExt, Display};
+use hir_format::{ComponentExt, Display, SessionExt};
 use joinery::JoinableIterator;
-use session::{BuildSession, Component, DeclarationIndexExt, LocalDeclarationIndexExt};
+use session::Session;
 use std::{fmt::Write, iter::once};
 use utilities::displayed;
 
 pub(super) fn format_expression(
     expression: &hir::Expression,
     url_prefix: &str,
-    component: &Component,
-    session: &BuildSession,
+    session: &Session<'_>,
 ) -> String {
-    let mut formatter = Formatter::new(url_prefix, component, session);
+    let mut formatter = Formatter::new(url_prefix, session);
     formatter.format_expression(expression);
     formatter.finish()
 }
 
-pub(super) fn declaration_url_fragment(
-    index: DeclarationIndex,
-    component: &Component,
-    session: &BuildSession,
-) -> String {
-    Formatter::new("./", component, session).declaration_url_fragment(index)
+pub(super) fn declaration_url_fragment(index: DeclarationIndex, session: &Session<'_>) -> String {
+    Formatter::new("./", session).declaration_url_fragment(index)
 }
 
 struct Formatter<'a> {
     url_prefix: &'a str,
-    component: &'a Component,
-    session: &'a BuildSession,
+    session: &'a Session<'a>,
     output: String,
 }
 
 impl<'a> Formatter<'a> {
-    fn new(url_prefix: &'a str, component: &'a Component, session: &'a BuildSession) -> Self {
+    fn new(url_prefix: &'a str, session: &'a Session<'a>) -> Self {
         Self {
             url_prefix,
-            component,
             session,
             output: String::new(),
         }
@@ -188,9 +181,7 @@ impl<'a> Formatter<'a> {
                 write!(
                     self.output,
                     "{}",
-                    displayed(|f| substituted
-                        .substitution
-                        .write((self.component, self.session), f))
+                    displayed(|f| substituted.substitution.write(self.session, f))
                 )
                 .unwrap();
                 self.format_expression(&substituted.expression);
@@ -230,7 +221,7 @@ impl<'a> Formatter<'a> {
     }
 
     fn module_url_fragment(&self, index: DeclarationIndex) -> String {
-        let component = self.component(index);
+        let component = self.session.component_of(index);
 
         format!(
             "{}{}/index.html",
@@ -249,22 +240,26 @@ impl<'a> Formatter<'a> {
     fn declaration_url_fragment(&self, index: DeclarationIndex) -> String {
         use hir::EntityKind::*;
 
-        let binder = self.look_up(index).source.as_str();
+        let binder = self.session.look_up(index).source.as_str();
 
-        match self.look_up(index).kind {
+        match self.session.look_up(index).kind {
             Use { .. } => "#".to_string(), // @Task
             Module { .. } => self.module_url_fragment(index),
             Function { .. } | IntrinsicFunction { .. } | DataType { .. } => {
-                let module_link = self.module_url_fragment(self.parent(index).unwrap());
+                let module_link = self.module_url_fragment(self.session.parent_of(index).unwrap());
                 format!("{module_link}#{}", declaration_id(binder))
             }
             Constructor { .. } => {
-                let data_type = self.parent(index).unwrap();
-                let module_link = self.module_url_fragment(self.parent(data_type).unwrap());
+                let data_type = self.session.parent_of(index).unwrap();
+                let module_link =
+                    self.module_url_fragment(self.session.parent_of(data_type).unwrap());
 
                 format!(
                     "{module_link}#{}",
-                    declaration_id(&format!("{}.{binder}", self.look_up(data_type).source))
+                    declaration_id(&format!(
+                        "{}.{binder}",
+                        self.session.look_up(data_type).source
+                    ))
                 )
             }
             _ => unreachable!(),
@@ -274,43 +269,13 @@ impl<'a> Formatter<'a> {
     fn format_binder(&mut self, binder: &hir::Identifier) {
         if let Some(index) = binder.declaration_index() {
             let declaration_url = self.declaration_url_fragment(index);
-            let path = self.component.index_to_path(index, self.session);
+            let path = self.session.index_to_path(index);
 
             Element::anchor(declaration_url, binder.to_string())
                 .attribute("title", path)
                 .render(&mut self.output);
         } else {
             self.write(&binder.to_string());
-        }
-    }
-
-    // @Task move look_up{_parent} to some utility module (one which offers functions relying on &Component together with &BuildSession)
-    // @Note look_up is copy-pasted from Resolver::_
-
-    fn component(&self, index: DeclarationIndex) -> &Component {
-        if index.is_local(self.component) {
-            self.component
-        } else {
-            &self.session[index.component()]
-        }
-    }
-
-    // @Task dedup with code generator, name resolver, interpreter
-    fn look_up(&self, index: DeclarationIndex) -> &hir::Entity {
-        match index.local(self.component) {
-            Some(index) => &self.component[index],
-            None => &self.session[index],
-        }
-    }
-
-    fn parent(&self, index: DeclarationIndex) -> Option<DeclarationIndex> {
-        match index.local(self.component) {
-            Some(index) => self.component[index]
-                .parent
-                .map(|parent| parent.global(self.component)),
-            None => self.session[index]
-                .parent
-                .map(|parent| DeclarationIndex::new(index.component(), parent)),
         }
     }
 }

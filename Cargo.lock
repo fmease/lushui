@@ -456,6 +456,7 @@ dependencies = [
  "diagnostics",
  "documenter",
  "hir_format",
+ "index_map",
  "lexer",
  "lowered_ast",
  "lowerer",
@@ -1012,6 +1013,7 @@ version = "0.0.0"
 dependencies = [
  "derivation",
  "diagnostics",
+ "index_map",
  "lexer",
  "metadata",
  "session",
@@ -1311,6 +1313,7 @@ version = "0.0.0"
 dependencies = [
  "diagnostics",
  "hir",
+ "index_map",
  "lowerer",
  "package",
  "resolver",

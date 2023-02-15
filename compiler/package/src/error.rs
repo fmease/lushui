@@ -1,5 +1,5 @@
 use diagnostics::{reporter::ErasedReportedError, Diagnostic};
-use session::ComponentType;
+use session::unit::ComponentType;
 use span::Spanned;
 use token::Word;
 

@@ -20,38 +20,31 @@ use diagnostics::{
     Diagnostic,
 };
 use hir::{
-    interfaceable, special::Type, Attributes, DeBruijnIndex, DeclarationIndex, Entity, Identifier,
-    Substitution::Shift, ValueView,
+    interfaceable, special::Type, Attributes, DeBruijnIndex, Identifier, Substitution::Shift,
+    ValueView,
 };
 use hir_format::Display;
 use resolver::ProgramEntryExt;
-use session::{
-    interfaceable::InterfaceableBindingExt, BuildSession, Component, DeclarationIndexExt,
-};
+use session::{interfaceable::InterfaceableBindingExt, Session};
 use std::{default::default, fmt};
 use utilities::debugged;
 
 /// Run the entry point of the given executable component.
-pub fn evaluate_main_function(component: &Component, session: &BuildSession) -> Result<Expression> {
-    Interpreter::new(component, session).evaluate_expression(
-        Interpreter::new(component, session)
-            .component
-            .look_up_program_entry(session)
-            .unwrap()
-            .into_item(),
+pub fn evaluate_main_function(session: &Session<'_>) -> Result<Expression> {
+    Interpreter::new(session).evaluate_expression(
+        session.look_up_program_entry().unwrap().into_item(),
         Context::new(&FunctionScope::Module),
     )
 }
 
 pub(crate) struct Interpreter<'a> {
     // @Task add recursion depth
-    component: &'a Component,
-    session: &'a BuildSession,
+    session: &'a Session<'a>,
 }
 
 impl<'a> Interpreter<'a> {
-    pub(super) fn new(component: &'a Component, session: &'a BuildSession) -> Self {
-        Self { component, session }
+    pub(super) fn new(session: &'a Session<'a>) -> Self {
+        Self { session }
     }
 
     /// Try to evaluate an expression.
@@ -66,7 +59,7 @@ impl<'a> Interpreter<'a> {
 
         // @Bug we currently don't support zero-arity intrinsic functions
         Ok(match expression.clone().bare {
-            Binding(binding) if self.session.special.is(&binding.0, Type::Type) => expression,
+            Binding(binding) if self.session.specials().is(&binding.0, Type::Type) => expression,
             Binding(binding) => {
                 match self.look_up_value(&binding.0) {
                     // @Question is this normalization necessary? I mean, yes, we got a new scope,
@@ -383,7 +376,11 @@ impl<'a> Interpreter<'a> {
         binder: Identifier,
         arguments: Vec<Expression>,
     ) -> Result<Option<Expression>> {
-        match self.look_up(binder.declaration_index().unwrap()).kind {
+        match self
+            .session
+            .look_up(binder.declaration_index().unwrap())
+            .kind
+        {
             hir::EntityKind::IntrinsicFunction { function, .. } => {
                 Ok(if arguments.len() == function.arity() {
                     let mut value_arguments = Vec::new();
@@ -513,19 +510,11 @@ impl<'a> Interpreter<'a> {
         })
     }
 
-    // @Task dedup with documenter, code generator, name resolver
-    fn look_up(&self, index: DeclarationIndex) -> &Entity {
-        match index.local(self.component) {
-            Some(index) => &self.component[index],
-            None => &self.session[index],
-        }
-    }
-
     pub(crate) fn look_up_value(&self, binder: &Identifier) -> ValueView {
         use hir::Index::*;
 
         match binder.index {
-            Declaration(index) => self.look_up(index).value(),
+            Declaration(index) => self.session.look_up(index).value(),
             DeBruijn(_) => ValueView::Neutral,
             DeBruijnParameter => unreachable!(),
         }
@@ -539,7 +528,7 @@ impl<'a> Interpreter<'a> {
         use hir::Index::*;
 
         match binder.index {
-            Declaration(index) => self.look_up(index).type_(),
+            Declaration(index) => self.session.look_up(index).type_(),
             DeBruijn(index) => Some(scope.look_up_type(index)),
             DeBruijnParameter => unreachable!(),
         }
@@ -549,7 +538,7 @@ impl<'a> Interpreter<'a> {
         use hir::Index::*;
 
         match binder.index {
-            Declaration(index) => self.look_up(index).is_intrinsic_function(),
+            Declaration(index) => self.session.look_up(index).is_intrinsic_function(),
             DeBruijn(_) => false,
             DeBruijnParameter => unreachable!(),
         }
@@ -878,7 +867,7 @@ pub(crate) enum BareDefinition {
 
 // only used to report "cyclic" types (currently treated as a bug)
 impl Display for Definition {
-    fn write(&self, context: Self::Context<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn write(&self, session: &Session<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use BareDefinition::*;
 
         match &self.bare {
@@ -890,9 +879,9 @@ impl Display for Definition {
                 let mut compound = f.debug_struct("Value");
                 compound
                     .field("binder", binder)
-                    .field("type", &debugged(|f| type_.write(context, f)));
+                    .field("type", &debugged(|f| type_.write(session, f)));
                 match value {
-                    Some(value) => compound.field("value", &debugged(|f| value.write(context, f))),
+                    Some(value) => compound.field("value", &debugged(|f| value.write(session, f))),
                     None => compound.field("value", &"?(none)"),
                 }
                 .finish()
@@ -900,7 +889,7 @@ impl Display for Definition {
             Data { binder, type_ } => f
                 .debug_struct("Data")
                 .field("binder", binder)
-                .field("type", &debugged(|f| type_.write(context, f)))
+                .field("type", &debugged(|f| type_.write(session, f)))
                 .finish(),
             Constructor {
                 binder,
@@ -909,13 +898,13 @@ impl Display for Definition {
             } => f
                 .debug_struct("Constructor")
                 .field("binder", binder)
-                .field("type", &debugged(|f| type_.write(context, f)))
+                .field("type", &debugged(|f| type_.write(session, f)))
                 .field("data", data)
                 .finish(),
             IntrinsicFunction { binder, type_ } => f
                 .debug_struct("IntrinsicFunction")
                 .field("binder", binder)
-                .field("type", &debugged(|f| type_.write(context, f)))
+                .field("type", &debugged(|f| type_.write(session, f)))
                 .finish(),
         }
     }

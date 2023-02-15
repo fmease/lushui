@@ -7,7 +7,7 @@ use diagnostics::{
 };
 use lexer::word::WordExt;
 use metadata::{convert, Record, RecordWalker, WithTextContentSpanExt};
-use session::{ComponentType, Version};
+use session::{package::Version, unit::ComponentType};
 
 use span::{SourceFileIndex, SourceMap, Spanned, WeaklySpanned};
 use std::{fmt, path::PathBuf, str::FromStr};

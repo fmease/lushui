@@ -6,12 +6,14 @@ use diagnostics::{
     reporter::ErasedReportedError,
     Diagnostic, ErrorCode, Reporter,
 };
+use index_map::IndexMap;
 use lexer::word::WordExt;
 use manifest::{DependencyDeclaration, DependencyProvider, PackageManifest, PackageProfile};
 use metadata::Record;
 use session::{
-    BuildSession, Component, ComponentType, Components, ManifestPath, Package,
-    PossiblyUnresolvedComponent::*, CORE_PACKAGE_NAME,
+    package::{ManifestPath, Package, PossiblyUnresolvedComponent::*, CORE_PACKAGE_NAME},
+    unit::{BuildUnit, ComponentType},
+    Context,
 };
 use span::{SourceMap, Spanned, WeaklySpanned};
 use std::{
@@ -47,7 +49,7 @@ pub fn resolve_package(
     filter: ComponentFilter,
     map: &Arc<RwLock<SourceMap>>,
     reporter: Reporter,
-) -> Result<(Components, BuildSession)> {
+) -> Result<(IndexMap<ComponentIndex, BuildUnit>, Context)> {
     let mut queue = BuildQueue::new(map, reporter);
     queue.resolve_package(path, filter)?;
     Ok(queue.finalize())
@@ -61,7 +63,7 @@ pub fn resolve_file(
     no_core: bool,
     map: &Arc<RwLock<SourceMap>>,
     reporter: Reporter,
-) -> Result<(Components, BuildSession)> {
+) -> Result<(IndexMap<ComponentIndex, BuildUnit>, Context)> {
     let mut queue = BuildQueue::new(map, reporter);
     queue.resolve_file(path, content, type_, no_core)?;
     Ok(queue.finalize())
@@ -88,7 +90,7 @@ impl PackageExt for Package {
 
 struct BuildQueue {
     /// The components which have not been built yet.
-    components: Components,
+    components: IndexMap<ComponentIndex, BuildUnit>,
     packages: HashMap<ManifestPath, Package>,
     /// The mapping from component to corresponding package.
     component_packages: HashMap<ComponentIndex, ManifestPath>,
@@ -202,19 +204,18 @@ impl BuildQueue {
                     }
 
                     let component = self.components.insert_with(|index| {
-                        Component::new(
-                            name.bare.clone(),
+                        BuildUnit {
+                            name: name.bare.clone(),
                             index,
                             // @Beacon @Temporary new_unchecked @Bug its use is incorrect! @Task canonicalize (I guess?)
-                            component.bare.path.as_ref().map(|relative_path| {
+                            path: component.bare.path.as_ref().map(|relative_path| {
                                 CanonicalPathBuf::new_unchecked(
                                     manifest_path.folder().join(relative_path),
                                 )
                             }),
-                            None,
-                            type_.bare,
+                            type_: type_.bare,
                             dependencies,
-                        )
+                        }
                     });
 
                     self.register_package_component(manifest_path, name.bare, component);
@@ -264,7 +265,7 @@ impl BuildQueue {
     fn resolve_file(
         &mut self,
         file_path: &Path,
-        content: Option<Arc<String>>,
+        _content: Option<Arc<String>>,
         type_: ComponentType,
         no_core: bool,
     ) -> Result {
@@ -285,7 +286,7 @@ impl BuildQueue {
 
         if !no_core {
             let core_manifest_path = ManifestPath::core();
-            let core_package_name = session::core_package_name();
+            let core_package_name = session::package::core_package_name();
             let library = self
                 .resolve_dependency_by_manifest(
                     Ok(core_manifest_path),
@@ -309,14 +310,14 @@ impl BuildQueue {
         }
 
         self.components.insert_with(|index| {
-            Component::new(
-                name.clone(),
+            BuildUnit {
+                name: name.clone(),
                 index,
-                Spanned::bare(file_path),
-                content,
+                // @Task don't use bare
+                path: Spanned::bare(file_path),
                 type_,
                 dependencies,
-            )
+            }
         });
 
         Ok(())
@@ -404,11 +405,15 @@ impl BuildQueue {
                 let package = &self[dependent_path];
 
                 return match package.components.get(component_endonym.bare) {
-                    Some(&Resolved(component)) if self[component].is_library() => Ok(component),
+                    Some(&Resolved(component))
+                        if self[component].type_ == ComponentType::Library =>
+                    {
+                        Ok(component)
+                    }
                     // @Task add a UI test for this
                     Some(&Resolved(component)) => Err(error::non_library_dependency(
                         component_endonym,
-                        self[component].type_(),
+                        self[component].type_,
                         &package.name,
                     )
                     .report(&self.reporter)
@@ -437,12 +442,12 @@ impl BuildQueue {
             // if so, consider not throwing a cycle error (here / unconditionally)
             // @Beacon @Task handle component privacy here
             return match package.components.get(component_endonym.bare) {
-                Some(&Resolved(component)) if self[component].is_library() => Ok(component),
+                Some(&Resolved(component)) if self[component].type_ == ComponentType::Library => Ok(component),
                 // @Bug this does not fire when we want to since the it is apparently unresolved at this stage for some reason
                 // @Task test this, is this reachable?
                 Some(&Resolved(component)) => Err(error::non_library_dependency(
                     component_endonym,
-                    self[component].type_(),
+                    self[component].type_,
                     &package.name,
                 )
                 .report(&self.reporter)
@@ -450,7 +455,7 @@ impl BuildQueue {
                 Some(Unresolved) => {
                     // @Temporary
                     // @Note this does not scale to more complex cycles (e.g. a cycle of three components)
-                    // @Task provide more context for transitive dependencies of the target component
+                    // @Task provide more context for transitive dependencies of the root component
                     Err(error::DependencyResolutionError::ErasedFatal(
                         Diagnostic::error()
                             .message(format!(
@@ -506,7 +511,7 @@ impl BuildQueue {
                 // and stores them locally, this probably means the local resources were
                 // tampered with or a bug occurred.
 
-                // @Task provide more context for transitive dependencies of the target component
+                // @Task provide more context for transitive dependencies of the root component
                 // @Question code?
                 // @Task provide more information when provider==distribution
                 // @Question use endonym here instead? or use both?
@@ -579,15 +584,12 @@ impl BuildQueue {
         let dependencies =
             self.resolve_dependencies(name, manifest_path, library.dependencies.as_ref())?;
 
-        let library = self.components.insert_with(|index| {
-            Component::new(
-                name.clone(),
-                index,
-                library_component_path,
-                None,
-                library.type_.bare,
-                dependencies,
-            )
+        let library = self.components.insert_with(|index| BuildUnit {
+            name: name.clone(),
+            index,
+            path: library_component_path,
+            type_: library.type_.bare,
+            dependencies,
         });
 
         self.register_package_component(manifest_path, name.clone(), library);
@@ -680,7 +682,7 @@ impl BuildQueue {
                     .component
                     .as_ref()
                     .map_or(exonym, |name| &name.bare);
-                let path = session::distributed_packages_path().join(component.as_str());
+                let path = session::package::distributed_packages_path().join(component.as_str());
                 Ok(Dependency::ForeignPackage(path))
             }
             DependencyProvider::Package => Ok(Dependency::LocalComponent),
@@ -699,20 +701,20 @@ impl BuildQueue {
         }
     }
 
-    fn finalize(self) -> (Components, BuildSession) {
-        // @Task Support the existence of more than one target component
+    fn finalize(self) -> (IndexMap<ComponentIndex, BuildUnit>, Context) {
+        // @Task Support the existence of more than one root component
         //       dependending on a component filter provided by the user
-        let target = self.components.last().unwrap();
+        let root = self.components.last().unwrap();
 
-        let session = BuildSession::new(
+        let context = Context::new(
             self.packages,
             self.component_packages,
-            target.outline(),
+            root.outline(),
             &self.map,
             self.reporter,
         );
 
-        (self.components, session)
+        (self.components, context)
     }
 
     fn shared_map(&self) -> RwLockReadGuard<'_, SourceMap> {
@@ -762,7 +764,7 @@ fn parse_component_name_from_file_path(path: &Path, reporter: &Reporter) -> Resu
 }
 
 impl Index<ComponentIndex> for BuildQueue {
-    type Output = Component;
+    type Output = BuildUnit;
 
     fn index(&self, index: ComponentIndex) -> &Self::Output {
         &self.components[index]

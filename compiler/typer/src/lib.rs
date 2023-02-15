@@ -14,21 +14,20 @@ use hir::{
     special::{self, Type},
     AttributeName, Declaration, EntityKind, Expression, Identifier,
 };
-use hir_format::{DefaultContext, Display};
+use hir_format::Display;
 use interpreter::{BareDefinition, Definition, FunctionScope, Interpreter};
 use joinery::JoinableIterator;
-use session::{BuildSession, Component, IdentifierExt, LocalDeclarationIndexExt};
+use session::{
+    component::{IdentifierExt, LocalDeclarationIndexExt},
+    Session,
+};
 use std::default::default;
 use utilities::{displayed, pluralize, QuoteExt};
 
 pub mod interpreter;
 
-pub fn check(
-    declaration: &Declaration,
-    component: &mut Component,
-    session: &mut BuildSession,
-) -> Result {
-    let mut typer = Typer::new(component, session);
+pub fn check(declaration: &Declaration, session: &mut Session<'_>) -> Result {
+    let mut typer = Typer::new(session);
 
     typer
         .start_infer_types_in_declaration(declaration, Context::default())
@@ -41,10 +40,9 @@ pub fn check(
 }
 
 /// The state of the typer.
-struct Typer<'a> {
+struct Typer<'sess, 'ctx> {
     // @Task add recursion depth field
-    component: &'a mut Component,
-    session: &'a mut BuildSession,
+    session: &'sess mut Session<'ctx>,
     // @Note this is very coarse-grained: as soon as we cannot resolve EITHER type annotation (for example)
     // OR actual value(s), we bail out and add this here. This might be too conversative (leading to more
     // "circular type" errors or whatever), we can just discriminate by creating sth like
@@ -53,10 +51,9 @@ struct Typer<'a> {
     health: Health,
 }
 
-impl<'a> Typer<'a> {
-    fn new(component: &'a mut Component, session: &'a mut BuildSession) -> Self {
+impl<'sess, 'ctx> Typer<'sess, 'ctx> {
+    fn new(session: &'sess mut Session<'ctx>) -> Self {
         Self {
-            component,
             session,
             out_of_order_bindings: Vec::new(),
             health: Health::Untainted,
@@ -64,7 +61,7 @@ impl<'a> Typer<'a> {
     }
 
     fn interpreter(&self) -> Interpreter<'_> {
-        Interpreter::new(self.component, self.session)
+        Interpreter::new(self.session)
     }
 
     // @Task documentation
@@ -299,9 +296,8 @@ impl<'a> Typer<'a> {
                 type_,
                 value,
             } => {
-                // @Bug may be non-local thus panic
-                let index = binder.local_declaration_index(self.component).unwrap();
-                let entity = &mut self.component[index];
+                let index = binder.local_declaration_index(self.session).unwrap();
+                let entity = self.session.look_up_local_mut(index);
                 // @Question can't we just remove the bodiless check as intrinsic functions
                 // (the only legal bodiless functions) are already handled separately via
                 // IntrinsicFunction?
@@ -313,9 +309,8 @@ impl<'a> Typer<'a> {
                 };
             }
             Data { binder, type_ } => {
-                // @Bug may be non-local thus panic
-                let index = binder.local_declaration_index(self.component).unwrap();
-                let entity = &mut self.component[index];
+                let index = binder.local_declaration_index(self.session).unwrap();
+                let entity = self.session.look_up_local_mut(index);
                 debug_assert!(entity.is_untyped());
 
                 entity.kind = EntityKind::DataType {
@@ -329,34 +324,32 @@ impl<'a> Typer<'a> {
                 type_,
                 owner_data_type: data,
             } => {
-                // @Bug may be non-local thus panic
-                let index = binder.local_declaration_index(self.component).unwrap();
-                let entity = &mut self.component[index];
+                let index = binder.local_declaration_index(self.session).unwrap();
+                let entity = self.session.look_up_local_mut(index);
                 debug_assert!(entity.is_untyped());
 
                 entity.kind = EntityKind::Constructor { type_ };
 
-                // @Bug may be non-local thus panic
-                let data_index = data.local_declaration_index(self.component).unwrap();
+                let data_index = data.local_declaration_index(self.session).unwrap();
 
-                match &mut self.component[data_index].kind {
+                match &mut self.session.look_up_local_mut(data_index).kind {
                     EntityKind::DataType { constructors, .. } => constructors.push(binder),
                     _ => unreachable!(),
                 }
             }
             IntrinsicFunction { binder, type_ } => {
-                // @Bug may be non-local thus panic
-                let index = binder.local_declaration_index(self.component).unwrap();
-                debug_assert!(self.component[index].is_untyped());
+                let index = binder.local_declaration_index(self.session).unwrap();
+                debug_assert!(self.session.look_up_local(index).is_untyped());
 
                 let function = self
                     .session
-                    .special
-                    .get(index.global(self.component))
+                    .specials()
+                    .get(index.global(self.session))
                     .unwrap();
                 let special::Binding::Function(function) = function else { unreachable!() };
 
-                self.component[index].kind = EntityKind::IntrinsicFunction { function, type_ };
+                self.session.look_up_local_mut(index).kind =
+                    EntityKind::IntrinsicFunction { function, type_ };
             }
         }
     }
@@ -420,10 +413,7 @@ expected type ‘{}’
                         "namely {}",
                         self.out_of_order_bindings
                             .iter()
-                            .map(|binding| displayed(
-                                |f| binding.write((self.component, self.session), f)
-                            )
-                            .quote())
+                            .map(|binding| displayed(|f| binding.write(self.session, f)).quote())
                             .join_with(", ")
                     ))
                     .report(self.session.reporter()));
@@ -451,7 +441,7 @@ expected type ‘{}’
 
         Ok(match expression.bare {
             // @Task explanation why we need to special-case Type here!
-            Binding(binding) if self.session.special.is(&binding.0, Type::Type) => {
+            Binding(binding) if self.session.specials().is(&binding.0, Type::Type) => {
                 self.session.require_special(Type::Type, None)?
             }
             Binding(binding) => self
@@ -889,15 +879,12 @@ but got type ‘{}’",
         }
     }
 
-    fn display<'f>(
-        &'f self,
-        value: &'f impl Display<Context<'f> = DefaultContext<'f>>,
-    ) -> impl std::fmt::Display + 'f {
-        displayed(|f| value.write((self.component, self.session), f))
+    fn display<'f>(&'f self, value: &'f impl Display) -> impl std::fmt::Display + 'f {
+        displayed(|f| value.write(self.session, f))
     }
 }
 
-impl Handler for &mut Typer<'_> {
+impl Handler for &mut Typer<'_, '_> {
     fn handle<T: diagnostics::error::PossiblyErroneous>(self, diagnostic: Diagnostic) -> T {
         let error = diagnostic.report(self.session.reporter());
         self.health.taint(error);

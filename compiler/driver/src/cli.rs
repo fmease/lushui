@@ -8,7 +8,7 @@ use derivation::{Elements, FromStr, Str};
 use diagnostics::error::Result;
 use lexer::word::WordExt;
 use package::ComponentFilter;
-use session::ComponentType;
+use session::unit::ComponentType;
 use std::{cmp::max, default::default, ffi::OsStr, path::PathBuf};
 use token::Word;
 

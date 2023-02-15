@@ -11,10 +11,15 @@ use cli::{Backend, BuildMode, ColorMode, Command, PassRestriction};
 use colored::Colorize;
 use diagnostics::{error::Result, reporter::ErasedReportedError, Diagnostic, ErrorCode, Reporter};
 use hir_format::Display as _;
+use index_map::IndexMap;
 use lowered_ast::Display as _;
 use package::{find_package, resolve_file, resolve_package};
 use resolver::ProgramEntryExt;
-use session::{BuildSession, Component, ComponentType, Components, ManifestPath};
+use session::{
+    package::ManifestPath,
+    unit::{BuildUnit, ComponentType},
+    Context, Session,
+};
 use span::SourceMap;
 use std::{
     borrow::Cow,
@@ -25,7 +30,7 @@ use std::{
         Arc, RwLock,
     },
 };
-use utilities::{displayed, FormatError};
+use utilities::{displayed, ComponentIndex, FormatError};
 
 mod cli;
 mod create;
@@ -79,7 +84,7 @@ fn execute_command(
 
     match command {
         BuildPackage { mode, options } => {
-            let (components, session) = match &options.path {
+            let (components, mut context) = match &options.path {
                 Some(path) => {
                     // intentionally not `!path.is_dir()` to exclude broken symlinks
                     if path.is_file() {
@@ -126,7 +131,13 @@ fn execute_command(
                 }
             };
 
-            build_components(components, &mode, &options.general, global_options, session)
+            build_units(
+                components,
+                &mode,
+                &options.general,
+                global_options,
+                &mut context,
+            )
         }
         BuildFile { mode, options } => {
             // intentionally not `!path.is_file()` to exclude broken symlinks
@@ -145,7 +156,7 @@ fn execute_command(
                     .report(&reporter));
             }
 
-            let (components, session) = resolve_file(
+            let (components, mut context) = resolve_file(
                 &options.path,
                 None,
                 options.component_type.unwrap_or(ComponentType::Executable),
@@ -154,7 +165,13 @@ fn execute_command(
                 reporter,
             )?;
 
-            build_components(components, &mode, &options.general, global_options, session)
+            build_units(
+                components,
+                &mode,
+                &options.general,
+                global_options,
+                &mut context,
+            )
         }
         #[cfg(feature = "lsp")]
         Serve => {
@@ -180,62 +197,62 @@ fn execute_command(
     }
 }
 
-fn build_components(
-    components: Components,
+fn build_units(
+    units: IndexMap<ComponentIndex, BuildUnit>,
     mode: &cli::BuildMode,
     options: &cli::BuildOptions,
     global_options: &cli::GlobalOptions,
-    mut session: BuildSession,
+    context: &mut Context,
 ) -> Result {
-    for mut component in components.into_values() {
-        build_component(&mut component, mode, options, global_options, &mut session)?;
-        session.add(component);
+    for unit in units.into_values() {
+        context.at(unit, |unit, session| {
+            build_unit(unit, mode, options, global_options, session)
+        })?;
     }
 
     if let BuildMode::Document { options } = mode && options.open {
         // @Task smh open in background and immediately disown the child process afterwards
-        if let Err(error) = open::that(documenter::index_page(&session)) {
+        if let Err(error) = open::that(documenter::index_page(context)) {
             return Err(Diagnostic::error()
                 .message("could not open the generated documentation")
                 .note(error.format())
-                .report(session.reporter()));
+                .report(context.reporter()));
         }
     }
 
     Ok(())
 }
 
-fn build_component(
-    component: &mut Component,
+fn build_unit(
+    unit: BuildUnit,
     mode: &cli::BuildMode,
     options: &cli::BuildOptions,
     global_options: &cli::GlobalOptions,
-    session: &mut BuildSession,
+    session: &mut Session<'_>,
 ) -> Result {
     // @Task abstract over this as print_status_report and report w/ label="Running" for
-    // target component if mode==Run (in addition to initial "Building")
+    // root component if mode==Run (in addition to initial "Building")
     if !global_options.quiet {
         let label = match mode {
             BuildMode::Check => "Checking",
             BuildMode::Compile { .. } | BuildMode::Run { .. } => "Building",
-            // @Bug this should not be printed for non-target components and --no-deps
+            // @Bug this should not be printed for non-root components and --no-deps
             BuildMode::Document { .. } => "Documenting",
         };
         let label = label.green().bold();
         println!(
             "   {label} {} ({})",
-            if session.in_target_package(component.index()) {
-                format!("{}", component.name())
+            if session.in_root_package(unit.index) {
+                format!("{}", unit.name)
             } else {
-                component.name().to_string()
+                unit.name.to_string()
             },
-            component.path().bare.display()
+            unit.path.bare.display()
         );
     }
 
     macro restriction_point($restriction:ident) {
-        if component.is_target(&session)
-            && options.pass_restriction == Some(PassRestriction::$restriction)
+        if unit.is_root(&session) && options.pass_restriction == Some(PassRestriction::$restriction)
         {
             return Ok(());
         }
@@ -255,24 +272,28 @@ fn build_component(
         eprintln!("Execution times by pass:");
     }
 
-    let path = component.path();
+    let path = unit.path.as_deref();
 
     // @Task don't unconditionally halt execution on failure here but continue (with tainted health)
     // and mark the component as "erroneous" (not yet implemented) so we can print more errors.
     // "Erroneous" components should not lead to further errors in the name resolver etc.
     let file = session
         .map()
-        .load(path.bare, Some(component.index()))
+        .load(path.bare, Some(unit.index))
         .map_err(|error| {
             use std::fmt::Write;
 
             let mut message = format!(
                 "could not load the {} component ‘{}’",
-                component.type_(),
-                component.name(),
+                unit.type_, unit.name,
             );
-            if let Some(package) = session.package_of(component.index()) {
-                write!(message, " in package ‘{}’", session[package].name).unwrap();
+            if let Some(package) = session.package() {
+                write!(
+                    message,
+                    " in package ‘{}’",
+                    session.look_up_package(package).name
+                )
+                .unwrap();
             }
 
             // @Task improve message, add label
@@ -290,7 +311,7 @@ fn build_component(
         let tokens = syntax::lex(file, session);
     };
 
-    if component.is_target(session) && options.emit_tokens {
+    if unit.is_root(session) && options.emit_tokens {
         for token in &tokens.tokens {
             eprintln!("{token:?}");
         }
@@ -304,15 +325,15 @@ fn build_component(
         let component_root = syntax::parse_root_module_file(tokens, file, session)?;
     }
 
-    if component.is_target(session) && options.emit_ast {
+    if unit.is_root(session) && options.emit_ast {
         eprintln!("{}", displayed(|f| component_root.write(f)));
     }
 
     restriction_point! { Parser }
 
-    // @Task get rid of this! move into session / component of target package!
+    // @Task get rid of this! move into session / component of root package!
     let lowering_options = lowerer::Options {
-        internal_features_enabled: options.internals || component.is_core_library(session),
+        internal_features_enabled: options.internals || unit.is_core_library(session),
         keep_documentation_comments: matches!(mode, BuildMode::Document { .. }),
     };
 
@@ -320,10 +341,10 @@ fn build_component(
         //! Lowering
 
         let component_root =
-            lowerer::lower_file(component_root, lowering_options, component, session)?;
+            lowerer::lower_file(component_root, lowering_options, session)?;
     }
 
-    if component.is_target(session) && options.emit_lowered_ast {
+    if unit.is_root(session) && options.emit_lowered_ast {
         eprintln!("{}", displayed(|f| component_root.write(f)));
     }
 
@@ -333,17 +354,14 @@ fn build_component(
         //! Name Resolution
 
         let component_root =
-            resolver::resolve_declarations(component_root, component, session)?;
+            resolver::resolve_declarations(component_root, session)?;
     }
 
-    if component.is_target(session) && options.emit_hir {
-        eprintln!(
-            "{}",
-            displayed(|f| component_root.write((component, session), f))
-        );
+    if unit.is_root(session) && options.emit_hir {
+        eprintln!("{}", displayed(|f| component_root.write(session, f)));
     }
-    if component.is_target(session) && options.emit_untyped_bindings {
-        eprintln!("{}", displayed(|f| component.write(session, f)));
+    if unit.is_root(session) && options.emit_untyped_bindings {
+        eprintln!("{}", displayed(|f| session.component().write(session, f)));
     }
 
     restriction_point! { Resolver }
@@ -351,22 +369,22 @@ fn build_component(
     time! {
         //! Type Checking and Inference
 
-        typer::check(&component_root, component, session)?;
+        typer::check(&component_root, session)?;
     }
 
-    if component.is_target(session) && options.emit_bindings {
-        eprintln!("{}", displayed(|f| component.write(session, f)));
+    if unit.is_root(session) && options.emit_bindings {
+        eprintln!("{}", displayed(|f| session.component().write(session, f)));
     }
 
     // @Task move out of main.rs
     // @Update @Task move into respective backends: LLVM and interpreter!
-    if component.is_executable() && component.look_up_program_entry(session).is_none() {
+    if unit.type_ == ComponentType::Executable && session.look_up_program_entry().is_none() {
         return Err(Diagnostic::error()
             .code(ErrorCode::E050)
             .message(format!(
                 "the component ‘{}’ does not contain a ‘{}’ function in its root module",
-                component.name(),
-                Component::PROGRAM_ENTRY_IDENTIFIER,
+                unit.name,
+                Session::PROGRAM_ENTRY_IDENTIFIER,
             ))
             .primary_span(&session.shared_map()[file])
             .report(session.reporter()));
@@ -374,16 +392,16 @@ fn build_component(
 
     match &mode {
         BuildMode::Run { options } => {
-            if component.is_target(session) {
-                if !component.is_executable() {
+            if unit.is_root(session) {
+                if unit.type_ != ComponentType::Executable {
                     // @Question code?
                     // @Note I don't like this code here at all, it's hacky and not principled!
                     // @Question why should the message differ??
                     return Err(Diagnostic::error()
-                        .message(match session.package_of(component.index()) {
+                        .message(match session.package() {
                             Some(package) => format!(
                                 "the package ‘{}’ does not contain any executable to run",
-                                session[package].name,
+                                session.look_up_package(package).name,
                             ),
                             None => "the component is not an executable".into(),
                         })
@@ -392,9 +410,8 @@ fn build_component(
 
                 match options.backend {
                     Backend::Hiri => {
-                        let result =
-                            typer::interpreter::evaluate_main_function(component, session)?;
-                        println!("{}", displayed(|f| result.write((component, session), f)));
+                        let result = typer::interpreter::evaluate_main_function(session)?;
+                        println!("{}", displayed(|f| result.write(session, f)));
                     }
                     #[cfg(feature = "cranelift")]
                     Backend::Cranelift => {
@@ -423,31 +440,43 @@ fn build_component(
                     .report(session.reporter()));
             }
             #[cfg(feature = "cranelift")]
-            Backend::Cranelift => codegen_cranelift::compile_and_link(
-                codegen_cranelift::Options {
-                    emit_clif: options.emit_clif,
-                    verify_clif: options.verify_clif,
-                },
-                &component_root,
-                component,
-                session,
-            )?,
+            Backend::Cranelift => {
+                if !unit.is_root(session) {
+                    return Err(Diagnostic::error()
+                        .message("extern components cannot be built yet with the Cranelift backend")
+                        .report(session.reporter()));
+                }
+
+                codegen_cranelift::compile_and_link(
+                    codegen_cranelift::Options {
+                        emit_clif: options.emit_clif,
+                        verify_clif: options.verify_clif,
+                    },
+                    &component_root,
+                    session,
+                )?;
+            }
             #[cfg(feature = "llvm")]
             Backend::Llvm => {
+                if !unit.is_root(session) {
+                    return Err(Diagnostic::error()
+                        .message("extern components cannot be built yet with the LLVM backend")
+                        .report(session.reporter()));
+                }
+
                 codegen_llvm::compile_and_link(
                     codegen_llvm::Options {
                         emit_llvm_ir: options.emit_llvm_ir,
                         verify_llvm_ir: options.verify_llvm_ir,
                     },
                     &component_root,
-                    component,
                     session,
                 )?;
             }
         },
         BuildMode::Document { options } => {
             // @Bug leads to broken links, @Task the documenter has to handle this itself
-            if options.no_dependencies && !component.is_target(session) {
+            if options.no_dependencies && !unit.is_root(session) {
                 return Ok(());
             }
 
@@ -457,7 +486,6 @@ fn build_component(
                 documenter::document_component(
                     &component_root,
                     options.general,
-                    component,
                     session,
                 )?;
             }

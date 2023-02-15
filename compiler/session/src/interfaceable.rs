@@ -1,22 +1,22 @@
-use crate::BuildSession;
+use crate::Session;
 use ast::Explicitness::Explicit;
 use diagnostics::error::Result;
 use hir::{interfaceable, special, Expression};
 use utilities::condition;
 
 pub trait InterfaceableBindingExt: Sized {
-    fn from_expression(expression: &Expression, session: &BuildSession) -> Option<Self>;
-    fn into_expression(self, session: &BuildSession) -> Result<Expression>;
+    fn from_expression(expression: &Expression, session: &Session<'_>) -> Option<Self>;
+    fn into_expression(self, session: &Session<'_>) -> Result<Expression>;
 }
 
 impl InterfaceableBindingExt for interfaceable::Type {
     // @Task improve this code with the new enum logic
-    fn from_expression(expression: &Expression, session: &BuildSession) -> Option<Self> {
+    fn from_expression(expression: &Expression, session: &Session<'_>) -> Option<Self> {
         use special::NumericType::*;
         use special::Type::*;
 
         macro is_special($binding:ident, $name:ident) {
-            session.special.is(&$binding.0, $name)
+            session.specials().is(&$binding.0, $name)
         }
 
         Some(match &expression.bare {
@@ -46,7 +46,7 @@ impl InterfaceableBindingExt for interfaceable::Type {
         })
     }
 
-    fn into_expression(self, session: &BuildSession) -> Result<Expression> {
+    fn into_expression(self, session: &Session<'_>) -> Result<Expression> {
         use special::{NumericType::*, Type::*};
 
         macro special($name:ident) {
@@ -72,12 +72,12 @@ impl InterfaceableBindingExt for interfaceable::Type {
 }
 
 impl InterfaceableBindingExt for interfaceable::Value {
-    fn from_expression(expression: &Expression, session: &BuildSession) -> Option<Self> {
+    fn from_expression(expression: &Expression, session: &Session<'_>) -> Option<Self> {
         use hir::BareExpression::*;
         use special::Constructor::*;
 
         macro is_special($binding:ident, $name:ident) {
-            session.special.is(&$binding.0, $name)
+            session.specials().is(&$binding.0, $name)
         }
 
         Some(match &expression.bare {
@@ -132,7 +132,7 @@ impl InterfaceableBindingExt for interfaceable::Value {
         })
     }
 
-    fn into_expression(self, session: &BuildSession) -> Result<Expression> {
+    fn into_expression(self, session: &Session<'_>) -> Result<Expression> {
         use hir::Number::*;
         use special::{Constructor::*, Type::*};
 

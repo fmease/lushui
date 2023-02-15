@@ -35,7 +35,7 @@ use lowered_ast::{
     attribute::{Predicate, Public, Query, Special, Target},
     AttributeName, Attributes, BareAttribute,
 };
-use session::{BuildSession, Component};
+use session::Session;
 use span::{Span, Spanned, Spanning};
 use std::{default::default, fmt, iter::once};
 use utilities::{
@@ -46,10 +46,9 @@ use utilities::{
 pub fn lower_file(
     declaration: ast::Declaration,
     options: Options,
-    component: &Component,
-    session: &BuildSession,
+    session: &Session<'_>,
 ) -> Result<lowered_ast::Declaration> {
-    let mut lowerer = Lowerer::new(options, component, session);
+    let mut lowerer = Lowerer::new(options, session);
     let mut declaration = lowerer.lower_declaration(declaration);
     let root = declaration.pop().unwrap();
     Outcome::new(root, lowerer.health).into()
@@ -58,16 +57,14 @@ pub fn lower_file(
 /// The state of the lowering pass.
 struct Lowerer<'a> {
     options: Options,
-    component: &'a Component,
-    session: &'a BuildSession,
+    session: &'a Session<'a>,
     health: Health,
 }
 
 impl<'a> Lowerer<'a> {
-    fn new(options: Options, component: &'a Component, session: &'a BuildSession) -> Self {
+    fn new(options: Options, session: &'a Session<'a>) -> Self {
         Self {
             options,
-            component,
             session,
             health: Health::Untainted,
         }
@@ -311,7 +308,10 @@ impl<'a> Lowerer<'a> {
                 path.set_extension(FILE_EXTENSION);
 
                 // @Task create & use a different API that doesn't "recanonicalize" the path
-                let file = self.session.map().load(&path, Some(self.component.index()));
+                let file = self
+                    .session
+                    .map()
+                    .load(&path, Some(self.session.component().index()));
                 let file = match file {
                     Ok(file) => file,
                     Err(error) => {
@@ -1103,16 +1103,11 @@ the body containing a set of constructors
 }
 
 trait AttributeExt: Sized {
-    fn parse(attribute: &ast::Attribute, options: &Options, session: &BuildSession)
-        -> Result<Self>;
+    fn parse(attribute: &ast::Attribute, options: &Options, session: &Session<'_>) -> Result<Self>;
 }
 
 impl AttributeExt for lowered_ast::Attribute {
-    fn parse(
-        attribute: &ast::Attribute,
-        options: &Options,
-        session: &BuildSession,
-    ) -> Result<Self> {
+    fn parse(attribute: &ast::Attribute, options: &Options, session: &Session<'_>) -> Result<Self> {
         Ok(Self::new(
             attribute.span,
             BareAttribute::parse(attribute, options, session)?,
@@ -1121,8 +1116,7 @@ impl AttributeExt for lowered_ast::Attribute {
 }
 
 trait BareAttributeExt: Sized {
-    fn parse(attribute: &ast::Attribute, options: &Options, session: &BuildSession)
-        -> Result<Self>;
+    fn parse(attribute: &ast::Attribute, options: &Options, session: &Session<'_>) -> Result<Self>;
 }
 
 impl BareAttributeExt for lowered_ast::BareAttribute {
@@ -1131,7 +1125,7 @@ impl BareAttributeExt for lowered_ast::BareAttribute {
         // @Task take by value and create parsing helpers on ast::Attribute and ast::Attributes
         attribute: &ast::Attribute,
         options: &Options,
-        session: &BuildSession,
+        session: &Session<'_>,
     ) -> Result<Self> {
         let ast::BareAttribute::Regular { binder, arguments } = &attribute.bare else {
             return Ok(Self::Doc {

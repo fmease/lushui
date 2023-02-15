@@ -2,7 +2,7 @@ use super::{format::declaration_url_fragment, node::Node};
 use crossbeam::thread::{Scope, ScopedJoinHandle};
 use diagnostics::error::Result;
 use resolver::resolve_path;
-use session::{BuildSession, Component};
+use session::Session;
 use span::FileName;
 use std::{
     cell::RefCell,
@@ -29,12 +29,11 @@ impl<'scope> TextProcessor<'scope> {
     pub(super) fn new<'a>(
         folder: &Path,
         options: &super::Options,
-        component: &'a Component,
-        session: &'a BuildSession,
+        session: &'a Session<'_>,
         scope: &'scope Scope<'a>,
     ) -> Result<Self, Error> {
         if options.asciidoc {
-            let doctor = Asciidoctor::new(folder, component, session, scope)?;
+            let doctor = Asciidoctor::new(folder, session, scope)?;
             Ok(Self::AsciiDoctor(Box::new(RefCell::new(doctor))))
         } else {
             Ok(Self::None)
@@ -84,8 +83,7 @@ impl<'scope> Asciidoctor<'scope> {
     /// Create an Asciidoctor text processor with the path to the documentation folder.
     pub(super) fn new<'a>(
         path: &Path,
-        component: &'a Component,
-        session: &'a BuildSession,
+        session: &'a Session<'_>,
         scope: &'scope Scope<'a>,
     ) -> Result<Self, Error> {
         let input_path = path.join(Self::INPUT_FILE_NAME);
@@ -133,7 +131,6 @@ impl<'scope> Asciidoctor<'scope> {
                     &response_log_path,
                     &response_context,
                     &should_watch,
-                    component,
                     session,
                 );
             }
@@ -162,8 +159,7 @@ impl<'scope> Asciidoctor<'scope> {
         response_log_path: &Path,
         response_context: &Mutex<ResponseContext>,
         should_watch: &AtomicBool,
-        component: &Component,
-        session: &BuildSession,
+        session: &Session<'_>,
     ) {
         let mut handled_requests: HashSet<String> = default();
         let mut last_log_size = 0;
@@ -199,11 +195,10 @@ impl<'scope> Asciidoctor<'scope> {
                     for (identifier, message) in unhandled_requests {
                         // @Beacon @Task don't unwrap the Result of response() @Update don't match explicitply
                         // but send `ok\x1F{result}` or `err\x1F{message}` "over the wire"
-                        let response = match Request::parse(message).unwrap().response(
-                            &response_context.url_prefix,
-                            component,
-                            session,
-                        ) {
+                        let response = match Request::parse(message)
+                            .unwrap()
+                            .response(&response_context.url_prefix, session)
+                        {
                             Ok(response) => response,
                             // @Temporary
                             Err(_) => "err".into(),
@@ -273,22 +268,17 @@ impl<'a> Request<'a> {
         })
     }
 
-    pub fn response(
-        self,
-        url_prefix: &str,
-        component: &Component,
-        session: &BuildSession,
-    ) -> Result<String> {
+    pub fn response(self, url_prefix: &str, session: &Session<'_>) -> Result<String> {
         Ok(match self {
             Request::DeclarationUrl(path) => {
                 let file = session.map().add(
                     FileName::Anonymous,
                     Arc::new(path.to_owned()),
-                    Some(component.index()),
+                    Some(session.component().index()),
                 );
                 let path = parse_path(file, session)?;
-                let index = resolve_path(&path, component.root(), component, session)?;
-                let url_suffix = declaration_url_fragment(index, component, session);
+                let index = resolve_path(&path, session.component().root(), session)?;
+                let url_suffix = declaration_url_fragment(index, session);
                 format!("{url_prefix}{url_suffix}")
             }
         })

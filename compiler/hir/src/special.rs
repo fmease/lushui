@@ -581,9 +581,9 @@ impl Bindings {
     }
 }
 
-pub enum DefinitionStyle<'a> {
+pub enum DefinitionStyle<'a, T = &'a str> {
     /// The name of the special binding is implied by the binder & the namespace of the declaration (e.g. in `@known`).
-    Implicit { namespace: Option<&'a str> },
+    Implicit { namespace: Option<T> },
     /// The name of the special binding is given explicitly (e.g. in `@(intrinsic qualified.name)`).
     Explicit { name: &'a ast::Path },
 }

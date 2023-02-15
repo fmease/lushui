@@ -1,7 +1,7 @@
 //! Package creation.
 
 use diagnostics::{error::Result, Diagnostic, Reporter};
-use session::ManifestPath;
+use session::package::ManifestPath;
 use std::{fs, io, path::PathBuf};
 use token::Word;
 use utilities::{FormatError, FILE_EXTENSION};

@@ -1,5 +1,6 @@
 //! An LSP language server for the Lushui programming language.
 #![feature(default_free_fn, let_chains)]
+#![allow(unused_crate_dependencies, dead_code, unused_imports, unused_variables)]
 
 use self::diagnostics::DiagnosticExt;
 use self::span::{FromPositionExt, ToLocationExt};
@@ -7,9 +8,15 @@ use ::diagnostics::{
     error::Result, reporter::Buffer, Diagnostic, ErrorCode, Reporter, UntaggedDiagnostic,
 };
 use ::span::{ByteIndex, SourceMap, Spanning};
+use index_map::IndexMap;
 use package::resolve_file;
 use resolver::ProgramEntryExt;
-use session::{BuildSession, Component, ComponentType, Components};
+use session::Context;
+use session::{
+    component::Component,
+    unit::{BuildUnit, ComponentType},
+    Session,
+};
 use std::{
     collections::BTreeSet,
     default::default,
@@ -205,7 +212,7 @@ impl tower_lsp::LanguageServer for Server {
             self.reset_source_map();
 
             // @Task keep going even with errors!
-            let (session, component_roots) =
+            let (context, component_roots) =
                 check_file(path, content, &self.map, Reporter::silent()).ok()?;
 
             let position = parameters.text_document_position_params.position;
@@ -226,12 +233,13 @@ impl tower_lsp::LanguageServer for Server {
             let binding = binding?;
 
             let hir::Index::Declaration(index) = binding.index else {
-                // @Task handle local bindings
+                // @Task handle parameter & pattern bindings
                 return None;
             };
 
             Some(GotoDefinitionResponse::Scalar(
-                session[index]
+                context
+                    .look_up(index)
                     .source
                     .span()
                     .to_location(&self.map.read().unwrap()),
@@ -247,8 +255,8 @@ fn check_file(
     content: Arc<String>,
     map: &Arc<RwLock<SourceMap>>,
     reporter: Reporter,
-) -> Result<(BuildSession, HashMap<ComponentIndex, hir::Declaration>)> {
-    let (components, mut session) = resolve_file(
+) -> Result<(Context, HashMap<ComponentIndex, hir::Declaration>)> {
+    let (units, mut context) = resolve_file(
         path,
         Some(content),
         ComponentType::Executable,
@@ -257,55 +265,49 @@ fn check_file(
         reporter,
     )?;
 
-    let component_roots = build_components(components, &mut session)?;
-
-    Ok((session, component_roots))
-}
-
-// @Task keep going even with errors!
-fn build_components(
-    components: Components,
-    session: &mut BuildSession,
-) -> Result<HashMap<ComponentIndex, hir::Declaration>> {
     let mut component_roots = HashMap::default();
 
-    for mut component in components.into_values() {
-        component_roots.insert(component.index(), build_component(&mut component, session)?);
-        session.add(component);
+    for unit in units.into_values() {
+        let index = unit.index;
+        let root = context.at(unit, build_unit)?;
+        component_roots.insert(index, root);
     }
 
-    Ok(component_roots)
+    Ok((context, component_roots))
 }
 
 // @Task keep going even with errors!
-fn build_component(
-    component: &mut Component,
-    session: &mut BuildSession,
-) -> Result<hir::Declaration> {
-    let content = component.content.take();
-    let path = component.path();
+fn build_unit(unit: BuildUnit, session: &mut Session<'_>) -> Result<hir::Declaration> {
+    // let content = component.content.take();
+    // @Beacon @Beacon @Beacon @Temporary
+    let content = Some(std::sync::Arc::new(String::new()));
+    let path = unit.path.as_deref();
 
     // @Beacon @Task this shouldm't need to be that ugly!!!
 
     let file = match content {
         Some(content) => session
             .map()
-            .add(path.bare.to_owned(), content, Some(component.index())),
+            .add(path.bare.to_owned(), content, Some(unit.index)),
         None => {
             session
                 .map()
-                .load(path.bare, Some(component.index()))
+                .load(path.bare, Some(unit.index))
                 .map_err(|error| {
                     use std::fmt::Write;
 
                     let mut message = format!(
                         "could not load the {} component ‘{}’",
-                        component.type_(),
-                        component.name()
+                        unit.type_, unit.name
                     );
 
-                    if let Some(package) = session.package_of(component.index()) {
-                        write!(message, " in package ‘{}’", session[package].name).unwrap();
+                    if let Some(package) = session.package() {
+                        write!(
+                            message,
+                            " in package ‘{}’",
+                            session.look_up_package(package).name
+                        )
+                        .unwrap();
                     }
 
                     // @Bug this is duplication with main.rs!!
@@ -325,25 +327,24 @@ fn build_component(
     let component_root = lowerer::lower_file(
         component_root,
         lowerer::Options {
-            internal_features_enabled: component.is_core_library(session),
+            internal_features_enabled: unit.is_core_library(session),
             keep_documentation_comments: false,
         },
-        component,
         session,
     )?;
 
-    let component_root = resolver::resolve_declarations(component_root, component, session)?;
+    let component_root = resolver::resolve_declarations(component_root, session)?;
 
-    typer::check(&component_root, component, session)?;
+    typer::check(&component_root, session)?;
 
     // @Bug this is duplication with main.rs!!
-    if component.is_executable() && component.look_up_program_entry(session).is_none() {
+    if unit.type_ == ComponentType::Executable && session.look_up_program_entry().is_none() {
         return Err(Diagnostic::error()
             .code(ErrorCode::E050)
             .message(format!(
                 "the component ‘{}’ does not contain a ‘{}’ function in its root module",
-                component.name(),
-                Component::PROGRAM_ENTRY_IDENTIFIER,
+                unit.name,
+                Session::PROGRAM_ENTRY_IDENTIFIER,
             ))
             .primary_span(&session.shared_map()[file])
             .report(session.reporter()));
