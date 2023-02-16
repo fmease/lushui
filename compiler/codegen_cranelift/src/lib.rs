@@ -10,7 +10,7 @@ use cranelift::{
 use cranelift_module::{Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule};
 use diagnostics::{error::Result, Diagnostic};
-use session::Session;
+use session::{Session, OUTPUT_FOLDER_NAME};
 use std::{
     path::{Path, PathBuf},
     process::Command,
@@ -92,10 +92,7 @@ fn compile(
     let path = match session.root_package() {
         // @Task ensure that the build folder exists
         Some(package) => {
-            let mut path = session
-                .look_up_package(package)
-                .folder()
-                .join(Session::OUTPUT_FOLDER_NAME);
+            let mut path = session[package].folder().join(OUTPUT_FOLDER_NAME);
             path.push(name);
             path.set_extension("o");
             path
@@ -119,10 +116,7 @@ fn link(path: &Path, session: &Session<'_>) -> Result {
         .arg("-o")
         .arg(match session.root_package() {
             Some(package) => {
-                let mut path = session
-                    .look_up_package(package)
-                    .folder()
-                    .join(Session::OUTPUT_FOLDER_NAME);
+                let mut path = session[package].folder().join(OUTPUT_FOLDER_NAME);
                 path.push(name);
                 path
             }

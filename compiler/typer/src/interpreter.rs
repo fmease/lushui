@@ -376,11 +376,7 @@ impl<'a> Interpreter<'a> {
         binder: Identifier,
         arguments: Vec<Expression>,
     ) -> Result<Option<Expression>> {
-        match self
-            .session
-            .look_up(binder.declaration_index().unwrap())
-            .kind
-        {
+        match self.session[binder.declaration_index().unwrap()].kind {
             hir::EntityKind::IntrinsicFunction { function, .. } => {
                 Ok(if arguments.len() == function.arity() {
                     let mut value_arguments = Vec::new();
@@ -514,7 +510,7 @@ impl<'a> Interpreter<'a> {
         use hir::Index::*;
 
         match binder.index {
-            Declaration(index) => self.session.look_up(index).value(),
+            Declaration(index) => self.session[index].value(),
             DeBruijn(_) => ValueView::Neutral,
             DeBruijnParameter => unreachable!(),
         }
@@ -528,7 +524,7 @@ impl<'a> Interpreter<'a> {
         use hir::Index::*;
 
         match binder.index {
-            Declaration(index) => self.session.look_up(index).type_(),
+            Declaration(index) => self.session[index].type_(),
             DeBruijn(index) => Some(scope.look_up_type(index)),
             DeBruijnParameter => unreachable!(),
         }
@@ -538,7 +534,7 @@ impl<'a> Interpreter<'a> {
         use hir::Index::*;
 
         match binder.index {
-            Declaration(index) => self.session.look_up(index).is_intrinsic_function(),
+            Declaration(index) => self.session[index].is_intrinsic_function(),
             DeBruijn(_) => false,
             DeBruijnParameter => unreachable!(),
         }

@@ -17,7 +17,7 @@ use node::{Attributable, Document, Element, Node, VoidElement};
 use session::{
     component::{DeclarationIndexExt, IdentifierExt},
     package::{ManifestPath, Package},
-    Context, Session,
+    Context, Session, OUTPUT_FOLDER_NAME,
 };
 use std::{
     collections::BTreeSet,
@@ -35,7 +35,7 @@ mod node;
 mod subsections;
 mod text_processor;
 
-const OUTPUT_FOLDER_NAME: &str = "doc";
+const DOC_FOLDER_NAME: &str = "doc";
 const STYLE_SHEET_FILE_NAME: &str = "style.min.css";
 const SCRIPT_FILE_NAME: &str = "script.min.js";
 const SEARCH_INDEX_FILE_NAME: &str = "search-index.min.js";
@@ -121,15 +121,15 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
     fn folder(context: &Context) -> PathBuf {
         match context.root_package() {
             Some(package) => {
-                let package = &context.package(package);
+                let package = &context[package];
                 let mut path = package.folder().to_path_buf();
-                path.push(Session::OUTPUT_FOLDER_NAME);
                 path.push(OUTPUT_FOLDER_NAME);
+                path.push(DOC_FOLDER_NAME);
                 path.push(package.name.as_str());
                 path
             }
             None => {
-                Path::new(context.root_component().name.as_str()).with_extension(OUTPUT_FOLDER_NAME)
+                Path::new(context.root_component().name.as_str()).with_extension(DOC_FOLDER_NAME)
             }
         }
     }
@@ -480,7 +480,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
 
     fn package_page(&self, package: ManifestPath) -> Page {
         let url_prefix = "./";
-        let package = self.session.look_up_package(package);
+        let package = &self.session[package];
         let name = &package.name;
 
         let mut body = Element::new("body").child(ledge(url_prefix, Some(package), None));
@@ -553,9 +553,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
 
         let mut body = Element::new("body").child(ledge(
             &url_prefix,
-            self.session
-                .package()
-                .map(|package| self.session.look_up_package(package)),
+            self.session.package().map(|package| &self.session[package]),
             Some(component_name),
         ));
 

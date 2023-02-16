@@ -240,9 +240,9 @@ impl<'a> Formatter<'a> {
     fn declaration_url_fragment(&self, index: DeclarationIndex) -> String {
         use hir::EntityKind::*;
 
-        let binder = self.session.look_up(index).source.as_str();
+        let binder = self.session[index].source.as_str();
 
-        match self.session.look_up(index).kind {
+        match self.session[index].kind {
             Use { .. } => "#".to_string(), // @Task
             Module { .. } => self.module_url_fragment(index),
             Function { .. } | IntrinsicFunction { .. } | DataType { .. } => {
@@ -256,10 +256,7 @@ impl<'a> Formatter<'a> {
 
                 format!(
                     "{module_link}#{}",
-                    declaration_id(&format!(
-                        "{}.{binder}",
-                        self.session.look_up(data_type).source
-                    ))
+                    declaration_id(&format!("{}.{binder}", self.session[data_type].source))
                 )
             }
             _ => unreachable!(),

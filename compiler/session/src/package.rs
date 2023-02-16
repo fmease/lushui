@@ -5,7 +5,7 @@ use utilities::{
     ComponentIndex, HashMap,
 };
 
-/// A collection of [components](Component) and some metadata.
+/// A collection of [components](crate::Component) and some metadata.
 #[derive(Debug)]
 pub struct Package {
     pub name: Word,

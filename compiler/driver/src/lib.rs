@@ -288,12 +288,7 @@ fn build_unit(
                 unit.type_, unit.name,
             );
             if let Some(package) = session.package() {
-                write!(
-                    message,
-                    " in package ‘{}’",
-                    session.look_up_package(package).name
-                )
-                .unwrap();
+                write!(message, " in package ‘{}’", session[package].name).unwrap();
             }
 
             // @Task improve message, add label
@@ -401,7 +396,7 @@ fn build_unit(
                         .message(match session.package() {
                             Some(package) => format!(
                                 "the package ‘{}’ does not contain any executable to run",
-                                session.look_up_package(package).name,
+                                session[package].name,
                             ),
                             None => "the component is not an executable".into(),
                         })

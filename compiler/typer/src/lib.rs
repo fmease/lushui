@@ -297,7 +297,7 @@ impl<'sess, 'ctx> Typer<'sess, 'ctx> {
                 value,
             } => {
                 let index = binder.local_declaration_index(self.session).unwrap();
-                let entity = self.session.look_up_local_mut(index);
+                let entity = &mut self.session[index];
                 // @Question can't we just remove the bodiless check as intrinsic functions
                 // (the only legal bodiless functions) are already handled separately via
                 // IntrinsicFunction?
@@ -310,7 +310,7 @@ impl<'sess, 'ctx> Typer<'sess, 'ctx> {
             }
             Data { binder, type_ } => {
                 let index = binder.local_declaration_index(self.session).unwrap();
-                let entity = self.session.look_up_local_mut(index);
+                let entity = &mut self.session[index];
                 debug_assert!(entity.is_untyped());
 
                 entity.kind = EntityKind::DataType {
@@ -325,21 +325,21 @@ impl<'sess, 'ctx> Typer<'sess, 'ctx> {
                 owner_data_type: data,
             } => {
                 let index = binder.local_declaration_index(self.session).unwrap();
-                let entity = self.session.look_up_local_mut(index);
+                let entity = &mut self.session[index];
                 debug_assert!(entity.is_untyped());
 
                 entity.kind = EntityKind::Constructor { type_ };
 
                 let data_index = data.local_declaration_index(self.session).unwrap();
 
-                match &mut self.session.look_up_local_mut(data_index).kind {
+                match &mut self.session[data_index].kind {
                     EntityKind::DataType { constructors, .. } => constructors.push(binder),
                     _ => unreachable!(),
                 }
             }
             IntrinsicFunction { binder, type_ } => {
                 let index = binder.local_declaration_index(self.session).unwrap();
-                debug_assert!(self.session.look_up_local(index).is_untyped());
+                debug_assert!(self.session[index].is_untyped());
 
                 let function = self
                     .session
@@ -348,8 +348,7 @@ impl<'sess, 'ctx> Typer<'sess, 'ctx> {
                     .unwrap();
                 let special::Binding::Function(function) = function else { unreachable!() };
 
-                self.session.look_up_local_mut(index).kind =
-                    EntityKind::IntrinsicFunction { function, type_ };
+                self.session[index].kind = EntityKind::IntrinsicFunction { function, type_ };
             }
         }
     }

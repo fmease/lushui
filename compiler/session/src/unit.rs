@@ -31,7 +31,7 @@ impl BuildUnit {
     // @Temporary
     pub fn is_core_library(&self, session: &Session<'_>) -> bool {
         session.package_of(self.index).map_or(false, |package| {
-            session.look_up_package(package).is_core() && self.type_ == ComponentType::Library
+            session[package].is_core() && self.type_ == ComponentType::Library
         })
     }
 

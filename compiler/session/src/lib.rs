@@ -10,6 +10,7 @@ use package::{ManifestPath, Package};
 use span::{SourceMap, Span};
 use std::{
     default::default,
+    ops::{Index, IndexMut},
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 use token::Word;
@@ -20,19 +21,14 @@ pub mod interfaceable;
 pub mod package;
 pub mod unit;
 
+pub const OUTPUT_FOLDER_NAME: &str = "build";
+
 pub struct Session<'ctx> {
     component: Component,
     context: &'ctx mut Context,
 }
 
-// @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Task
-// improve naming scheme: either use `look_up{,_*}` everywhere or nowhere etc!
-// @Task add docs
-
 impl<'ctx> Session<'ctx> {
-    // @Task to better location
-    pub const OUTPUT_FOLDER_NAME: &'static str = "build";
-
     pub fn new(component: Component, context: &'ctx mut Context) -> Self {
         Self { component, context }
     }
@@ -43,11 +39,6 @@ impl<'ctx> Session<'ctx> {
 
     pub fn root_component(&self) -> &ComponentOutline {
         self.context.root_component()
-    }
-
-    // @Task make this an Index::index fn again
-    pub fn look_up_package(&self, path: ManifestPath) -> &Package {
-        self.context.package(path)
     }
 
     pub fn package_of(&self, component: ComponentIndex) -> Option<ManifestPath> {
@@ -63,32 +54,14 @@ impl<'ctx> Session<'ctx> {
             .map_or(false, |package| self.root_package() == Some(package))
     }
 
-    pub fn define_unchecked(&mut self, entity: hir::Entity) -> LocalDeclarationIndex {
+    pub fn define(&mut self, entity: hir::Entity) -> LocalDeclarationIndex {
         self.component.bindings.insert(entity)
-    }
-
-    // @Task make this an Index::index fn again
-    pub fn look_up(&self, index: DeclarationIndex) -> &hir::Entity {
-        match index.local(&self.component) {
-            Some(index) => &self.component[index],
-            None => self.context.look_up(index),
-        }
-    }
-
-    // @Task make this an Index::index fn again
-    pub fn look_up_local(&self, index: LocalDeclarationIndex) -> &hir::Entity {
-        &self.component[index]
-    }
-
-    // @Task make this an IndexMut::index_mut fn again
-    pub fn look_up_local_mut(&mut self, index: LocalDeclarationIndex) -> &mut hir::Entity {
-        &mut self.component[index]
     }
 
     pub fn parent_of(&self, index: DeclarationIndex) -> Option<DeclarationIndex> {
         Some(DeclarationIndex::new(
             index.component(),
-            self.look_up(index).parent?,
+            self[index].parent?,
         ))
     }
 
@@ -160,6 +133,39 @@ impl<'ctx> Session<'ctx> {
 
     pub fn reporter(&self) -> &Reporter {
         &self.context.reporter
+    }
+}
+
+impl Index<ManifestPath> for Session<'_> {
+    type Output = Package;
+
+    fn index(&self, path: ManifestPath) -> &Self::Output {
+        &self.context[path]
+    }
+}
+
+impl Index<DeclarationIndex> for Session<'_> {
+    type Output = hir::Entity;
+
+    fn index(&self, index: DeclarationIndex) -> &Self::Output {
+        match index.local(&self.component) {
+            Some(index) => &self.component[index],
+            None => &self.context[index],
+        }
+    }
+}
+
+impl Index<LocalDeclarationIndex> for Session<'_> {
+    type Output = hir::Entity;
+
+    fn index(&self, index: LocalDeclarationIndex) -> &Self::Output {
+        &self.component[index]
+    }
+}
+
+impl IndexMut<LocalDeclarationIndex> for Session<'_> {
+    fn index_mut(&mut self, index: LocalDeclarationIndex) -> &mut Self::Output {
+        &mut self.component[index]
     }
 }
 
@@ -251,20 +257,28 @@ impl Context {
         &self.root_component
     }
 
-    pub fn package(&self, path: ManifestPath) -> &Package {
-        &self.packages[&path]
-    }
-
     pub fn package_of(&self, component: ComponentIndex) -> Option<ManifestPath> {
         self.component_packages.get(&component).copied()
     }
 
-    pub fn look_up(&self, index: DeclarationIndex) -> &hir::Entity {
-        &self.components[&index.component()][index.local_unchecked()]
-    }
-
     pub fn reporter(&self) -> &Reporter {
         &self.reporter
+    }
+}
+
+impl Index<ManifestPath> for Context {
+    type Output = Package;
+
+    fn index(&self, path: ManifestPath) -> &Self::Output {
+        &self.packages[&path]
+    }
+}
+
+impl Index<DeclarationIndex> for Context {
+    type Output = hir::Entity;
+
+    fn index(&self, index: DeclarationIndex) -> &Self::Output {
+        &self.components[&index.component()][index.local_unchecked()]
     }
 }
 

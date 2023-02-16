@@ -238,8 +238,7 @@ impl tower_lsp::LanguageServer for Server {
             };
 
             Some(GotoDefinitionResponse::Scalar(
-                context
-                    .look_up(index)
+                context[index]
                     .source
                     .span()
                     .to_location(&self.map.read().unwrap()),
@@ -302,12 +301,7 @@ fn build_unit(unit: BuildUnit, session: &mut Session<'_>) -> Result<hir::Declara
                     );
 
                     if let Some(package) = session.package() {
-                        write!(
-                            message,
-                            " in package ‘{}’",
-                            session.look_up_package(package).name
-                        )
-                        .unwrap();
+                        write!(message, " in package ‘{}’", session[package].name).unwrap();
                     }
 
                     // @Bug this is duplication with main.rs!!

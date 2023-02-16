@@ -14,7 +14,7 @@ use inkwell::{
     values::{BasicValueEnum, FunctionValue, GlobalValue, IntValue, UnnamedAddress},
 };
 use resolver::ProgramEntryExt;
-use session::Session;
+use session::{Session, OUTPUT_FOLDER_NAME};
 use std::{
     cell::RefCell,
     default::default,
@@ -98,10 +98,7 @@ fn link(module: inkwell::module::Module<'_>, session: &Session<'_>) -> Result<()
     let output_file_path = match session.root_package() {
         // @Task ensure that the build folder exists
         Some(package) => {
-            let mut path = session
-                .look_up_package(package)
-                .folder()
-                .join(Session::OUTPUT_FOLDER_NAME);
+            let mut path = session[package].folder().join(OUTPUT_FOLDER_NAME);
             path.push(name);
             path
         }
@@ -273,7 +270,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
                         );
                     }
                     None => {
-                        let hir::EntityKind::IntrinsicFunction { function: intrinsic, .. } = self.session.look_up(index).kind
+                        let hir::EntityKind::IntrinsicFunction { function: intrinsic, .. } = self.session[index].kind
                         else {
                             unreachable!();
                         };
