@@ -1,1 +1,1 @@
-f: Nat -> Nat = \(x: Nat) -> * 2 x
+f: Nat -> Nat = for (x: Nat) -> * 2 x

@@ -22,11 +22,12 @@ invert (o: Ordering): Ordering =
 use topmost.unit.(unit Unit Thunk (force as !))
 use topmost.int.Int
 
-@public
-then (o: Ordering) (lazy p: Thunk Ordering): Ordering =
-    case o of
-        equal => ! Ordering p
-        \o => o
+;;; @Task uncomment once `@lazy` is implemented
+;;; @public
+;;; then (o: Ordering) @lazy (p: Thunk Ordering): Ordering =
+;;;     case o of
+;;;         equal => ! Ordering p
+;;;         \o => o
 
 @public
 then_ (o: Ordering) (p: Ordering): Ordering =

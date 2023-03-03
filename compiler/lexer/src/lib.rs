@@ -256,7 +256,7 @@ impl<'a> Lexer<'a> {
             self.lex_identifier_segment();
         }
 
-        match parse_keyword(self.source()) {
+        match lex_keyword(self.source()) {
             Some(keyword) => self.add(keyword),
             None => {
                 self.add(Word(self.source().into()));
@@ -400,7 +400,7 @@ impl<'a> Lexer<'a> {
     fn lex_symbol(&mut self) {
         self.take_while(token::is_symbol);
 
-        match parse_reserved_symbol(&self.file[self.local_span]) {
+        match lex_reserved_symbol(&self.file[self.local_span]) {
             Some(symbol) => self.add(symbol),
             None => {
                 self.add(Symbol(self.source().into()));
@@ -665,28 +665,29 @@ const fn is_number_literal_middle(character: char) -> bool {
     character.is_ascii_digit() || character == NUMERIC_SEPARATOR
 }
 
-fn parse_keyword(source: &str) -> Option<BareToken> {
+fn lex_keyword(source: &str) -> Option<BareToken> {
     Some(match source {
         "_" => Underscore,
         "as" => As,
-        "topmost" => Topmost,
         "case" => Case,
-        "extern" => Extern,
         "data" => Data,
         "do" => Do,
+        "extern" => Extern,
+        "for" => ForLower,
+        "For" => ForUpper,
         "in" => In,
-        "lazy" => Lazy,
         "let" => Let,
         "module" => Module,
         "of" => Of,
         "self" => Self_,
         "super" => Super,
+        "topmost" => Topmost,
         "use" => Use,
         _ => return None,
     })
 }
 
-fn parse_reserved_symbol(source: &str) -> Option<BareToken> {
+fn lex_reserved_symbol(source: &str) -> Option<BareToken> {
     Some(match source {
         "." => Dot,
         ":" => Colon,
@@ -698,6 +699,7 @@ fn parse_reserved_symbol(source: &str) -> Option<BareToken> {
         "<-" => ThinArrowLeft,
         "=>" => WideArrowRight,
         "::" => DoubleColon,
+        "**" => DoubleAsterisk,
         _ => return None,
     })
 }

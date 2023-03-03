@@ -81,37 +81,38 @@ impl<'a> Interpreter<'a> {
                         // diverging expressions are still going to diverge even if "lazy"/
                         // auto-closured to thunks since the body always gets evaluated to
                         // normal form
-                        let argument = if lambda.laziness.is_some() {
-                            Expression::new(
-                                default(),
-                                argument.span,
-                                hir::Lambda {
-                                    // @Bug we should not create a fake identifier at all!!
-                                    // @Note this problem is solved once we allow identifier to be
-                                    // an Option<_> (that's gonna happen when we finally implement
-                                    // the discarding identifier `_`)
-                                    parameter: Identifier::parameter("__"),
-                                    parameter_type_annotation: Some(
-                                        self.session.require_special(Type::Unit, None)?,
-                                    ),
-                                    body_type_annotation: None,
-                                    body: Expression::new(
-                                        default(),
-                                        default(),
-                                        hir::Substituted {
-                                            substitution: Shift(1),
-                                            expression: argument,
-                                        }
-                                        .into(),
-                                    ),
-                                    explicitness: Explicit,
-                                    laziness: None,
-                                }
-                                .into(),
-                            )
-                        } else {
-                            argument
-                        };
+                        // @Beacon @Beacon @Beacon @Task re-introduce `lazy` via `@lazy`
+                        // let argument = if lambda.laziness.is_some() {
+                        //     Expression::new(
+                        //         default(),
+                        //         argument.span,
+                        //         hir::Lambda {
+                        //             // @Bug we should not create a fake identifier at all!!
+                        //             // @Note this problem is solved once we allow identifier to be
+                        //             // an Option<_> (that's gonna happen when we finally implement
+                        //             // the discarding identifier `_`)
+                        //             parameter: Identifier::parameter("__"),
+                        //             parameter_type_annotation: Some(
+                        //                 self.session.require_special(Type::Unit, None)?,
+                        //             ),
+                        //             body_type_annotation: None,
+                        //             body: Expression::new(
+                        //                 default(),
+                        //                 default(),
+                        //                 hir::Substituted {
+                        //                     substitution: Shift(1),
+                        //                     expression: argument,
+                        //                 }
+                        //                 .into(),
+                        //             ),
+                        //             explicitness: Explicit,
+                        //             laziness: None,
+                        //         }
+                        //         .into(),
+                        //     )
+                        // } else {
+                        //     argument
+                        // };
 
                         self.evaluate_expression(
                             Expression::new(
@@ -178,7 +179,7 @@ impl<'a> Interpreter<'a> {
                 Form::Normal => {
                     let domain = self.evaluate_expression(pi.domain.clone(), context)?;
 
-                    let codomain = if pi.parameter.is_some() {
+                    let codomain = if pi.binder.is_some() {
                         // @Beacon @Question whyy do we need type information here in *evaluate*???
                         let scope = context.scope.extend_with_parameter(domain.clone());
                         self.evaluate_expression(pi.codomain.clone(), context.with_scope(&scope))?
@@ -191,8 +192,7 @@ impl<'a> Interpreter<'a> {
                         expression.span,
                         hir::PiType {
                             explicitness: pi.explicitness,
-                            laziness: pi.laziness,
-                            parameter: pi.parameter.clone(),
+                            binder: pi.binder.clone(),
                             domain,
                             codomain,
                         }
@@ -204,13 +204,13 @@ impl<'a> Interpreter<'a> {
             Lambda(lambda) => match context.form {
                 Form::Normal => {
                     let parameter_type = self.evaluate_expression(
-                        lambda.parameter_type_annotation.clone().ok_or_else(|| {
+                        lambda.domain.clone().ok_or_else(|| {
                             missing_annotation_error().report(self.session.reporter())
                         })?,
                         context,
                     )?;
                     let body_type = lambda
-                        .body_type_annotation
+                        .codomain
                         .clone()
                         .map(|type_| {
                             // @Beacon @Question why do we need type information here in *evaluate*???
@@ -227,12 +227,11 @@ impl<'a> Interpreter<'a> {
                         expression.attributes,
                         expression.span,
                         hir::Lambda {
-                            parameter: lambda.parameter.clone(),
-                            parameter_type_annotation: Some(parameter_type),
+                            binder: lambda.binder.clone(),
+                            domain: Some(parameter_type),
                             body,
-                            body_type_annotation: body_type,
+                            codomain: body_type,
                             explicitness: Explicit,
-                            laziness: lambda.laziness,
                         }
                         .into(),
                     )
@@ -432,7 +431,7 @@ impl<'a> Interpreter<'a> {
             // @Question what about explicitness?
             (PiType(pi0), PiType(pi1)) => {
                 self.equals(&pi0.domain, &pi1.domain, scope)?
-                    && match (pi0.parameter.clone(), pi1.parameter.clone()) {
+                    && match (pi0.binder.clone(), pi1.binder.clone()) {
                         (Some(_), Some(_)) => self.equals(
                             &pi0.codomain,
                             &pi1.codomain,
@@ -460,11 +459,11 @@ impl<'a> Interpreter<'a> {
             // @Question what about the body_type_annotation? what about explicitness?
             (Lambda(lambda0), Lambda(lambda1)) => {
                 let parameter_type_annotation0 = lambda0
-                    .parameter_type_annotation
+                    .domain
                     .clone()
                     .ok_or_else(|| missing_annotation_error().report(self.session.reporter()))?;
                 let parameter_type_annotation1 = lambda1
-                    .parameter_type_annotation
+                    .domain
                     .clone()
                     .ok_or_else(|| missing_annotation_error().report(self.session.reporter()))?;
 
@@ -622,7 +621,7 @@ impl Substitute for Expression {
                     default(),
                     hir::Substituted {
                         expression: pi.codomain.clone(),
-                        substitution: match &pi.parameter {
+                        substitution: match &pi.binder {
                             Some(parameter) => {
                                 let binder = parameter.as_innermost();
 
@@ -640,8 +639,7 @@ impl Substitute for Expression {
                     self.span,
                     hir::PiType {
                         explicitness: pi.explicitness,
-                        laziness: pi.laziness,
-                        parameter: pi.parameter.clone(),
+                        binder: pi.binder.clone(),
                         domain,
                         codomain,
                     }
@@ -649,27 +647,26 @@ impl Substitute for Expression {
                 )
             }
             (Lambda(lambda), substitution) => {
-                let parameter_type_annotation =
-                    lambda.parameter_type_annotation.clone().map(|type_| {
-                        Expression::new(
-                            default(),
-                            default(),
-                            hir::Substituted {
-                                expression: type_,
-                                substitution: substitution.clone(),
-                            }
-                            .into(),
-                        )
-                    });
+                let parameter_type_annotation = lambda.domain.clone().map(|type_| {
+                    Expression::new(
+                        default(),
+                        default(),
+                        hir::Substituted {
+                            expression: type_,
+                            substitution: substitution.clone(),
+                        }
+                        .into(),
+                    )
+                });
 
-                let body_type_annotation = lambda.body_type_annotation.clone().map(|type_| {
+                let body_type_annotation = lambda.codomain.clone().map(|type_| {
                     Expression::new(
                         default(),
                         default(),
                         hir::Substituted {
                             expression: type_,
                             substitution: {
-                                let binder = lambda.parameter.as_innermost();
+                                let binder = lambda.binder.as_innermost();
                                 // @Question what about the attributes of the binder?
                                 Use(
                                     Box::new(Shift(1).compose(substitution.clone())),
@@ -687,7 +684,7 @@ impl Substitute for Expression {
                     hir::Substituted {
                         expression: lambda.body.clone(),
                         substitution: {
-                            let binder = lambda.parameter.as_innermost();
+                            let binder = lambda.binder.as_innermost();
 
                             // @Question what about the attributes of the binder?
                             Use(Box::new(Shift(1).compose(substitution)), binder.into_item())
@@ -700,12 +697,11 @@ impl Substitute for Expression {
                     self.attributes,
                     self.span,
                     hir::Lambda {
-                        parameter: lambda.parameter.clone(),
-                        parameter_type_annotation,
-                        body_type_annotation,
+                        binder: lambda.binder.clone(),
+                        domain: parameter_type_annotation,
+                        codomain: body_type_annotation,
                         body,
                         explicitness: lambda.explicitness,
-                        laziness: lambda.laziness,
                     }
                     .into(),
                 )

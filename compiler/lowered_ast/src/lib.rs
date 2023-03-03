@@ -6,7 +6,7 @@ use ast::{Explicitness, Identifier, NumberLiteral, Path, SequenceLiteral, TextLi
 pub use attribute::{Attribute, AttributeName, Attributes, BareAttribute};
 use diagnostics::{error::PossiblyErroneous, reporter::ErasedReportedError};
 pub use format::Display;
-use span::{SourceFileIndex, Span};
+use span::SourceFileIndex;
 
 pub mod attribute;
 mod format;
@@ -32,7 +32,7 @@ impl PossiblyErroneous for BareDeclaration {
 
 pub struct Function {
     pub binder: Identifier,
-    pub type_annotation: Expression,
+    pub type_: Expression,
     pub expression: Option<Expression>,
 }
 
@@ -44,7 +44,7 @@ impl From<Function> for BareDeclaration {
 
 pub struct Data {
     pub binder: Identifier,
-    pub type_annotation: Expression,
+    pub type_: Expression,
     pub constructors: Option<Vec<Declaration>>,
 }
 
@@ -56,7 +56,7 @@ impl From<Data> for BareDeclaration {
 
 pub struct Constructor {
     pub binder: Identifier,
-    pub type_annotation: Expression,
+    pub type_: Expression,
 }
 
 impl From<Constructor> for BareDeclaration {
@@ -143,8 +143,7 @@ impl From<SequenceLiteral<Expression>> for BareExpression {
 #[derive(Clone)]
 pub struct PiType {
     pub explicitness: Explicitness,
-    pub laziness: Option<Span>,
-    pub parameter: Option<Identifier>,
+    pub binder: Option<Identifier>,
     pub domain: Expression,
     pub codomain: Expression,
 }
@@ -158,10 +157,9 @@ impl From<PiType> for BareExpression {
 #[derive(Clone)]
 pub struct Lambda {
     pub parameter: Identifier,
-    pub parameter_type_annotation: Option<Expression>,
+    pub domain: Option<Expression>,
     pub explicitness: Explicitness,
-    pub laziness: Option<Span>,
-    pub body_type_annotation: Option<Expression>,
+    pub codomain: Option<Expression>,
     pub body: Expression,
 }
 

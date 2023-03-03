@@ -1,10 +1,10 @@
 ;;; TEST pass check
 ;;; TEST compiler-args -Z parse-only --no-core
 
-data X 'A '(B): '(b: Bool) -> Type of
+data X 'A '(B): For '(b: Bool) -> Type of
     x'z'z'(p: P): X
 
-binding = \'A '(a: A) => a
+binding = for 'A '(a: A) => a
 
 main: It =
     callee 'this '(with that) '(tag = 0) '0 'self.me '[]

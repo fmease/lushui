@@ -1,0 +1,18 @@
+error[E010]: found line break but expected function argument
+  ┌─ ${TEST_FOLDER}/parsing/expression-trailing-apostrophe.lushui:2:5
+  │
+2 │     process'
+  │     ─────── while parsing this function application
+  │
+  ├─ ${TEST_FOLDER}/parsing/expression-trailing-apostrophe.lushui:2:12
+  │
+2 │     process'
+  │            ─ this apostrophe marks the start of an implicit argument
+  │
+  ├─ ${TEST_FOLDER}/parsing/expression-trailing-apostrophe.lushui:2:13
+  │
+2 │     process'
+  │            ⟫⟪ unexpected token
+
+error: aborting due to previous error
+

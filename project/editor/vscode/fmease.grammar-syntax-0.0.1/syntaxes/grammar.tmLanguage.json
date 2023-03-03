@@ -64,7 +64,7 @@
         "entity": {
             "patterns": [
                 {
-                    "match": "\\b((?:[a-zA-Z_]\\w*)(?:-[a-zA-Z_]\\w*)*)\\s*(?=::=[\\w\\s])",
+                    "match": "(?<![a-zA-Z_⟪⟫])((?:[a-zA-Z_⟪⟫][a-zA-Z0-9_⟪⟫]*)(?:-[a-zA-Z_⟪⟫][a-zA-Z0-9_⟪⟫]*)*)\\s*(?=::=[\\w\\s])",
                     "captures": {
                         "1": {
                             "name": "entity.name.function.grammar"
@@ -77,7 +77,7 @@
             "patterns": [
                 {
                     "name": "variable.other.constant.grammar keyword.other.grammar",
-                    "match": "#(?:[a-zA-Z_]\\w*)(?:-[a-zA-Z_]\\w*)*\\b"
+                    "match": "#(?:[a-zA-Z_⟪⟫][a-zA-Z0-9_⟪⟫]*)(?:-[a-zA-Z_⟪⟫][a-zA-Z0-9_⟪⟫]*)*(?![a-zA-Z_⟪⟫])"
                 }
             ]
         }

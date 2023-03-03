@@ -122,15 +122,12 @@ fn write_pi_type_literal_or_lower(
             write!(f, "{}", pi.explicitness)?;
 
             // @Note fragile
-            let domain_needs_brackets = pi.parameter.is_some() || pi.laziness.is_some();
+            let domain_needs_brackets = pi.binder.is_some();
 
             if domain_needs_brackets {
                 write!(f, "(")?;
-                if pi.laziness.is_some() {
-                    write!(f, "lazy ")?;
-                }
 
-                if let Some(parameter) = &pi.parameter {
+                if let Some(parameter) = &pi.binder {
                     write!(f, "{parameter}: ")?;
                 }
 
@@ -144,25 +141,21 @@ fn write_pi_type_literal_or_lower(
         }
         Lambda(lambda) => {
             write!(f, r"\{}", lambda.explicitness)?;
-            let parameter_needs_brackets =
-                lambda.parameter_type_annotation.is_some() || lambda.laziness.is_some();
+            let parameter_needs_brackets = lambda.domain.is_some();
 
             if parameter_needs_brackets {
                 write!(f, "(")?;
-                if lambda.laziness.is_some() {
-                    write!(f, "lazy ")?;
-                }
-                write!(f, "{}", lambda.parameter)?;
-                if let Some(annotation) = &lambda.parameter_type_annotation {
+                write!(f, "{}", lambda.binder)?;
+                if let Some(annotation) = &lambda.domain {
                     write!(f, ": ")?;
                     annotation.write(session, f)?;
                 }
                 write!(f, ")")?;
             } else {
-                write!(f, "{}", lambda.parameter)?;
+                write!(f, "{}", lambda.binder)?;
             }
 
-            if let Some(annotation) = &lambda.body_type_annotation {
+            if let Some(annotation) = &lambda.codomain {
                 write!(f, ": ")?;
                 annotation.write(session, f)?;
             }

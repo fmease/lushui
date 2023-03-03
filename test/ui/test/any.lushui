@@ -8,7 +8,7 @@ use extern.core.(
     )
 
 data Any: Type of
-    any: (A: Type) -> A -> Any
+    any: For (A: Type) -> A -> Any
 
 use Any.any
 

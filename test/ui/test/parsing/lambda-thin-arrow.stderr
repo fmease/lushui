@@ -1,8 +1,8 @@
-error[E010]: found ‘->’ but expected parameter, type annotation or ‘=>’
-  ┌─ ${TEST_FOLDER}/parsing/lambda-thin-arrow.lushui:1:27
+error[E010]: found ‘->’ but expected ‘=>’
+  ┌─ ${TEST_FOLDER}/parsing/lambda-thin-arrow.lushui:1:30
   │
-1 │ f: Nat -> Nat = \(x: Nat) -> * 2 x
-  │                           ══ unexpected token
+1 │ f: Nat -> Nat = for (x: Nat) -> * 2 x
+  │                              ══ unexpected token
 
 error: aborting due to previous error
 

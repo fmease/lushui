@@ -58,16 +58,13 @@ impl<'a> Formatter<'a> {
                 self.write(&pi.explicitness.to_string());
 
                 // @Note fragile
-                let domain_needs_brackets = pi.parameter.is_some() || pi.laziness.is_some();
+                let domain_needs_brackets = pi.binder.is_some();
 
                 // @Task add tests to check if parameter aspect is handled correctly
                 if domain_needs_brackets {
                     self.write("(");
-                    if pi.laziness.is_some() {
-                        self.write("lazy ");
-                    }
 
-                    if let Some(parameter) = &pi.parameter {
+                    if let Some(parameter) = &pi.binder {
                         self.write(&parameter.to_string());
                         self.write(": ");
                     }
@@ -83,25 +80,21 @@ impl<'a> Formatter<'a> {
             Lambda(lambda) => {
                 self.write(r"\");
                 self.write(&lambda.explicitness.to_string());
-                let parameter_needs_brackets =
-                    lambda.parameter_type_annotation.is_some() || lambda.laziness.is_some();
+                let parameter_needs_brackets = lambda.domain.is_some();
 
                 if parameter_needs_brackets {
                     self.write("(");
-                    if lambda.laziness.is_some() {
-                        self.write("lazy ");
-                    }
-                    self.write(&lambda.parameter.to_string());
-                    if let Some(annotation) = &lambda.parameter_type_annotation {
+                    self.write(&lambda.binder.to_string());
+                    if let Some(annotation) = &lambda.domain {
                         self.write(": ");
                         self.format_expression(annotation);
                     }
                     self.write(")");
                 } else {
-                    self.write(&lambda.parameter.to_string());
+                    self.write(&lambda.binder.to_string());
                 }
 
-                if let Some(annotation) = &lambda.body_type_annotation {
+                if let Some(annotation) = &lambda.codomain {
                     self.write(": ");
                     self.format_expression(annotation);
                 }

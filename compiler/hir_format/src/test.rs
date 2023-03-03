@@ -81,8 +81,7 @@ fn pi_type_application_argument() {
         &Expression::bare(
             hir::PiType {
                 explicitness: Explicit,
-                laziness: None,
-                parameter: None,
+                binder: None,
                 domain: Expression::bare(
                     hir::Application {
                         callee: array,
@@ -115,8 +114,7 @@ fn pi_type_named_parameter() {
         &Expression::bare(
             hir::PiType {
                 explicitness: Explicit,
-                laziness: None,
-                parameter: Some(alpha.clone()),
+                binder: Some(alpha.clone()),
                 domain: Expression::bare(
                     hir::Application {
                         callee: array.into_item(),
@@ -155,8 +153,7 @@ fn pi_type_implicit_parameter() {
         &Expression::bare(
             hir::PiType {
                 explicitness: Implicit,
-                laziness: None,
-                parameter: Some(Identifier::parameter("whatever")),
+                binder: Some(Identifier::parameter("whatever")),
                 domain: type_.clone(),
                 codomain: type_,
             }
@@ -182,13 +179,11 @@ fn pi_type_higher_order_argument() {
         &Expression::bare(
             hir::PiType {
                 explicitness: Explicit,
-                laziness: None,
-                parameter: None,
+                binder: None,
                 domain: Expression::bare(
                     hir::PiType {
                         explicitness: Explicit,
-                        laziness: None,
-                        parameter: None,
+                        binder: None,
                         domain: int.clone(),
                         codomain: int.clone(),
                     }
@@ -224,14 +219,12 @@ fn pi_type_two_curried_arguments() {
         &Expression::bare(
             hir::PiType {
                 explicitness: Explicit,
-                laziness: None,
-                parameter: None,
+                binder: None,
                 domain: int,
                 codomain: Expression::bare(
                     hir::PiType {
                         explicitness: Explicit,
-                        laziness: None,
-                        parameter: None,
+                        binder: None,
                         domain: text,
                         codomain: type_,
                     }
@@ -261,16 +254,14 @@ fn pi_type_lambda_domain() {
         &Expression::bare(
             hir::PiType {
                 explicitness: Explicit,
-                laziness: None,
-                parameter: None,
+                binder: None,
                 domain: Expression::bare(
                     hir::Lambda {
-                        parameter: x.clone(),
-                        parameter_type_annotation: None,
-                        body_type_annotation: None,
+                        binder: x.clone(),
+                        domain: None,
+                        codomain: None,
                         body: x.into_item(),
                         explicitness: Explicit,
-                        laziness: None,
                     }
                     .into(),
                 ),
@@ -346,13 +337,12 @@ fn application_lambda_last_argument() {
                 callee: take.into_item(),
                 argument: Expression::bare(
                     hir::Lambda {
-                        parameter: it.clone(),
-                        parameter_type_annotation: None,
-                        body_type_annotation: None,
+                        binder: it.clone(),
+                        domain: None,
+                        codomain: None,
                         // technically not correct
                         body: it.into_item(),
                         explicitness: Explicit,
-                        laziness: None,
                     }
                     .into(),
                 ),
@@ -383,13 +373,12 @@ fn application_lambda_argument() {
                         callee: take.into_item(),
                         argument: Expression::bare(
                             hir::Lambda {
-                                parameter: it.clone(),
-                                parameter_type_annotation: None,
-                                body_type_annotation: None,
+                                binder: it.clone(),
+                                domain: None,
+                                codomain: None,
                                 // technically not correct
                                 body: it.into_item(),
                                 explicitness: Explicit,
-                                laziness: None,
                             }
                             .into(),
                         ),
@@ -498,12 +487,11 @@ fn lambda_body_type_annotation() {
         r"\input: topmost.Output => 0",
         &Expression::bare(
             hir::Lambda {
-                parameter: Identifier::parameter("input"),
-                parameter_type_annotation: None,
-                body_type_annotation: Some(output.into_item()),
+                binder: Identifier::parameter("input"),
+                domain: None,
+                codomain: Some(output.into_item()),
                 body: Expression::bare(Number::Nat(0u8.into()).into()),
                 explicitness: Explicit,
-                laziness: None,
             }
             .into(),
         ),
@@ -527,12 +515,11 @@ fn lambda_parameter_type_annotation_body_type_annotation() {
         r"\(input: topmost.Input): topmost.Output => topmost.Type",
         &Expression::bare(
             hir::Lambda {
-                parameter: Identifier::parameter("input"),
-                parameter_type_annotation: Some(input.into_item()),
-                body_type_annotation: Some(output.into_item()),
+                binder: Identifier::parameter("input"),
+                domain: Some(input.into_item()),
+                codomain: Some(output.into_item()),
                 body: type_,
                 explicitness: Explicit,
-                laziness: None,
             }
             .into(),
         ),
@@ -554,12 +541,11 @@ fn lambda_implicit_parameter() {
         r"\'(Input: topmost.Type) => topmost.Type",
         &Expression::bare(
             hir::Lambda {
-                parameter: Identifier::parameter("Input"),
-                parameter_type_annotation: Some(type_.clone()),
-                body_type_annotation: None,
+                binder: Identifier::parameter("Input"),
+                domain: Some(type_.clone()),
+                codomain: None,
                 body: type_,
                 explicitness: Implicit,
-                laziness: None,
             }
             .into(),
         ),
@@ -578,22 +564,20 @@ fn lambda_implicit_unannotated_parameter() {
         r"\'A => \a => a",
         &Expression::bare(
             hir::Lambda {
-                parameter: Identifier::parameter("A"),
-                parameter_type_annotation: None,
-                body_type_annotation: None,
+                binder: Identifier::parameter("A"),
+                domain: None,
+                codomain: None,
                 body: Expression::bare(
                     hir::Lambda {
-                        parameter: a.clone(),
-                        parameter_type_annotation: None,
-                        body_type_annotation: None,
+                        binder: a.clone(),
+                        domain: None,
+                        codomain: None,
                         body: a.into_item(),
                         explicitness: Explicit,
-                        laziness: None,
                     }
                     .into(),
                 ),
                 explicitness: Implicit,
-                laziness: None,
             }
             .into(),
         ),
@@ -617,21 +601,19 @@ fn lambda_pi_type_body() {
         r"\x => x -> topmost.Type",
         &Expression::bare(
             hir::Lambda {
-                parameter: x.clone(),
-                parameter_type_annotation: None,
-                body_type_annotation: None,
+                binder: x.clone(),
+                domain: None,
+                codomain: None,
                 body: Expression::bare(
                     hir::PiType {
                         explicitness: Explicit,
-                        laziness: None,
-                        parameter: None,
+                        binder: None,
                         domain: x.into_item(),
                         codomain: type_,
                     }
                     .into(),
                 ),
                 explicitness: Explicit,
-                laziness: None,
             }
             .into(),
         ),

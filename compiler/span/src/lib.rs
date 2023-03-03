@@ -446,6 +446,12 @@ mod spanning {
             (**self).possible_span()
         }
     }
+
+    impl<S: Spanning, const N: usize> PossiblySpanning for &SmallVec<S, N> {
+        fn possible_span(&self) -> Option<Span> {
+            (**self).possible_span()
+        }
+    }
 }
 
 // @Task combine Spanned, WeaklySpanned via parameter <const I: Influence = {Weak, Strong}>

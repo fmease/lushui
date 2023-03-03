@@ -9,6 +9,6 @@ data Foo: Type of
 Bar: Type = Foo
 
 @(deprecated (reason "it was not the right thing"))
-Baz: Type -> Type = \(A: Type) => Type
+Baz: Type -> Type = for (A: Type) => Type
 
 X: Type = Baz Bar

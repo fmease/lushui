@@ -433,7 +433,7 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
 
                 let type_annotation = self
                     .as_ref()
-                    .resolve_expression(function.type_annotation, &FunctionScope::Module(module))
+                    .resolve_expression(function.type_, &FunctionScope::Module(module))
                     .stain(&mut self.health);
 
                 let expression = function.expression.map(|expression| {
@@ -465,7 +465,7 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
 
                 let type_annotation = self
                     .as_ref()
-                    .resolve_expression(type_.type_annotation, &FunctionScope::Module(module))
+                    .resolve_expression(type_.type_, &FunctionScope::Module(module))
                     .stain(&mut self.health);
 
                 let constructors = type_.constructors.map(|constructors| {
@@ -506,7 +506,7 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
 
                 let type_annotation = self
                     .as_ref()
-                    .resolve_expression(constructor.type_annotation, &FunctionScope::Module(module))
+                    .resolve_expression(constructor.type_, &FunctionScope::Module(module))
                     .stain(&mut self.health);
 
                 hir::Declaration::new(
@@ -754,7 +754,7 @@ impl<'a> Resolver<'a> {
         let expression = match expression.bare {
             PiType(pi) => {
                 let domain = self.resolve_expression(pi.domain.clone(), scope);
-                let codomain = match pi.parameter.clone() {
+                let codomain = match pi.binder.clone() {
                     Some(parameter) => self.resolve_expression(
                         pi.codomain.clone(),
                         &scope.extend_with_parameter(parameter),
@@ -769,9 +769,8 @@ impl<'a> Resolver<'a> {
                         domain: domain?,
                         codomain: codomain?,
                         explicitness: pi.explicitness,
-                        laziness: pi.laziness,
-                        parameter: pi
-                            .parameter
+                        binder: pi
+                            .binder
                             .clone()
                             .map(|parameter| Identifier::new(Index::DeBruijnParameter, parameter)),
                     }
@@ -808,10 +807,10 @@ impl<'a> Resolver<'a> {
             ),
             Lambda(lambda) => {
                 let parameter_type_annotation = lambda
-                    .parameter_type_annotation
+                    .domain
                     .clone()
                     .map(|type_| self.resolve_expression(type_, scope));
-                let body_type_annotation = lambda.body_type_annotation.clone().map(|type_| {
+                let body_type_annotation = lambda.codomain.clone().map(|type_| {
                     self.resolve_expression(
                         type_,
                         &scope.extend_with_parameter(lambda.parameter.clone()),
@@ -826,15 +825,11 @@ impl<'a> Resolver<'a> {
                     expression.attributes,
                     expression.span,
                     hir::Lambda {
-                        parameter: Identifier::new(
-                            Index::DeBruijnParameter,
-                            lambda.parameter.clone(),
-                        ),
-                        parameter_type_annotation: parameter_type_annotation.transpose()?,
-                        body_type_annotation: body_type_annotation.transpose()?,
+                        binder: Identifier::new(Index::DeBruijnParameter, lambda.parameter.clone()),
+                        domain: parameter_type_annotation.transpose()?,
+                        codomain: body_type_annotation.transpose()?,
                         body: body?,
                         explicitness: lambda.explicitness,
-                        laziness: lambda.laziness,
                     }
                     .into(),
                 )

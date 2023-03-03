@@ -187,6 +187,15 @@ impl<T: Format, const N: usize> Format for SmallVec<T, N> {
     }
 }
 
+impl<T: Format, U: Format> Format for (T, U) {
+    fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
+        FormatStruct::new(f, indentation)
+            .field("0", &self.0)
+            .field("1", &self.1)
+            .finish()
+    }
+}
+
 impl Format for Span {
     fn format(&self, f: &mut Formatter<'_>, _: Indentation) -> Result {
         // @Beacon @Task don't use `colored` here, too many wasted allocations!!
@@ -260,7 +269,7 @@ impl Format for super::Function {
             .name("Function-Declaration")
             .field("binder", &self.binder)
             .field("parameters", &self.parameters)
-            .field("type-annotation", &self.type_annotation)
+            .field("type", &self.type_)
             .field("body", &self.body)
             .finish()
     }
@@ -272,7 +281,7 @@ impl Format for super::Data {
             .name("Data-Declaration")
             .field("binder", &self.binder)
             .field("parameters", &self.parameters)
-            .field("type-annotation", &self.type_annotation)
+            .field("type", &self.type_)
             .field("constructors", &self.constructors)
             .finish()
     }
@@ -284,7 +293,7 @@ impl Format for super::Constructor {
             .name("Constructor-Declaration")
             .field("binder", &self.binder)
             .field("parameters", &self.parameters)
-            .field("type-annotation", &self.type_annotation)
+            .field("type", &self.type_)
             .field("body", &self.body)
             .finish()
     }
@@ -353,13 +362,13 @@ impl Format for super::BareUsePathTree {
 impl Format for super::BareExpression {
     fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
         match self {
-            Self::PiTypeLiteral(pi) => pi.format(f, indentation),
+            Self::QuantifiedType(type_) => type_.format(f, indentation),
             Self::Application(application) => application.format(f, indentation),
             Self::NumberLiteral(number) => number.format(f, indentation),
             Self::TextLiteral(text) => text.format(f, indentation),
             Self::TypedHole(hole) => hole.format(f, indentation),
             Self::Path(path) => path.format(f, indentation),
-            Self::Field(field) => field.format(f, indentation),
+            Self::Projection(field) => field.format(f, indentation),
             Self::LambdaLiteral(lambda) => lambda.format(f, indentation),
             Self::LetBinding(binding) => binding.format(f, indentation),
             Self::UseBinding(binding) => binding.format(f, indentation),
@@ -377,25 +386,28 @@ impl fmt::Debug for super::BareExpression {
     }
 }
 
-impl Format for super::PiTypeLiteral {
+impl Format for super::QuantifiedType {
     fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
         FormatStruct::new(f, indentation)
-            .name("Pi-Type-Literal")
-            .field("domain", &self.domain)
+            .name("Quantified-Type")
+            .field("quantifier", &self.quantifier)
+            .field("parameters", &self.parameters)
             .field("codomain", &self.codomain)
             .finish()
     }
 }
 
-impl Format for super::Domain {
-    fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
-        FormatStruct::new(f, indentation)
-            .name("Domain")
-            .field("explicitness", &self.explicitness)
-            .field("laziness", &self.laziness)
-            .field("binder", &self.binder)
-            .field("expression", &self.expression)
-            .finish()
+impl Format for super::Quantifier {
+    fn format(&self, f: &mut Formatter<'_>, _: Indentation) -> Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::Pi => "pi",
+                Self::Sigma => "sigma",
+            }
+            .color(color_palette::SPECIAL_SYMBOL)
+        )
     }
 }
 
@@ -476,12 +488,12 @@ impl Format for super::Path {
     }
 }
 
-impl Format for super::Field {
+impl Format for super::Projection {
     fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
         FormatStruct::new(f, indentation)
-            .name("Field")
-            .field("base", &self.base)
-            .field("member", &self.member)
+            .name("Projection")
+            .field("basis", &self.basis)
+            .field("field", &self.field)
             .finish()
     }
 }
@@ -497,7 +509,7 @@ impl Format for super::LambdaLiteral {
         FormatStruct::new(f, indentation)
             .name("Lambda-Literal")
             .field("parameters", &self.parameters)
-            .field("body-type-annotation", &self.body_type_annotation)
+            .field("codomain", &self.codomain)
             .field("body", &self.body)
             .finish()
     }
@@ -506,11 +518,11 @@ impl Format for super::LambdaLiteral {
 impl Format for super::LetBinding {
     fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
         FormatStruct::new(f, indentation)
-            .name("Let-In")
+            .name("Let-Binding")
             .field("binder", &self.binder)
             .field("parameters", &self.parameters)
-            .field("type-annotation", &self.type_annotation)
-            .field("expression", &self.expression)
+            .field("type", &self.type_)
+            .field("body", &self.body)
             .field("scope", &self.scope)
             .finish()
     }
@@ -519,7 +531,7 @@ impl Format for super::LetBinding {
 impl Format for super::UseBinding {
     fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
         FormatStruct::new(f, indentation)
-            .name("Use-In")
+            .name("Use-Binding")
             .field("bindings", &self.bindings)
             .field("scope", &self.scope)
             .finish()
@@ -569,9 +581,8 @@ impl Format for super::BareParameter {
         FormatStruct::new(f, indentation)
             .name("Parameter")
             .field("explicitness", &self.explicitness)
-            .field("laziness", &self.laziness)
             .field("binder", &self.binder)
-            .field("type-annotation", &self.type_annotation)
+            .field("type", &self.type_)
             .finish()
     }
 }
@@ -603,7 +614,6 @@ impl Format for super::Statement {
         match self {
             Self::Let(let_) => let_.format(f, indentation),
             Self::Use(use_) => use_.format(f, indentation),
-            Self::Bind(bind) => bind.format(f, indentation),
             Self::Expression(expression) => expression.format(f, indentation),
         }
     }
@@ -615,20 +625,23 @@ impl Format for super::LetStatement {
             .name("Let-Statement")
             .field("binder", &self.binder)
             .field("parameters", &self.parameters)
-            .field("type-annotation", &self.type_annotation)
-            .field("expression", &self.expression)
+            .field("type", &self.type_)
+            .field("body", &self.body)
             .finish()
     }
 }
 
-impl Format for super::BindStatement {
-    fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
-        FormatStruct::new(f, indentation)
-            .name("Bind-Statement")
-            .field("binder", &self.binder)
-            .field("type-annotation", &self.type_annotation)
-            .field("expression", &self.expression)
-            .finish()
+impl Format for super::BindingMode {
+    fn format(&self, f: &mut Formatter<'_>, _: Indentation) -> Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::Plain => "plain",
+                Self::Effectful => "effectful",
+            }
+            .color(color_palette::SPECIAL_SYMBOL)
+        )
     }
 }
 

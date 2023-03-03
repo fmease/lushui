@@ -5,7 +5,6 @@
 use super::parse;
 use ast::{
     Attribute, Attributes, BareAttribute, BareParameter, BareUsePathTree, Case, Debug, Declaration,
-    Domain,
     Explicitness::{Explicit, Implicit},
     Expression, Format, Identifier, Item, Parameter, Parameters, Path, Pattern, UsePathTree,
 };
@@ -128,31 +127,30 @@ fn identifier(name: &str, span: Span) -> Identifier {
 #[test]
 fn application_lambda_literal_argument_lax_grouping() {
     assert_eq(
-        parse_expression(r"(read \this => this) alpha"),
+        parse_expression(r"(read for this => this) alpha"),
         Ok(Expression::new(
             Attributes::new(),
-            span(1, 27),
+            span(1, 30),
             ast::Application {
                 callee: Expression::new(
                     Attributes::new(),
-                    span(1, 21),
+                    span(1, 24),
                     ast::Application {
                         callee: identifier("read", span(2, 6)).into(),
                         argument: Expression::new(
                             Attributes::new(),
-                            span(7, 20),
+                            span(7, 23),
                             ast::LambdaLiteral {
-                                parameters: vec![Parameter::new(
-                                    span(8, 12),
+                                parameters: smallvec![Parameter::new(
+                                    span(11, 15),
                                     BareParameter {
                                         explicitness: Explicit,
-                                        laziness: None,
-                                        binder: identifier("this", span(8, 12)),
-                                        type_annotation: None,
+                                        binder: identifier("this", span(11, 15)),
+                                        type_: None,
                                     },
                                 )],
-                                body_type_annotation: None,
-                                body: identifier("this", span(16, 20)).into(),
+                                codomain: None,
+                                body: identifier("this", span(19, 23)).into(),
                             }
                             .into(),
                         ),
@@ -161,7 +159,7 @@ fn application_lambda_literal_argument_lax_grouping() {
                     }
                     .into(),
                 ),
-                argument: identifier("alpha", span(22, 27)).into(),
+                argument: identifier("alpha", span(25, 30)).into(),
                 binder: None,
                 explicitness: Explicit,
             }
@@ -175,31 +173,30 @@ fn application_lambda_literal_argument_lax_grouping() {
 #[test]
 fn application_lambda_literal_argument_strict_grouping() {
     assert_eq(
-        parse_expression(r"read (\this => this) alpha"),
+        parse_expression(r"read (for this => this) alpha"),
         Ok(Expression::new(
             Attributes::new(),
-            span(1, 27),
+            span(1, 30),
             ast::Application {
                 callee: Expression::new(
                     Attributes::new(),
-                    span(1, 21),
+                    span(1, 24),
                     ast::Application {
                         callee: identifier("read", span(1, 5)).into(),
                         argument: Expression::new(
                             Attributes::new(),
-                            span(6, 21),
+                            span(6, 24),
                             ast::LambdaLiteral {
-                                parameters: vec![Parameter::new(
-                                    span(8, 12),
+                                parameters: smallvec![Parameter::new(
+                                    span(11, 15),
                                     BareParameter {
                                         explicitness: Explicit,
-                                        laziness: None,
-                                        binder: identifier("this", span(8, 12)),
-                                        type_annotation: None,
+                                        binder: identifier("this", span(11, 15)),
+                                        type_: None,
                                     },
                                 )],
-                                body_type_annotation: None,
-                                body: identifier("this", span(16, 20)).into(),
+                                codomain: None,
+                                body: identifier("this", span(19, 23)).into(),
                             }
                             .into(),
                         ),
@@ -208,7 +205,7 @@ fn application_lambda_literal_argument_strict_grouping() {
                     }
                     .into(),
                 ),
-                argument: identifier("alpha", span(22, 27)).into(),
+                argument: identifier("alpha", span(25, 30)).into(),
                 binder: None,
                 explicitness: Explicit,
             }
@@ -224,23 +221,26 @@ fn pi_type_literal_application_bracketed_argument_domain() {
         Ok(Expression::new(
             Attributes::new(),
             span(1, 22),
-            ast::PiTypeLiteral {
-                domain: Domain {
-                    explicitness: Explicit,
-                    laziness: None,
-                    binder: None,
-                    expression: Expression::new(
-                        Attributes::new(),
-                        span(1, 13),
-                        ast::Application {
-                            callee: identifier("Alpha", span(1, 6)).into(),
-                            argument: identifier("Beta", span(7, 13)).into(),
-                            explicitness: Explicit,
-                            binder: None,
-                        }
-                        .into(),
-                    ),
-                },
+            ast::QuantifiedType {
+                quantifier: ast::Quantifier::Pi,
+                parameters: smallvec![Parameter::new(
+                    span(1, 13),
+                    BareParameter {
+                        explicitness: Explicit,
+                        binder: identifier("_", span(1, 1)),
+                        type_: Some(Expression::new(
+                            Attributes::new(),
+                            span(1, 13),
+                            ast::Application {
+                                callee: identifier("Alpha", span(1, 6)).into(),
+                                argument: identifier("Beta", span(7, 13)).into(),
+                                explicitness: Explicit,
+                                binder: None,
+                            }
+                            .into(),
+                        )),
+                    }
+                ),],
                 codomain: identifier("Gamma", span(17, 22)).into(),
             }
             .into(),
@@ -255,23 +255,26 @@ fn bracketed_pi_type_literal_application_bracketed_argument_domain() {
         Ok(Expression::new(
             Attributes::new(),
             span(1, 24),
-            ast::PiTypeLiteral {
-                domain: Domain {
-                    explicitness: Explicit,
-                    laziness: None,
-                    binder: None,
-                    expression: Expression::new(
-                        Attributes::new(),
-                        span(2, 14),
-                        ast::Application {
-                            callee: identifier("Alpha", span(2, 7)).into(),
-                            argument: identifier("Beta", span(8, 14)).into(),
-                            explicitness: Explicit,
-                            binder: None,
-                        }
-                        .into(),
-                    ),
-                },
+            ast::QuantifiedType {
+                quantifier: ast::Quantifier::Pi,
+                parameters: smallvec![Parameter::new(
+                    span(2, 14),
+                    BareParameter {
+                        explicitness: Explicit,
+                        binder: identifier("_", span(2, 2)),
+                        type_: Some(Expression::new(
+                            Attributes::new(),
+                            span(2, 14),
+                            ast::Application {
+                                callee: identifier("Alpha", span(2, 7)).into(),
+                                argument: identifier("Beta", span(8, 14)).into(),
+                                explicitness: Explicit,
+                                binder: None,
+                            }
+                            .into(),
+                        )),
+                    }
+                )],
                 codomain: identifier("Gamma", span(18, 23)).into(),
             }
             .into(),
@@ -290,23 +293,26 @@ fn pi_type_literal_application_implicit_argument_domain() {
         Ok(Expression::new(
             Attributes::new(),
             span(1, 15),
-            ast::PiTypeLiteral {
-                domain: Domain {
-                    explicitness: Explicit,
-                    laziness: None,
-                    binder: None,
-                    expression: Expression::new(
-                        Attributes::new(),
-                        span(1, 7),
-                        ast::Application {
-                            callee: identifier("f", span(1, 2)).into(),
-                            argument: identifier("Int", span(4, 7)).into(),
-                            explicitness: Implicit,
-                            binder: None,
-                        }
-                        .into(),
-                    ),
-                },
+            ast::QuantifiedType {
+                quantifier: ast::Quantifier::Pi,
+                parameters: smallvec![Parameter::new(
+                    span(1, 7),
+                    BareParameter {
+                        explicitness: Explicit,
+                        binder: identifier("_", span(1, 1)),
+                        type_: Some(Expression::new(
+                            Attributes::new(),
+                            span(1, 7),
+                            ast::Application {
+                                callee: identifier("f", span(1, 2)).into(),
+                                argument: identifier("Int", span(4, 7)).into(),
+                                explicitness: Implicit,
+                                binder: None,
+                            }
+                            .into(),
+                        )),
+                    }
+                )],
                 codomain: identifier("Type", span(11, 15)).into(),
             }
             .into(),
@@ -321,23 +327,26 @@ fn pi_type_literal_application_implicit_named_argument_domain() {
         Ok(Expression::new(
             Attributes::new(),
             span(1, 21),
-            ast::PiTypeLiteral {
-                domain: Domain {
-                    explicitness: Explicit,
-                    laziness: None,
-                    binder: None,
-                    expression: Expression::new(
-                        Attributes::new(),
-                        span(1, 13),
-                        ast::Application {
-                            callee: identifier("f", span(1, 2)).into(),
-                            argument: identifier("Int", span(9, 12)).into(),
-                            explicitness: Implicit,
-                            binder: Some(identifier("T", span(5, 6))),
-                        }
-                        .into(),
-                    ),
-                },
+            ast::QuantifiedType {
+                quantifier: ast::Quantifier::Pi,
+                parameters: smallvec![Parameter::new(
+                    span(1, 13),
+                    BareParameter {
+                        explicitness: Explicit,
+                        binder: identifier("_", span(1, 1)),
+                        type_: Some(Expression::new(
+                            Attributes::new(),
+                            span(1, 13),
+                            ast::Application {
+                                callee: identifier("f", span(1, 2)).into(),
+                                argument: identifier("Int", span(9, 12)).into(),
+                                explicitness: Implicit,
+                                binder: Some(identifier("T", span(5, 6))),
+                            }
+                            .into(),
+                        )),
+                    }
+                )],
                 codomain: identifier("Type", span(17, 21)).into(),
             }
             .into(),
@@ -349,23 +358,26 @@ fn pi_type_literal_application_implicit_named_argument_domain() {
 #[test]
 fn application_pi_type_literal_implicit_domain() {
     assert_eq(
-        parse_expression("receive ('(n: Int) -> Type)"),
+        parse_expression("receive (For '(n: Int) -> Type)"),
         Ok(Expression::new(
             Attributes::new(),
-            span(1, 28),
+            span(1, 32),
             ast::Application {
                 callee: identifier("receive", span(1, 8)).into(),
                 argument: Expression::new(
                     Attributes::new(),
-                    span(9, 28),
-                    ast::PiTypeLiteral {
-                        domain: Domain {
-                            explicitness: Implicit,
-                            laziness: None,
-                            binder: Some(identifier("n", span(12, 13))),
-                            expression: identifier("Int", span(15, 18)).into(),
-                        },
-                        codomain: identifier("Type", span(23, 27)).into(),
+                    span(9, 32),
+                    ast::QuantifiedType {
+                        quantifier: ast::Quantifier::Pi,
+                        parameters: smallvec![Parameter::new(
+                            span(14, 23),
+                            BareParameter {
+                                explicitness: Implicit,
+                                binder: identifier("n", span(16, 17)),
+                                type_: Some(identifier("Int", span(19, 22)).into()),
+                            }
+                        )],
+                        codomain: identifier("Type", span(27, 31)).into(),
                     }
                     .into(),
                 ),
@@ -384,17 +396,17 @@ fn chained_fields() {
         Ok(Expression::new(
             Attributes::new(),
             span(1, 25),
-            ast::Field {
-                base: Expression::new(
+            ast::Projection {
+                basis: Expression::new(
                     Attributes::new(),
                     span(1, 13),
-                    ast::Field {
-                        base: identifier("base", span(1, 5)).into(),
-                        member: identifier("member", span(7, 13)),
+                    ast::Projection {
+                        basis: identifier("base", span(1, 5)).into(),
+                        field: identifier("member", span(7, 13)),
                     }
                     .into(),
                 ),
-                member: identifier("protrusion", span(15, 25)),
+                field: identifier("protrusion", span(15, 25)),
             }
             .into(),
         )),
@@ -408,8 +420,8 @@ fn namespaced_base_with_field() {
         Ok(Expression::new(
             Attributes::new(),
             span(1, 21),
-            ast::Field {
-                base: Expression::new(
+            ast::Projection {
+                basis: Expression::new(
                     Attributes::new(),
                     span(1, 13),
                     ast::Path {
@@ -422,7 +434,7 @@ fn namespaced_base_with_field() {
                     }
                     .into(),
                 ),
-                member: identifier("member", span(15, 21)),
+                field: identifier("member", span(15, 21)),
             }
             .into(),
         )),
@@ -443,9 +455,9 @@ fn field_with_attribute() {
                 },
             )],
             span(10, 30),
-            ast::Field {
-                base: identifier("compound", span(10, 18)).into(),
-                member: identifier("projection", span(20, 30)),
+            ast::Projection {
+                basis: identifier("compound", span(10, 18)).into(),
+                field: identifier("projection", span(20, 30)),
             }
             .into(),
         )),
@@ -460,8 +472,8 @@ fn base_with_attribute_and_field() {
         Ok(Expression::new(
             Attributes::new(),
             span(1, 37),
-            ast::Field {
-                base: Expression::new(
+            ast::Projection {
+                basis: Expression::new(
                     vec![Attribute::new(
                         span(2, 15),
                         BareAttribute::Regular {
@@ -472,7 +484,7 @@ fn base_with_attribute_and_field() {
                     span(1, 25),
                     Path::from(identifier("compound", span(16, 24))).into(),
                 ),
-                member: identifier("projection", span(27, 37)),
+                field: identifier("projection", span(27, 37)),
             }
             .into(),
         )),
@@ -490,18 +502,18 @@ fn field_inside_application() {
                 callee: Expression::new(
                     Attributes::new(),
                     span(1, 7),
-                    ast::Field {
-                        base: identifier("cb", span(1, 3)).into(),
-                        member: identifier("cm", span(5, 7)),
+                    ast::Projection {
+                        basis: identifier("cb", span(1, 3)).into(),
+                        field: identifier("cm", span(5, 7)),
                     }
                     .into(),
                 ),
                 argument: Expression::new(
                     Attributes::new(),
                     span(8, 14),
-                    ast::Field {
-                        base: identifier("ab", span(8, 10)).into(),
-                        member: identifier("am", span(12, 14)),
+                    ast::Projection {
+                        basis: identifier("ab", span(8, 10)).into(),
+                        field: identifier("am", span(12, 14)),
                     }
                     .into(),
                 ),
@@ -744,7 +756,7 @@ main =
                     ast::Function {
                         binder: identifier("main".into(), span(1, 5)),
                         parameters: Parameters::new(),
-                        type_annotation: None,
+                        type_: None,
                         body: Some(Expression::new(
                             Attributes::new(),
                             span(12, 75),
@@ -820,7 +832,7 @@ main = case x of
                     ast::Function {
                         binder: identifier("main".into(), span(1, 5)),
                         parameters: Parameters::new(),
-                        type_annotation: None,
+                        type_: None,
                         body: Some(Expression::new(
                             Attributes::new(),
                             span(8, 59),

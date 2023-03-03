@@ -7,7 +7,7 @@ pub use entity::{Entity, EntityKind};
 pub use identifier::{DeBruijnIndex, DeclarationIndex, Identifier, Index, LocalDeclarationIndex};
 use joinery::JoinableIterator;
 pub use lowered_ast::{attribute, Attribute, AttributeName, Attributes, BareAttribute, Item};
-use span::{SourceFileIndex, Span};
+use span::SourceFileIndex;
 use special::NumericType;
 use std::{
     fmt,
@@ -130,8 +130,7 @@ impl PossiblyErroneous for BareExpression {
 #[derive(Clone)]
 pub struct PiType {
     pub explicitness: Explicitness,
-    pub laziness: Option<Span>,
-    pub parameter: Option<Identifier>,
+    pub binder: Option<Identifier>,
     pub domain: Expression,
     pub codomain: Expression,
 }
@@ -168,11 +167,10 @@ impl From<Binding> for BareExpression {
 
 #[derive(Clone)]
 pub struct Lambda {
-    pub parameter: Identifier,
-    pub parameter_type_annotation: Option<Expression>,
     pub explicitness: Explicitness,
-    pub laziness: Option<Span>,
-    pub body_type_annotation: Option<Expression>,
+    pub binder: Identifier,
+    pub domain: Option<Expression>,
+    pub codomain: Option<Expression>,
     pub body: Expression,
 }
 

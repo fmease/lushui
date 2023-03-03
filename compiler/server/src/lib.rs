@@ -447,9 +447,9 @@ impl FindBinding for hir::Expression {
                 }
             }
             Lambda(lambda) => {
-                if let Some(type_annotation) = &lambda.parameter_type_annotation && type_annotation.span.contains(byte_index) {
+                if let Some(type_annotation) = &lambda.domain && type_annotation.span.contains(byte_index) {
                     type_annotation.find_binding(byte_index)
-                } else if let Some(type_annotation) = &lambda.body_type_annotation && type_annotation.span.contains(byte_index) {
+                } else if let Some(type_annotation) = &lambda.codomain && type_annotation.span.contains(byte_index) {
                     type_annotation.find_binding(byte_index)
                 } else if lambda.body.span.contains(byte_index) {
                     lambda.body.find_binding(byte_index)

@@ -19,7 +19,7 @@
 ; | `(> A)`   | Positive Look-Ahead                 |                                                               |
 ; | `(< A)`   | Positive Look-Behind                |                                                               |
 
-Identifier ::= #Word | #Symbol
+Top-Level ::= (#Line-Break | Declaration)* #End-Of-Input
 
 Declaration ::= (Attribute #Line-Break*)* Bare-Declaration
 Bare-Declaration ::=
@@ -27,13 +27,6 @@ Bare-Declaration ::=
     | Data-Declaration
     | Module-Declaration
     | Use-Declaration
-
-Attribute ::= Regular-Attribute | Documentation-Comment
-
-Regular-Attribute ::= "@" (#Word | "(" #Word Attribute-Argument* ")")
-
-Attribute-Argument ::= Lower-Attribute-Argument | "(" #Word Lower-Attribute-Argument ")"
-Lower-Attribute-Argument ::= Path | #Number-Literal | #Text-Literal
 
 Function-Declaration ::=
     #Word
@@ -52,8 +45,6 @@ Module-Declaration ::=
     | "module" #Word ("of" ("{" (Terminator | Declaration)* "}")?)? Terminator
 Header ::= "module" Terminator
 
-Top-Level ::= (#Line-Break | Declaration)* #End-Of-Input
-
 Use-Declaration ::= "use" Use-Path-Tree Terminator
 
 Use-Path-Tree ::=
@@ -68,24 +59,26 @@ Constructor ::=
     ("=" Expression)?
     Terminator
 
-Expression ::= Pi-Type-Literal-Or-Lower
+Expression ::= Shorthand-Quantified-Type-Or-Lower
 
-; among other things, the grammar for pretty-printers differs from the one for parsers
-; in that `Pi-Type-Literal-Or-Lower` also includes several complex (in the sense that they
-; contain further expressions) `Lower-Expression`s namely let- & use-bindings, lambda literals,
-; case analyses and do blocks (not sure about sequence literals)
-Pi-Type-Literal-Or-Lower ::=
-    (Designated-Pi-Type-Domain | Application-Expression-Or-Lower)
-    "->" Pi-Type-Literal-Or-Lower
-Designated-Pi-Type-Domain ::= Explicitness "(" "lazy"? #Word Type-Annotation ")"
+; Among other things, the grammar for pretty printers differs from the one for parsers
+; in that `Shorthand-Quantified-Type-Or-Lower` also includes several complex (in the sense that they
+; contain further expressions) `Lower-Expression`s namely let- and use-bindings, lambda literals,
+; case analyses and do blocks.
+;
+Shorthand-Quantified-Type-Or-Lower ::=
+    Application-Expression-Or-Lower
+    Quantifier
+    Shorthand-Quantified-Type-Or-Lower
+Quantifier ::= "->" | "**"
 
 Application-Expression-Or-Lower ::= Lower-Expression Expression-Argument*
 Expression-Argument ::=
-    | Explicitness Lower-Expression
-    | Explicitness "(" (#Word "=")? Expression ")"
+    Explicitness
+    (Lower-Expression | "(" (#Word "=")? Expression ")")
 
-; ; left-recursive version unsuitable for the recursive descent parser
-; ; but indeed usable for pretty-printers:
+; ; The left-recursive version of the rule above is unsuitable for a recursive descent parser.
+; ; However, it is usable for pretty printers.
 ;
 ; Application-Expression-Or-Lower ::= Application-Expression-Or-Lower? Expression-Argument*
 ; Expression-Argument ::=
@@ -103,6 +96,7 @@ Lowest-Expression ::=
     | Lambda-Literal
     | Case-Analysis
     | Do-Block
+    | Quantified-Type
     | Sequence-Literal-Expression
     | Path-Or-Namespaced-Literal-Expression
     | "(" Expression ")"
@@ -112,7 +106,9 @@ Path ::= Path-Head ("." Identifier)*
 Path-Head ::= Path-Hanger | Identifier
 Path-Hanger ::= "extern" | "topmost" | "super" | "self"
 
-Lambda-Literal ::= "\" Parameters Type-Annotation? "=>" Expression
+Lambda-Literal ::= "for" Parameters Type-Annotation? "=>" Expression
+
+Quantified-Type ::= "For" Parameter* Quantifier Expression
 
 Let-Binding ::=
     "let" #Word Parameters Type-Annotation?
@@ -129,20 +125,20 @@ Case-Analysis ::= "case" Expression "of" ("{" Case* "}")?
 Case ::= Pattern "=>" Expression Terminator
 
 Do-Block ::= "do" "{" Statement* "}"
-Statement ::= Let-Statement | Use-Declaration | Bind-Statement | Expression-Statement
-Let-Statement ::= "let" Function-Declaration
-Bind-Statement ::= #Word Type-Annotation? "<-" Expression Terminator
+Statement ::= Let-Statement | Use-Declaration | Expression-Statement
+Let-Statement ::= "let" #Word Parameter* Type-Annotation? Binding-Mode Expression Terminator
 Expression-Statement ::= Expression Terminator
+Binding-Mode ::=  "=" | "<-"
 
 Parameters ::= Parameter*
 
 Parameter ::= Explicitness Bare-Parameter
-Bare-Parameter ::= #Word | "(" "lazy"? #Word Type-Annotation? ")"
+Bare-Parameter ::= #Word | "(" #Word Type-Annotation? ")"
 
 Pattern ::= Lower-Pattern Pattern-Argument*
 Pattern-Argument ::=
-    | Explicitness Lower-Pattern
-    | Explicitness "(" (#Word "=")? Pattern ")"
+    Explicitness
+    (Lower-Pattern | "(" (#Word "=")? Pattern ")")
 
 Lower-Pattern ::= Attribute* Bare-Lower-Pattern
 Bare-Lower-Pattern ::=
@@ -157,6 +153,11 @@ Binder ::= "\" #Word
 Sequence-Literal-Expression ::= (Path ".")? "[" Lower-Expression* "]"
 Sequence-Literal-Pattern ::= (Path ".")? "[" Lower-Pattern* "]"
 
+Application-⟪Item⟫-Or-Lower ::= Lower-⟪Item⟫ ⟪Item⟫-Argument*
+⟪Item⟫-Argument ::=
+    Explicitness
+    (Lower-⟪Item⟫ | "(" (#Word "=")? ⟪Item⟫ ")")
+
 Path-Or-Namespaced-Literal-Expression ::=
     Path
     ("." (#Number-Literal | #Text-Literal | Sequence-Literal-Expression))?
@@ -166,7 +167,17 @@ Path-Or-Namespaced-Literal-Pattern ::=
 
 Type-Annotation ::= ":" Expression
 
+Attribute ::= Regular-Attribute | Documentation-Comment
+
+Regular-Attribute ::= "@" (#Word | "(" #Word Attribute-Argument* ")")
+
+Attribute-Argument ::= Lower-Attribute-Argument | "(" #Word Lower-Attribute-Argument ")"
+Lower-Attribute-Argument ::= Path | #Number-Literal | #Text-Literal
+
+Identifier ::= #Word | #Symbol
+
 ; #Start-Of-Input is not actually emitted by the lexer, the parser needs to bound-check instead.
+;
 Terminator ::= ";" | (> "}" | #End-Of-Input) | (< #Start-Of-Input | ";" | "}")
 
 Explicitness ::= "'"?

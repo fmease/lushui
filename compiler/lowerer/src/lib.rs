@@ -135,8 +135,8 @@ impl<'a> Lowerer<'a> {
     }
 
     fn lower_function_declaration(&mut self, function: ast::Function) -> lowered_ast::Function {
-        let declaration_type_annotation = match function.type_annotation {
-            Some(type_annotation) => type_annotation,
+        let type_ = match function.type_ {
+            Some(type_) => type_,
             None => missing_mandatory_type_annotation_error(
                 function.binder.span().fit_end(&function.parameters).end(),
                 TypeAnnotationTarget::Declaration(&function.binder),
@@ -144,20 +144,17 @@ impl<'a> Lowerer<'a> {
             .handle(&mut *self),
         };
 
-        // @Note type_annotation is currently lowered twice @Task remove duplicate work
-        // @Task find a way to use `Option::map` (currently does not work because of
-        // partial moves, I hate those), use local bindings
+        // @Note `type_` is currently lowered twice @Task remove duplicate work
         let body = match function.body {
             Some(body) => {
                 let mut body = self.lower_expression(body);
 
                 {
-                    let mut type_annotation =
-                        once(self.lower_expression(declaration_type_annotation.clone()));
+                    let mut type_ = once(self.lower_expression(type_.clone()));
 
                     for parameter in function.parameters.iter().rev() {
-                        let parameter_type_annotation = match &parameter.bare.type_annotation {
-                            Some(type_annotation) => type_annotation.clone(),
+                        let parameter_type = match &parameter.bare.type_ {
+                            Some(type_) => type_.clone(),
                             None => missing_mandatory_type_annotation_error(
                                 parameter,
                                 TypeAnnotationTarget::Parameter(parameter),
@@ -165,18 +162,16 @@ impl<'a> Lowerer<'a> {
                             .handle(&mut *self),
                         };
 
-                        let parameter_type_annotation =
-                            self.lower_expression(parameter_type_annotation);
+                        let parameter_type = self.lower_expression(parameter_type);
 
                         body = lowered_ast::Expression::new(
                             default(),
                             default(),
                             lowered_ast::Lambda {
                                 parameter: parameter.bare.binder.clone(),
-                                parameter_type_annotation: Some(parameter_type_annotation.clone()),
+                                domain: Some(parameter_type.clone()),
                                 explicitness: parameter.bare.explicitness,
-                                laziness: parameter.bare.laziness,
-                                body_type_annotation: type_annotation.next(),
+                                codomain: type_.next(),
                                 body,
                             }
                             .into(),
@@ -188,30 +183,28 @@ impl<'a> Lowerer<'a> {
             None => None,
         };
 
-        let type_annotation = self
-            .lower_parameters_to_annotated_ones(function.parameters, declaration_type_annotation);
+        let type_ = self.lower_parameters_to_annotated_ones(function.parameters, type_);
 
         lowered_ast::Function {
             binder: function.binder,
-            type_annotation,
+            type_,
             expression: body,
         }
     }
 
-    fn lower_data_declaration(&mut self, type_: ast::Data) -> lowered_ast::Data {
-        let data_type_annotation = match type_.type_annotation {
-            Some(type_annotation) => type_annotation,
+    fn lower_data_declaration(&mut self, data_type: ast::Data) -> lowered_ast::Data {
+        let type_ = match data_type.type_ {
+            Some(type_) => type_,
             None => missing_mandatory_type_annotation_error(
-                type_.binder.span().fit_end(&type_.parameters).end(),
-                TypeAnnotationTarget::Declaration(&type_.binder),
+                data_type.binder.span().fit_end(&data_type.parameters).end(),
+                TypeAnnotationTarget::Declaration(&data_type.binder),
             )
             .handle(&mut *self),
         };
 
-        let type_annotation =
-            self.lower_parameters_to_annotated_ones(type_.parameters, data_type_annotation);
+        let type_ = self.lower_parameters_to_annotated_ones(data_type.parameters, type_);
 
-        let constructors = type_.constructors.map(|constructors| {
+        let constructors = data_type.constructors.map(|constructors| {
             constructors
                 .into_iter()
                 .flat_map(|constructor| self.lower_declaration(constructor))
@@ -219,8 +212,8 @@ impl<'a> Lowerer<'a> {
         });
 
         lowered_ast::Data {
-            binder: type_.binder,
-            type_annotation,
+            binder: data_type.binder,
+            type_,
             constructors,
         }
     }
@@ -229,8 +222,8 @@ impl<'a> Lowerer<'a> {
         &mut self,
         constructor: ast::Constructor,
     ) -> lowered_ast::Constructor {
-        let constructor_type_annotation = match constructor.type_annotation {
-            Some(type_annotation) => type_annotation,
+        let type_ = match constructor.type_ {
+            Some(type_) => type_,
             None => missing_mandatory_type_annotation_error(
                 constructor
                     .binder
@@ -242,10 +235,7 @@ impl<'a> Lowerer<'a> {
             .handle(&mut *self),
         };
 
-        let type_annotation = self.lower_parameters_to_annotated_ones(
-            constructor.parameters,
-            constructor_type_annotation,
-        );
+        let type_ = self.lower_parameters_to_annotated_ones(constructor.parameters, type_);
 
         if let Some(body) = constructor.body {
             let body = self.lower_expression(body);
@@ -266,7 +256,7 @@ impl<'a> Lowerer<'a> {
 
         lowered_ast::Constructor {
             binder: constructor.binder,
-            type_annotation,
+            type_,
         }
     }
 
@@ -523,23 +513,52 @@ impl<'a> Lowerer<'a> {
         let attributes = self.lower_attributes(&expression.attributes, &expression);
 
         match expression.bare {
-            PiTypeLiteral(pi) => {
-                let domain = self.lower_expression(pi.domain.expression);
-                let codomain = self.lower_expression(pi.codomain);
+            QuantifiedType(type_) => match type_.quantifier {
+                ast::Quantifier::Pi => {
+                    // @Task transfer expression.attributes to lowered form in some way or the other.
+                    // Not clear yet whether I should duplicate across all lowered pi types or do sth. else.
 
-                lowered_ast::Expression::new(
-                    attributes,
-                    expression.span,
-                    lowered_ast::PiType {
-                        explicitness: pi.domain.explicitness,
-                        laziness: pi.domain.laziness,
-                        parameter: pi.domain.binder.clone(),
-                        domain,
-                        codomain,
+                    let mut codomain = self.lower_expression(type_.codomain);
+
+                    for parameter in type_.parameters.into_iter().rev() {
+                        let domain = match parameter.bare.type_ {
+                            Some(type_) => type_,
+                            None => missing_mandatory_type_annotation_error(
+                                &parameter,
+                                TypeAnnotationTarget::Parameter(&parameter),
+                            )
+                            .handle(&mut *self),
+                        };
+                        let domain = self.lower_expression(domain);
+
+                        // @Temporary this is a hack until we properly support discards and intern correctly
+                        let binder = if parameter.bare.binder.as_str() != "_" {
+                            Some(parameter.bare.binder)
+                        } else {
+                            None
+                        };
+
+                        codomain = lowered_ast::Expression::new(
+                            default(),
+                            expression.span,
+                            lowered_ast::PiType {
+                                explicitness: parameter.bare.explicitness,
+                                binder,
+                                domain,
+                                codomain,
+                            }
+                            .into(),
+                        );
                     }
-                    .into(),
-                )
-            }
+
+                    codomain
+                }
+                // @Beacon @Task add UI test for this
+                ast::Quantifier::Sigma => Diagnostic::error()
+                    .message("sigma-type expressions are not supported yet")
+                    .primary_span(expression.span)
+                    .handle(&mut *self),
+            },
             Application(application) => {
                 if let Some(binder) = &application.binder {
                     let _: ErasedReportedError = Diagnostic::error()
@@ -576,54 +595,54 @@ impl<'a> Lowerer<'a> {
                 .handle(&mut *self),
             // @Task avoid re-boxing!
             Path(path) => lowered_ast::Expression::new(attributes, expression.span, (*path).into()),
-            Field(_field) => Diagnostic::error()
-                .message("record fields are not supported yet")
+            Projection(_projection) => Diagnostic::error()
+                .message("record field projections are not supported yet")
                 .primary_span(expression.span)
                 .handle(&mut *self),
             LambdaLiteral(lambda) => {
-                let mut expression = self.lower_expression(lambda.body);
+                // @Task transfer expression.attributes to lowered form in some way or the other.
+                // Not clear yet whether I should duplicate across all lowered lambdas or do sth. else.
 
-                let mut type_annotation = lambda
-                    .body_type_annotation
-                    .map(|type_annotation| self.lower_expression(type_annotation))
+                let mut body = self.lower_expression(lambda.body);
+
+                let mut codomain = lambda
+                    .codomain
+                    .map(|type_| self.lower_expression(type_))
                     .into_iter();
 
-                for parameter in lambda.parameters.iter().rev() {
-                    let parameter_type_annotation = parameter
+                for parameter in lambda.parameters.into_iter().rev() {
+                    let parameter_type = parameter
                         .bare
-                        .type_annotation
-                        .clone()
-                        .map(|type_annotation| self.lower_expression(type_annotation));
+                        .type_
+                        .map(|type_| self.lower_expression(type_));
 
-                    expression = lowered_ast::Expression::new(
+                    body = lowered_ast::Expression::new(
                         default(),
-                        default(),
+                        expression.span,
                         lowered_ast::Lambda {
-                            parameter: parameter.bare.binder.clone(),
-                            parameter_type_annotation,
+                            parameter: parameter.bare.binder,
+                            domain: parameter_type,
                             explicitness: parameter.bare.explicitness,
-                            laziness: parameter.bare.laziness,
-                            body_type_annotation: type_annotation.next(),
-                            body: expression,
+                            codomain: codomain.next(),
+                            body,
                         }
                         .into(),
                     );
                 }
 
-                expression
+                body
             }
             LetBinding(binding) => {
-                let expression = {
+                let body = {
                     let binder = &binding.binder;
 
-                    match binding.expression {
-                        Some(expression) => expression,
+                    match binding.body {
+                        Some(body) => body,
                         None => {
-                            let span = binding
-                                .binder
+                            let span = binder
                                 .span()
                                 .fit_end(&binding.parameters)
-                                .fit_end(&binding.type_annotation)
+                                .fit_end(&binding.type_)
                                 .end();
 
                             Diagnostic::error()
@@ -639,37 +658,36 @@ impl<'a> Lowerer<'a> {
                         }
                     }
                 };
+                let mut body = self.lower_expression(body);
 
-                let mut expression = self.lower_expression(expression);
-
-                let mut type_annotation = binding
-                    .type_annotation
-                    .map(|type_annotation| self.lower_expression(type_annotation))
+                let mut type_ = binding
+                    .type_
+                    .map(|type_| self.lower_expression(type_))
                     .into_iter();
 
-                for parameter in binding.parameters.iter().rev() {
-                    let parameter_type_annotation = parameter
+                for parameter in binding.parameters.into_iter().rev() {
+                    let domain = parameter
                         .bare
-                        .type_annotation
-                        .clone()
-                        .map(|expression| self.lower_expression(expression));
+                        .type_
+                        .map(|type_| self.lower_expression(type_));
 
-                    expression = lowered_ast::Expression::new(
+                    body = lowered_ast::Expression::new(
                         default(),
                         default(),
                         lowered_ast::Lambda {
-                            parameter: parameter.bare.binder.clone(),
-                            parameter_type_annotation,
+                            parameter: parameter.bare.binder,
+                            domain,
                             explicitness: parameter.bare.explicitness,
-                            laziness: parameter.bare.laziness,
-                            body_type_annotation: type_annotation.next(),
-                            body: expression,
+                            codomain: type_.next(),
+                            body,
                         }
                         .into(),
                     );
                 }
 
-                let body = self.lower_expression(binding.scope);
+                let scope = self.lower_expression(binding.scope);
+
+                // @Task transfer the attributes & span from the let-binding to the lambda(s)
 
                 lowered_ast::Expression::new(
                     default(),
@@ -685,15 +703,14 @@ impl<'a> Lowerer<'a> {
                                 // we don't support partial type annotations yet (using `_`)
                                 // @Temporary @Update @Bug -gy because we ignore above message
                                 // @Task verify correct semantics
-                                parameter_type_annotation: type_annotation.next(),
+                                domain: type_.next(),
                                 explicitness: Explicit,
-                                laziness: None,
-                                body_type_annotation: None,
-                                body,
+                                codomain: None,
+                                body: scope,
                             }
                             .into(),
                         ),
-                        argument: expression,
+                        argument: body,
                         explicitness: Explicit,
                     }
                     .into(),
@@ -941,13 +958,13 @@ impl<'a> Lowerer<'a> {
     fn lower_parameters_to_annotated_ones(
         &mut self,
         parameters: ast::Parameters,
-        type_annotation: ast::Expression,
+        type_: ast::Expression,
     ) -> lowered_ast::Expression {
-        let mut expression = self.lower_expression(type_annotation);
+        let mut type_ = self.lower_expression(type_);
 
         for parameter in parameters.into_iter().rev() {
-            let parameter_type_annotation = match parameter.bare.type_annotation {
-                Some(type_annotation) => type_annotation,
+            let parameter_type = match parameter.bare.type_ {
+                Some(type_) => type_,
                 None => missing_mandatory_type_annotation_error(
                     &parameter,
                     TypeAnnotationTarget::Parameter(&parameter),
@@ -955,23 +972,22 @@ impl<'a> Lowerer<'a> {
                 .handle(&mut *self),
             };
 
-            let parameter_type_annotation = self.lower_expression(parameter_type_annotation);
+            let parameter_type = self.lower_expression(parameter_type);
 
-            expression = lowered_ast::Expression::new(
+            type_ = lowered_ast::Expression::new(
                 default(),
                 default(),
                 lowered_ast::PiType {
                     explicitness: parameter.bare.explicitness,
-                    laziness: parameter.bare.laziness,
-                    parameter: Some(parameter.bare.binder),
-                    domain: parameter_type_annotation.clone(),
-                    codomain: expression,
+                    binder: Some(parameter.bare.binder),
+                    domain: parameter_type.clone(),
+                    codomain: type_,
                 }
                 .into(),
             );
         }
 
-        expression
+        type_
     }
 }
 
@@ -1015,21 +1031,21 @@ impl TargetExt for ast::Declaration {
     fn check_attributes(&self, attributes: &Attributes, lowerer: &mut Lowerer<'_>) {
         use ast::BareDeclaration::*;
 
-        let (binder, missing_definition_location, substitution, body) = match &self.bare {
+        let (binder, missing_definition_span, substitution, body) = match &self.bare {
             Function(function) => {
-                let missing_definition_location = function
+                let missing_definition_span = function
                     .binder
                     .span()
                     .fit_end(&function.parameters)
-                    .fit_end(&function.type_annotation)
+                    .fit_end(&function.type_)
                     .end();
 
                 (
                     &function.binder,
-                    missing_definition_location,
+                    missing_definition_span,
                     Substitution::from(" = ").placeholder("value"),
                     function.body.as_ref().map(|expression| {
-                        let eq = missing_definition_location
+                        let eq = missing_definition_span
                             .between(self.span.end())
                             .trim_start_matches(
                                 |character| character.is_ascii_whitespace(),
@@ -1044,21 +1060,21 @@ impl TargetExt for ast::Declaration {
                 )
             }
             Data(type_) => {
-                let missing_definition_location = type_
+                let missing_definition_span = type_
                     .binder
                     .span()
                     .fit_end(&type_.parameters)
-                    .fit_end(&type_.type_annotation)
+                    .fit_end(&type_.type_)
                     .end();
 
                 (
                     &type_.binder,
-                    missing_definition_location,
+                    missing_definition_span,
                     // @Task placeholder should be heavily improved by being made more actionable and
                     // by not relying on curly brackets
                     Substitution::from(" of ").placeholder("{ … }"),
                     type_.constructors.as_ref().map(|constructors| {
-                        let of = missing_definition_location
+                        let of = missing_definition_span
                             .between(self.span.end())
                             .trim_start_matches(
                                 |character| character.is_ascii_whitespace(),
@@ -1101,9 +1117,9 @@ the body containing a set of constructors
             (None, None) => Diagnostic::error()
                 .code(ErrorCode::E012)
                 .message(format!("the declaration ‘{binder}’ does not have a body"))
-                .labeled_primary_span(missing_definition_location, "missing definition")
+                .labeled_primary_span(missing_definition_span, "missing definition")
                 .suggest(
-                    missing_definition_location,
+                    missing_definition_span,
                     "provide a definition for the declaration",
                     substitution,
                 )

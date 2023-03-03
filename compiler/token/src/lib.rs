@@ -59,47 +59,71 @@ impl TokenExt for Token {
 #[derive(Clone, PartialEq, Eq, Discriminant, Debug)]
 #[discriminant(name: TokenName)]
 pub enum BareToken {
+    //
+    // Comment-Like Tokens
+    //
     Shebang,
     Comment,
     DocumentationComment,
-    Word(Atom),
-    Symbol(Atom),
-    NumberLiteral(Atom),
-    TextLiteral(Atom),
-    At,
-    Backslash,
-    QuestionMark,
-    Colon,
-    DoubleColon,
-    Dot,
-    Equals,
-    Apostrophe,
-    Semicolon(Provenance),
-    OpeningRoundBracket,
-    OpeningSquareBracket,
-    OpeningCurlyBracket(Provenance),
-    ClosingRoundBracket,
-    ClosingSquareBracket,
-    ClosingCurlyBracket(Provenance),
-    ThinArrowRight,
-    ThinArrowLeft,
-    Underscore,
-    WideArrowRight,
+    //
+    // Keywords
+    //
     As,
     Case,
-    Extern,
     Data,
     Do,
+    Extern,
+    /// `For`
+    ForUpper,
+    /// `for`
+    ForLower,
     In,
-    Lazy,
     Let,
     Module,
     Of,
+    /// `_`
+    Underscore,
+    /// `self`
     Self_,
     Super,
     Topmost,
     Use,
+    //
+    // Reserved Symbols
+    //
+    At,
+    Backslash,
+    Colon,
+    Dot,
+    Equals,
+    DoubleAsterisk,
+    DoubleColon,
+    QuestionMark,
+    /// `<-`
+    ThinArrowLeft,
+    /// `->`
+    ThinArrowRight,
+    /// `=>`
+    WideArrowRight,
+    //
+    // Punctuation
+    //
+    Apostrophe,
+    ClosingCurlyBracket(Provenance),
+    ClosingRoundBracket,
+    ClosingSquareBracket,
+    OpeningCurlyBracket(Provenance),
+    OpeningRoundBracket,
+    OpeningSquareBracket,
+    Semicolon(Provenance),
+    //
+    // Other Tokens
+    //
     EndOfInput,
+    NumberLiteral(Atom),
+    Symbol(Atom),
+    TextLiteral(Atom),
+    Word(Atom),
 }
 
 impl fmt::Display for BareToken {
@@ -114,20 +138,6 @@ impl fmt::Display for BareToken {
 }
 
 impl TokenName {
-    /// Test if the token may appear at the start of a path.
-    pub const fn is_path_head(self) -> bool {
-        matches!(self, Word | Symbol) || self.is_path_hanger()
-    }
-
-    pub const fn is_path_hanger(self) -> bool {
-        matches!(self, Extern | Topmost | Super | Self_)
-    }
-
-    /// Test if the token may terminate declarations.
-    pub const fn is_terminator(self) -> bool {
-        matches!(self, Semicolon | ClosingCurlyBracket | EndOfInput)
-    }
-
     pub const fn introduces_indented_section(self) -> bool {
         matches!(self, Do | Of)
     }
@@ -140,47 +150,63 @@ impl fmt::Display for TokenName {
         }
 
         f.write_str(match self {
+            //
+            // Comment-Like Tokens
+            //
             Shebang => "shebang",
             Comment => "comment",
             DocumentationComment => "documentation comment",
-            Word => "word",
-            Symbol => "symbol",
-            NumberLiteral => "number literal",
-            TextLiteral => "text literal",
-            At => quoted!("@"),
-            Backslash => quoted!(r"\"),
-            QuestionMark => quoted!("?"),
-            Colon => quoted!(":"),
-            DoubleColon => quoted!("::"),
-            Dot => quoted!("."),
-            Equals => quoted!("="),
-            Apostrophe => quoted!("'"),
-            Semicolon => quoted!(";"),
-            OpeningRoundBracket => quoted!("("),
-            OpeningSquareBracket => quoted!("["),
-            OpeningCurlyBracket => quoted!("{"),
-            ClosingRoundBracket => quoted!(")"),
-            ClosingSquareBracket => quoted!("]"),
-            ClosingCurlyBracket => quoted!("}"),
-            ThinArrowRight => quoted!("->"),
-            ThinArrowLeft => quoted!("<-"),
-            Underscore => quoted!("_"),
-            WideArrowRight => quoted!("=>"),
+            //
+            // Keywords
+            //
             As => keyword!(as),
             Case => keyword!(case),
-            Extern => keyword!(extern),
             Data => keyword!(data),
             Do => keyword!(do),
+            Extern => keyword!(extern),
+            ForUpper => keyword!(For),
+            ForLower => keyword!(for),
             In => keyword!(in),
-            Lazy => keyword!(lazy),
             Let => keyword!(let),
             Module => keyword!(module),
             Of => keyword!(of),
             Self_ => keyword!(self),
             Super => keyword!(super),
             Topmost => keyword!(topmost),
+            Underscore => quoted!("_"),
             Use => keyword!(use),
+            //
+            // Reserved Symbols
+            At => quoted!("@"),
+            Backslash => quoted!(r"\"),
+            Colon => quoted!(":"),
+            Dot => quoted!("."),
+            DoubleAsterisk => quoted!("**"),
+            DoubleColon => quoted!("::"),
+            Equals => quoted!("="),
+            QuestionMark => quoted!("?"),
+            Semicolon => quoted!(";"),
+            ThinArrowLeft => quoted!("<-"),
+            ThinArrowRight => quoted!("->"),
+            WideArrowRight => quoted!("=>"),
+            //
+            // Punctuation
+            //
+            Apostrophe => quoted!("'"),
+            ClosingCurlyBracket => quoted!("}"),
+            ClosingRoundBracket => quoted!(")"),
+            ClosingSquareBracket => quoted!("]"),
+            OpeningCurlyBracket => quoted!("{"),
+            OpeningRoundBracket => quoted!("("),
+            OpeningSquareBracket => quoted!("["),
+            //
+            // Other Tokens
+            //
             EndOfInput => "end of input",
+            NumberLiteral => "number literal",
+            Symbol => "symbol",
+            TextLiteral => "text literal",
+            Word => "word",
         })
     }
 }

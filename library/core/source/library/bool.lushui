@@ -19,23 +19,30 @@ not (b: Bool): Bool =
 
 use topmost.unit.(Unit Thunk (force as !))
 
-@public
-if (A: Type) (condition: Bool) (lazy consequent: Thunk A) (lazy alternate: Thunk A): A =
-    case condition of
-        false => ! A alternate
-        true => ! A consequent
+;;; @Task uncomment once `@lazy` is implemented
+;;; @public
+;;; if (A: Type)
+;;;     (condition: Bool)
+;;;     @lazy (consequent: Thunk A)
+;;;     @lazy (alternate: Thunk A): A
+;;;     =
+;;;     case condition of
+;;;         false => ! A alternate
+;;;         true => ! A consequent
 
-;;; @Question or `&&`?
-@public
-use and as &
+;;; ;;; @Question or `&&`?
+;;; @public
+;;; use and as &
 
-@public
-and (b: Bool) (lazy c: Thunk Bool): Bool = if Bool b (! Bool c) false
+;;; @Task uncomment once `@lazy` is implemented
+;;; @public
+;;; and (b: Bool) @lazy (c: Thunk Bool): Bool = if Bool b (! Bool c) false
 
-@public
-;;; @Question or `||`?
-use or as |
+;;; @public
+;;; ;;; @Question or `||`?
+;;; use or as |
 
-@public
-or (b: Bool) (lazy c: Thunk Bool): Bool = if Bool b true (! Bool c)
+;;; @Task uncomment once `@lazy` is implemented
+;;; @public
+;;; or (b: Bool) @lazy (c: Thunk Bool): Bool = if Bool b true (! Bool c)
 

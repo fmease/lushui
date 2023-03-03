@@ -61,14 +61,17 @@ impl Target for ast::Expression {
     fn name(&self) -> &'static str {
         use ast::BareExpression::*;
 
-        match self.bare {
-            PiTypeLiteral(_) => "a pi type literal",
+        match &self.bare {
+            QuantifiedType(type_) => match type_.quantifier {
+                ast::Quantifier::Pi => "a function type",
+                ast::Quantifier::Sigma => "a pair type",
+            },
             Application(_) => "an application",
             NumberLiteral(_) => "a number literal expression",
             TextLiteral(_) => "a text literal expression",
             TypedHole(_) => "a typed hole",
             Path(_) => "a path expression",
-            Field(_) => "a field",
+            Projection(_) => "a record field projection",
             LambdaLiteral(_) => "a lambda literal",
             LetBinding(_) => "a let-binding",
             UseBinding(_) => "a use-binding",
@@ -83,13 +86,13 @@ impl Target for ast::Expression {
         use ast::BareExpression::*;
 
         match self.bare {
-            PiTypeLiteral(_) => Targets::PI_TYPE_LITERAL_EXPRESSION,
+            QuantifiedType(_) => Targets::QUANTIFIED_TYPE_EXPRESSION,
             Application(_) => Targets::APPLICATION_EXPRESSION,
             NumberLiteral(_) => Targets::NUMBER_LITERAL_EXPRESSION,
             TextLiteral(_) => Targets::TEXT_LITERAL_EXPRESSION,
             TypedHole(_) => Targets::TYPED_HOLE_EXPRESSION,
             Path(_) => Targets::PATH_EXPRESSION,
-            Field(_) => Targets::FIELD_EXPRESSION,
+            Projection(_) => Targets::FIELD_EXPRESSION,
             LambdaLiteral(_) => Targets::LAMBDA_LITERAL_EXPRESSION,
             LetBinding(_) => Targets::LET_IN_EXPRESSION,
             UseBinding(_) => Targets::USE_IN_EXPRESSION,
@@ -153,7 +156,7 @@ bitflags::bitflags! {
             | Self::MODULE_HEADER_DECLARATION.bits
             | Self::USE_DECLARATION.bits;
 
-        const PI_TYPE_LITERAL_EXPRESSION = 1 << 6;
+        const QUANTIFIED_TYPE_EXPRESSION = 1 << 6;
         const APPLICATION_EXPRESSION = 1 << 7;
         const TYPE_LITERAL_EXPRESSION = 1 << 8;
         const NUMBER_LITERAL_EXPRESSION = 1 << 9;
@@ -168,7 +171,7 @@ bitflags::bitflags! {
         const DO_BLOCK_EXPRESSION = 1 << 18;
         const SEQUENCE_LITERAL_EXPRESSION = 1 << 19;
 
-        const EXPRESSION = Self::PI_TYPE_LITERAL_EXPRESSION.bits
+        const EXPRESSION = Self::QUANTIFIED_TYPE_EXPRESSION.bits
             | Self::APPLICATION_EXPRESSION.bits
             | Self::TYPE_LITERAL_EXPRESSION.bits
             | Self::NUMBER_LITERAL_EXPRESSION.bits

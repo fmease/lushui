@@ -1,6 +1,6 @@
 #!/usr/bin/sh
 //usr/bin/env rustc $0 ; ./generate ; rm ./generate ; exit
-//! Extract the EBNF snippets from the parser.
+//! Extract `grammar` snippets from the parser.
 
 // @Task either make this part of `build.rs` (accepting a flag) or another
 // binary of the Cargo package lushui for improved portability and stability.
@@ -24,9 +24,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let parser = fs::read_to_string(program_directory_path.join(PARSER_PATH))?;
 
     let mut snippet_state = OutsideCodeSnippet;
-    let mut ebnf_snippets = 0;
+    let mut grammar_snippets = 0;
     let mut other_snippets = 0;
-    let mut ebnf_definition_state = NotCollectedYet;
+    let mut grammar_definition_state = NotCollectedYet;
 
     let mut grammar = String::from(PREAMBLE);
 
@@ -37,10 +37,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             match line.strip_prefix("```") {
                 Some(line) => {
-                    snippet_state = if line.contains("ebnf") {
+                    snippet_state = if line == "grammar" {
                         match snippet_state {
-                            OutsideCodeSnippet => InsideEbnfSnippet,
-                            InsideOtherCodeSnippet | InsideEbnfSnippet => unreachable!(),
+                            OutsideCodeSnippet => InsideGrammarSnippet,
+                            InsideOtherCodeSnippet | InsideGrammarSnippet => unreachable!(),
                         }
                     } else {
                         match snippet_state {
@@ -49,9 +49,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 other_snippets += 1;
                                 OutsideCodeSnippet
                             }
-                            InsideEbnfSnippet => {
+                            InsideGrammarSnippet => {
                                 grammar.push('\n');
-                                ebnf_snippets += 1;
+                                grammar_snippets += 1;
                                 OutsideCodeSnippet
                             }
                         }
@@ -71,12 +71,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 grammar.push(';');
                 grammar += line;
                 grammar.push('\n');
-                match ebnf_definition_state {
-                    NotCollectedYet => ebnf_definition_state = Collecting,
+                match grammar_definition_state {
+                    NotCollectedYet => grammar_definition_state = Collecting,
                     Collecting | Collected => unreachable!(),
                 }
             } else {
-                match ebnf_definition_state {
+                match grammar_definition_state {
                     NotCollectedYet | Collected => {}
                     Collecting => {
                         grammar.push(';');
@@ -89,25 +89,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         } else {
-            match ebnf_definition_state {
+            match grammar_definition_state {
                 Collected => {}
                 NotCollectedYet => unreachable!(),
                 Collecting => {
                     grammar += "\n";
-                    ebnf_definition_state = Collected
+                    grammar_definition_state = Collected
                 }
             }
         }
     }
 
     assert_eq!(snippet_state, OutsideCodeSnippet);
-    assert_eq!(ebnf_definition_state, Collected);
+    assert_eq!(grammar_definition_state, Collected);
 
     fs::write(program_directory_path.join(OUTPUT_PATH), grammar)?;
 
     println!(
-        "processed {} EBNF snippets and skipped {} other snippets",
-        ebnf_snippets, other_snippets
+        "processed {} ‘grammar’ snippets and skipped {} non-‘grammar’ snippets",
+        grammar_snippets, other_snippets
     );
 
     Ok(())
@@ -119,13 +119,13 @@ use SnippetState::*;
 enum SnippetState {
     OutsideCodeSnippet,
     InsideOtherCodeSnippet,
-    InsideEbnfSnippet,
+    InsideGrammarSnippet,
 }
 
-use EbnfDefinitionState::*;
+use GrammarDefinitionState::*;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum EbnfDefinitionState {
+enum GrammarDefinitionState {
     NotCollectedYet,
     Collecting,
     Collected,

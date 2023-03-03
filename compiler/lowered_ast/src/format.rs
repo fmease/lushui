@@ -46,7 +46,7 @@ fn write_declaration(
                 function.binder,
                 colon = ":".color(SYMBOL_COLOR)
             )?;
-            function.type_annotation.write(f)?;
+            function.type_.write(f)?;
             if let Some(expression) = &function.expression {
                 write!(f, " {equals} ", equals = "=".color(SYMBOL_COLOR))?;
                 expression.write(f)?;
@@ -62,7 +62,7 @@ fn write_declaration(
                     binder = type_.binder,
                     colon = ":".color(SYMBOL_COLOR),
                 )?;
-                type_.type_annotation.write(f)?;
+                type_.type_.write(f)?;
                 writeln!(f, " {of}", of = "of".color(KEYWORD_COLOR))?;
                 for constructor in constructors {
                     write_declaration(constructor, depth + 1, f)?;
@@ -77,7 +77,7 @@ fn write_declaration(
                     binder = type_.binder,
                     colon = ":".color(SYMBOL_COLOR),
                 )?;
-                type_.type_annotation.write(f)?;
+                type_.type_.write(f)?;
                 writeln!(f)
             }
         },
@@ -88,7 +88,7 @@ fn write_declaration(
                 binder = constructor.binder,
                 colon = ":".color(SYMBOL_COLOR),
             )?;
-            constructor.type_annotation.write(f)?;
+            constructor.type_.write(f)?;
             writeln!(f)
         }
         Module(module) => {
@@ -136,15 +136,12 @@ fn write_pi_type_literal_or_lower(
             write!(f, "{}", pi.explicitness)?;
 
             // @Note fragile
-            let domain_needs_brackets = pi.parameter.is_some() || pi.laziness.is_some();
+            let domain_needs_brackets = pi.binder.is_some();
 
             if domain_needs_brackets {
                 write!(f, "(")?;
-                if pi.laziness.is_some() {
-                    write!(f, "lazy ")?;
-                }
 
-                if let Some(parameter) = &pi.parameter {
+                if let Some(parameter) = &pi.binder {
                     write!(f, "{parameter}{colon} ", colon = ":".color(SYMBOL_COLOR))?;
                 }
 
@@ -164,16 +161,12 @@ fn write_pi_type_literal_or_lower(
                 backslash = "\\".color(SYMBOL_COLOR),
                 explicitness = lambda.explicitness,
             )?;
-            let parameter_needs_brackets =
-                lambda.parameter_type_annotation.is_some() || lambda.laziness.is_some();
+            let parameter_needs_brackets = lambda.domain.is_some();
 
             if parameter_needs_brackets {
                 write!(f, "(")?;
-                if lambda.laziness.is_some() {
-                    write!(f, "{lazy} ", lazy = "lazy".color(KEYWORD_COLOR))?;
-                }
                 write!(f, "{}", lambda.parameter)?;
-                if let Some(annotation) = &lambda.parameter_type_annotation {
+                if let Some(annotation) = &lambda.domain {
                     write!(f, "{colon} ", colon = ":".color(SYMBOL_COLOR),)?;
                     annotation.write(f)?;
                 }
@@ -182,7 +175,7 @@ fn write_pi_type_literal_or_lower(
                 write!(f, "{}", lambda.parameter)?;
             }
 
-            if let Some(annotation) = &lambda.body_type_annotation {
+            if let Some(annotation) = &lambda.codomain {
                 write!(f, "{colon} ", colon = ":".color(SYMBOL_COLOR),)?;
                 annotation.write(f)?;
             }

@@ -73,8 +73,16 @@
                     "name": "keyword.other.lushui"
                 },
                 {
-                    "match": "(?<![\\w\\-])(data|lazy|let|module|use)(?![\\w\\-])",
+                    "match": "(?<![\\w\\-])(data|let|module|use)(?![\\w\\-])",
                     "name": "storage.modifier.lushui"
+                },
+                {
+                    "match": "(?<![\\w\\-])(for)(?![\\w\\-])",
+                    "name": "storage.type.function.lushui"
+                },
+                {
+                    "match": "(?<![\\w\\-])(For)(?![\\w\\-])",
+                    "name": "storage.typelushui"
                 },
                 {
                     "match": "(?<![\\w\\-])as(?![\\w\\-])",

@@ -459,7 +459,7 @@ expected type ‘{}’
                 // `expression` (parameter of `infer_type_of_expression`) has been normalized?
                 self.it_is_a_type(literal.domain.clone(), scope)?;
 
-                if literal.parameter.is_some() {
+                if literal.binder.is_some() {
                     self.it_is_a_type(
                         literal.codomain.clone(),
                         &scope.extend_with_parameter(literal.domain.clone()),
@@ -472,7 +472,7 @@ expected type ‘{}’
             }
             Lambda(lambda) => {
                 let parameter_type: Expression = lambda
-                    .parameter_type_annotation
+                    .domain
                     .clone()
                     .ok_or_else(|| missing_annotation_error().report(self.session.reporter()))?;
 
@@ -482,7 +482,7 @@ expected type ‘{}’
                 let inferred_body_type =
                     self.infer_type_of_expression(lambda.body.clone(), &scope)?;
 
-                if let Some(body_type_annotation) = lambda.body_type_annotation.clone() {
+                if let Some(body_type_annotation) = lambda.codomain.clone() {
                     self.it_is_a_type(body_type_annotation.clone(), &scope)?;
                     self.it_is_actual(body_type_annotation, inferred_body_type.clone(), &scope)?;
                 }
@@ -492,8 +492,7 @@ expected type ‘{}’
                     expression.span,
                     hir::PiType {
                         explicitness: Explicitness::Explicit,
-                        laziness: lambda.laziness,
-                        parameter: Some(lambda.parameter.clone()),
+                        binder: Some(lambda.binder.clone()),
                         domain: parameter_type,
                         codomain: inferred_body_type,
                     }
@@ -513,24 +512,24 @@ expected type ‘{}’
                     let argument_type =
                         self.infer_type_of_expression(application.argument.clone(), scope)?;
 
-                    let argument_type = if pi.laziness.is_some() {
-                        Expression::new(
-                            default(),
-                            argument_type.span,
-                            hir::PiType {
-                                explicitness: Explicitness::Explicit,
-                                laziness: None,
-                                parameter: None,
-                                domain: self
-                                    .session
-                                    .require_special(Type::Unit, Some(application.callee.span))?,
-                                codomain: argument_type,
-                            }
-                            .into(),
-                        )
-                    } else {
-                        argument_type
-                    };
+                    // @Beacon @Beacon @Beacon @Task re-introduce `lazy` with `@lazy`
+                    // let argument_type = if pi.laziness.is_some() {
+                    //     Expression::new(
+                    //         default(),
+                    //         argument_type.span,
+                    //         hir::PiType {
+                    //             explicitness: Explicitness::Explicit,
+                    //             binder: None,
+                    //             domain: self
+                    //                 .session
+                    //                 .require_special(Type::Unit, Some(application.callee.span))?,
+                    //             codomain: argument_type,
+                    //         }
+                    //         .into(),
+                    //     )
+                    // } else {
+                    //     argument_type
+                    // };
 
                     self.it_is_actual(pi.domain.clone(), argument_type, scope)
                         // @Bug this error handling might *steal* the error from other handlers further
@@ -554,7 +553,7 @@ expected type ‘{}’
                             OutOfOrderBinding => unreachable!(),
                         })?;
 
-                    match pi.parameter.clone() {
+                    match pi.binder.clone() {
                         Some(_) => Expression::new(
                             default(),
                             default(),
@@ -831,7 +830,7 @@ but got type ‘{}’",
 
         match expression.bare {
             PiType(literal) => {
-                if literal.parameter.is_some() {
+                if literal.binder.is_some() {
                     let scope = scope.extend_with_parameter(literal.domain.clone());
                     self.result_type(literal.codomain.clone(), &scope)
                 } else {

@@ -5,7 +5,7 @@
 
 use diagnostics::{error::PossiblyErroneous, reporter::ErasedReportedError};
 pub use format::{Debug, Format};
-use span::{PossiblySpanning, SourceFileIndex, Span, Spanned, Spanning};
+use span::{SourceFileIndex, Span, Spanned, Spanning};
 use std::{fmt, hash::Hash};
 use token::{BareToken, Token, TokenExt, Word};
 use utilities::{obtain, smallvec, Atom, SmallVec};
@@ -14,9 +14,12 @@ mod format;
 
 pub type Item<Bare> = span::item::Item<Bare, Attributes>;
 
+/// A declaration.
+///
+/// The syntactic category of module-level definitions like functions, data types and modules.
 pub type Declaration = Item<BareDeclaration>;
 
-/// The syntax node of a declaration.
+/// A declaration without an enclosing [`Span`].
 #[derive(PartialEq, Eq)]
 pub enum BareDeclaration {
     Function(Box<Function>),
@@ -36,14 +39,23 @@ impl TryFrom<BareDeclaration> for Module {
     }
 }
 
-/// The syntax node of a value declaration or a let statement.
+/// A function declaration.
 ///
-/// See [`BareDeclaration::Function`] and [`Statement::Let`].
+/// # Examples
+///
+/// ```lushui
+/// identity 'A (a: A): A = a
+/// ```
+///
+/// * `identity` is the *binder*
+/// * `'A` and `(a: A)` are the *parameters*
+/// * `A` following the colon is the *type*
+/// * `a` at the end is the *body*
 #[derive(Clone, PartialEq, Eq)]
 pub struct Function {
     pub binder: Identifier,
     pub parameters: Parameters,
-    pub type_annotation: Option<Expression>,
+    pub type_: Option<Expression>,
     pub body: Option<Expression>,
 }
 
@@ -53,12 +65,25 @@ impl From<Function> for BareDeclaration {
     }
 }
 
-/// The syntax node of a data declaration.
+/// A data type declaration.
+///
+/// # Examples
+///
+/// ```lushui
+/// data Result (A: Type) (E: Type): Type of
+///     failure 'A 'E: E -> Result A E
+///     success 'A 'E: A -> Result A E
+/// ```
+///
+/// * `Result` is the *binder*
+/// * `(A: Type)` and `(E: Type)` are the *parameters*
+/// * `Type` at the end of the first line is the *type*
+/// * the last two lines contain the *constructors*
 #[derive(PartialEq, Eq)]
 pub struct Data {
     pub binder: Identifier,
     pub parameters: Parameters,
-    pub type_annotation: Option<Expression>,
+    pub type_: Option<Expression>,
     pub constructors: Option<Vec<Declaration>>,
 }
 
@@ -68,14 +93,29 @@ impl From<Data> for BareDeclaration {
     }
 }
 
-/// The syntax node of a constructor.
+/// A (term) constructor declaration.
+///
+/// # Examples
+///
+/// ```lushui
+/// data U: Type of
+///     type (A: Type): U = ?type
+/// ```
+///
+/// * the first line is not part of the constructor
+/// * `type` is the *binder*
+/// * `(A: Type)` is the *parameter*
+/// * `U` is the *type*
+/// * `?type` is the *body*
 #[derive(PartialEq, Eq)]
 pub struct Constructor {
     pub binder: Identifier,
     pub parameters: Parameters,
-    pub type_annotation: Option<Expression>,
-    /// Explicit bodies are only syntactically legal for constructors,
-    /// not semantically.
+    pub type_: Option<Expression>,
+    /// The body of a constructor.
+    ///
+    /// Explicitly provided constructor bodies are only *syntactically* valid,
+    /// not semantically. They are rejected in the lowerer.
     pub body: Option<Expression>,
 }
 
@@ -85,7 +125,20 @@ impl From<Constructor> for BareDeclaration {
     }
 }
 
-/// The syntax node of a module declaration.
+/// A module declaration.
+///
+/// # Examples
+///
+/// `file.lushui`:
+///
+/// ```lushui
+/// module inner of
+///     use extern.core.type.Type
+/// ```
+///
+/// * `inner` is the *binder*
+/// * the index of `file.lushui` is the *file* (index)
+/// * the last line contains the only *declaration* (or subdeclaration)
 #[derive(PartialEq, Eq)]
 pub struct Module {
     pub binder: Identifier,
@@ -99,13 +152,15 @@ impl From<Module> for BareDeclaration {
     }
 }
 
-/// The syntax node of attribute groups.
+/// An attribute group.
+///
+/// > **NOTE** Does not have a corresponding syntactic form in the surface language yet if ever.
 #[derive(PartialEq, Eq)]
 pub struct Group {
     pub declarations: Vec<Declaration>,
 }
 
-/// The syntax node of a use-declaration or statement.
+/// A use-declaration or a use-statement.
 ///
 /// See [`BareDeclaration::Use`] and [`Statement::Use`].
 #[derive(Clone, PartialEq, Eq)]
@@ -145,8 +200,6 @@ pub enum BareAttribute {
     Documentation,
 }
 
-// @Beacon @Task smh incorporate HashMap/BTreeMap<WeaklySpanned<Identifier>, Argument>
-// to enable out of order named parameters
 pub type AttributeArgument = Spanned<BareAttributeArgument>;
 
 #[derive(Clone, PartialEq, Eq)]
@@ -174,14 +227,15 @@ pub struct NamedAttributeArgument {
     pub value: AttributeArgument,
 }
 
+/// An expression.
 pub type Expression = Item<BareExpression>;
 
-/// The syntax node of an expression.
+/// An expression without an enclosing [`Span`].
 #[derive(Clone, PartialEq, Eq)]
 pub enum BareExpression {
-    PiTypeLiteral(Box<PiTypeLiteral>),
+    QuantifiedType(Box<QuantifiedType>),
     Application(Box<Application<Expression>>),
-    Field(Box<Field>),
+    Projection(Box<Projection>),
     Path(Box<Path>),
     NumberLiteral(Box<NumberLiteral>),
     TextLiteral(Box<TextLiteral>),
@@ -201,26 +255,69 @@ impl PossiblyErroneous for BareExpression {
     }
 }
 
-/// The syntax node of a pi type literal.
+/// A quantified type.
+///
+/// It is either a
+///
+/// * Π-type (dependent function type) or a
+/// * Σ-type (dependent pair type)
+///
+/// depending on the *quantifier*.
+///
+/// # Examples
+///
+/// ```lushui
+/// Pi = Int -> Int -> Int
+/// Sigma = Nat ** Nat ** Nat
+/// ```
+///
+/// * inside of function `Pi`
+///   * the *quantifier* is [Π]
+///   * the very first `Int` is the *parameter*
+///   * `Int -> Int` is the *codomain*
+/// * inside of function `Sigma`
+///   * the *quantifier* is [Σ]
+///   * the very first `Nat` is the *parameter*
+///   * `Nat ** Nat` is the *codomain*
+///
+/// ```lushui
+/// Pi = For '(A: Type) '(n: Nat) (v: Vec A n) -> List A
+/// Sigma = For '(n: Nat) (v: Vec E n) ** E
+/// ```
+///
+/// * inside of function `Pi`
+///   * the *quantifier* is [Π]
+///   * `'(A: Type)`, `'(n: Nat)` and `(v: Vec A n)` are the *parameters*
+///   * `List A` is the *codomain*
+/// * inside of function `Sigma`
+///   * the *quantifier* is [Σ]
+///   * `'(n: Nat)` and `(v: Vec E n)` are the *parameters*
+///   * `E` at the very end is the *codomain*
+///
+/// [Π]: Quantifier::Pi
+/// [Σ]: Quantifier::Sigma
 #[derive(Clone, PartialEq, Eq)]
-pub struct PiTypeLiteral {
-    pub domain: Domain,
+pub struct QuantifiedType {
+    pub quantifier: Quantifier,
+    pub parameters: Parameters,
     pub codomain: Expression,
 }
 
-impl From<PiTypeLiteral> for BareExpression {
-    fn from(pi: PiTypeLiteral) -> Self {
-        Self::PiTypeLiteral(Box::new(pi))
+impl From<QuantifiedType> for BareExpression {
+    fn from(type_: QuantifiedType) -> Self {
+        Self::QuantifiedType(Box::new(type_))
     }
 }
 
-/// The domain of a [pi type literal](PiTypeLiteral).
-#[derive(Clone, PartialEq, Eq)]
-pub struct Domain {
-    pub explicitness: Explicitness,
-    pub laziness: Option<Span>,
-    pub binder: Option<Identifier>,
-    pub expression: Expression,
+/// Infix quantifier used by [quantified types].
+///
+/// [quantified types]: QuantifiedType
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Quantifier {
+    /// Used for Π-types. Denoted as `->` in the surface language.
+    Pi,
+    /// Used for Σ-types. Denoted as `**` in the surface language.
+    Sigma,
 }
 
 impl From<Application<Expression>> for BareExpression {
@@ -229,15 +326,32 @@ impl From<Application<Expression>> for BareExpression {
     }
 }
 
+/// A record field projection: A projection from a record to one of its fields.
+///
+/// # Examples
+///
+/// ```lushui
+/// main = (process via)::component
+/// ```
+///
+/// * `(process via)` is the *basis*
+/// * `component` is the *field*
+///
+/// ```lushui
+/// main = compound::first::second
+/// ```
+///
+/// * `compound::first` is the *basis*
+/// * `second` is the *field*
 #[derive(Clone, PartialEq, Eq)]
-pub struct Field {
-    pub base: Expression,
-    pub member: Identifier,
+pub struct Projection {
+    pub basis: Expression,
+    pub field: Identifier,
 }
 
-impl From<Field> for BareExpression {
-    fn from(field: Field) -> Self {
-        Self::Field(Box::new(field))
+impl From<Projection> for BareExpression {
+    fn from(projection: Projection) -> Self {
+        Self::Projection(Box::new(projection))
     }
 }
 
@@ -259,9 +373,21 @@ impl From<TextLiteral> for BareExpression {
     }
 }
 
-/// The syntax node of typed holes.
+/// A (typed) hole.
+///
+/// # Examples
+///
+/// ```lushui
+/// main = ?impl
+/// ```
+///
+/// * `?impl` is the hole
+/// * `impl` is the *tag*
 #[derive(Clone, PartialEq, Eq)]
 pub struct TypedHole {
+    /// The tag of the hole.
+    ///
+    /// It's *tag* not *binder* or *name* to emphasize that it's not unique inside of a program.
     pub tag: Identifier,
 }
 
@@ -271,13 +397,27 @@ impl From<TypedHole> for BareExpression {
     }
 }
 
-/// The syntax-node of a let-bindings.
+/// A let-binding.
+///
+/// # Examples
+///
+/// ```lushui
+/// function (n: Nat) =
+///     let operation x y: Nat = Nat.+ x (Nat.* y 2) in
+///     operation (operation n 90) 80
+/// ```
+///
+/// * `operation` following the `let` is the *binder*
+/// * `x` and `y` are the *parameters*
+/// * `Nat` following the colon in line 2 is the *type*
+/// * `Nat.+ x (Nat.* y 2)` is the *body*
+/// * `operation (operation n 90) 80` is the *scope*
 #[derive(Clone, PartialEq, Eq)]
 pub struct LetBinding {
     pub binder: Identifier,
     pub parameters: Parameters,
-    pub type_annotation: Option<Expression>,
-    pub expression: Option<Expression>,
+    pub type_: Option<Expression>,
+    pub body: Option<Expression>,
     pub scope: Expression,
 }
 
@@ -287,7 +427,18 @@ impl From<LetBinding> for BareExpression {
     }
 }
 
-/// The syntax node of a use-binding.
+/// A use-binding.
+///
+/// # Examples
+///
+/// ```lushui
+/// main =
+///     use extern.core.((nat.Nat as N) (int.Int as I)) in
+///     f N.1 I.-1
+/// ```
+///
+/// * between `use` and `in` are the *bindings* (the use-path tree)
+/// * `f N.1 I.-1` is the *scope*
 #[derive(Clone, PartialEq, Eq)]
 pub struct UseBinding {
     pub bindings: UsePathTree,
@@ -300,11 +451,21 @@ impl From<UseBinding> for BareExpression {
     }
 }
 
-/// The syntax node of a lambda literal expression.
+/// A lambda literal.
+///
+/// # Examples
+///
+/// ```lushui
+/// main = for 'A (a: A): A => identity a
+/// ```
+///
+/// * `'A` and `(a: A)` are the *parameters*
+/// * `A` right before `=>` is the *codomain*
+/// * `identity a` is the *body*
 #[derive(Clone, PartialEq, Eq)]
 pub struct LambdaLiteral {
     pub parameters: Parameters,
-    pub body_type_annotation: Option<Expression>,
+    pub codomain: Option<Expression>,
     pub body: Expression,
 }
 
@@ -314,6 +475,30 @@ impl From<LambdaLiteral> for BareExpression {
     }
 }
 
+// @Beacon @Task parse *`()`, *`(x,)`, `(x, y)`, `(x, y, z)`, … as tuple (sigma) literals
+// (*) semantically ill-formed
+
+// pub struct TupleLiteral;
+
+// impl From<TupleLiteral> for BareExpression {
+//     fn from(tuple: TupleLiteral) -> Self {
+//         Self::TupleLiteral(Box::new(tuple))
+//     }
+// }
+
+/// A case-analysis expression.
+///
+/// # Examples
+///
+/// ```lushui
+/// not (x: Bool): Bool =
+///     case x of
+///         false => true
+///         true => false
+/// ```
+///
+/// * `x` between `case` and `of` is the *scrutinee*
+/// * the last two lines contain the *cases*
 #[derive(Clone, PartialEq, Eq)]
 pub struct CaseAnalysis {
     pub scrutinee: Expression,
@@ -343,33 +528,58 @@ impl From<DoBlock> for BareExpression {
     }
 }
 
-// @Note we probably gonna need to make this an item at some time for diagnostics
+// @Task rename this to BareStatement and redefine Statement to be an Item<BareStatement>
 #[derive(Clone, PartialEq, Eq)]
 pub enum Statement {
-    // @Note we could make the definition syntactically optional and provide a good error message
-    // (missing definition) when lowering
     Let(LetStatement),
     Use(Use),
-    // @Question should we rename this to Assign since we plan on not only lowering
-    // to monads but also applicatives?
-    Bind(BindStatement),
     Expression(Expression),
 }
 
-// @Note has a lot of overlap with [BareStatement::Let] (and a bit with [BareExpression::LetIn])
+/// A let-statement.
+///
+/// # Examples
+///
+/// ```lushui
+/// main = do
+///     let process parameter: Result = compute (prepare parameter)
+///     pure unit
+/// ```
+///
+/// * `process` is the *binder*
+/// * `parameter` is the *parameter*
+/// * `Result` is the *type*
+/// * `compute (prepare parameter)` is the *body* with mode [plain]
+///
+/// ```lushui
+/// main = do
+///     let result: Result <- compute flag
+///     pure unit
+/// ```
+///
+/// * `result` is the *binder*
+/// * there are no *parameters*
+/// * `Result` is the *type*
+/// * `compute flag` is the *body* with mode [effectful]
+///
+/// [plain]: BindingMode::Plain
+/// [effectful]: BindingMode::Effectful
 #[derive(Clone, PartialEq, Eq)]
 pub struct LetStatement {
     pub binder: Identifier,
+    /// Providing parameters for [effectful] let-statements is only *syntactically* valid,
+    /// not semantically. They are rejected in the lowerer.
+    ///
+    /// [effectful]: BindingMode::Effectful
     pub parameters: Parameters,
-    pub type_annotation: Option<Expression>,
-    pub expression: Expression,
+    pub type_: Option<Expression>,
+    pub body: Option<(BindingMode, Expression)>,
 }
 
-#[derive(Clone, PartialEq, Eq)]
-pub struct BindStatement {
-    pub binder: Identifier,
-    pub type_annotation: Option<Expression>,
-    pub expression: Expression,
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum BindingMode {
+    Plain,
+    Effectful,
 }
 
 impl From<SequenceLiteral<Expression>> for BareExpression {
@@ -378,15 +588,15 @@ impl From<SequenceLiteral<Expression>> for BareExpression {
     }
 }
 
-pub type Parameters = Vec<Parameter>;
+pub type Parameters = SmallVec<Parameter, 1>;
+// @Beacon @Beacon @Beacon @Task make this an Item<_> for attribute support on params
 pub type Parameter = Spanned<BareParameter>;
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct BareParameter {
     pub explicitness: Explicitness,
-    pub laziness: Option<Span>,
     pub binder: Identifier,
-    pub type_annotation: Option<Expression>,
+    pub type_: Option<Expression>,
 }
 
 pub type Pattern = Item<BarePattern>;
@@ -696,26 +906,11 @@ pub enum Explicitness {
     Explicit,
 }
 
-#[derive(Clone, Copy)]
-pub enum SpannedExplicitness {
-    Implicit { marker: Span },
-    Explicit,
-}
-
-impl From<SpannedExplicitness> for Explicitness {
-    fn from(explicitness: SpannedExplicitness) -> Self {
-        match explicitness {
-            SpannedExplicitness::Implicit { .. } => Implicit,
-            SpannedExplicitness::Explicit => Explicit,
-        }
-    }
-}
-
-impl PossiblySpanning for SpannedExplicitness {
-    fn possible_span(&self) -> Option<Span> {
-        match self {
-            &Self::Implicit { marker } => Some(marker),
-            Self::Explicit => None,
+impl From<Option<Span>> for Explicitness {
+    fn from(span: Option<Span>) -> Self {
+        match span {
+            Some(_) => Implicit,
+            None => Explicit,
         }
     }
 }
