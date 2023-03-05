@@ -839,9 +839,9 @@ impl<'a> Resolver<'a> {
                     .into(),
                 )
             }
-            UseIn => {
+            UseBinding => {
                 return Err(Diagnostic::error()
-                    .message("use/in-expressions are not supported yet")
+                    .message("use-bindings are not supported yet")
                     .primary_span(&expression)
                     .report(self.session.reporter()));
             }

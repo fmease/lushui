@@ -95,9 +95,7 @@ impl Server {
 
         self.reset_source_map();
 
-        // @Temporary, @Question what type (apart from Reporter) impls Drop?
-        #[allow(let_underscore_drop)]
-        let _ = check_file(
+        _ = check_file(
             path,
             content,
             &self.map,

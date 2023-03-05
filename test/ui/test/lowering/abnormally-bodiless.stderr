@@ -1,27 +1,35 @@
-error[E012]: the declaration ‘blank’ has no definition
+error[E012]: the declaration ‘blank’ does not have a body
   ┌─ ${TEST_FOLDER}/lowering/abnormally-bodiless.lushui:1:19
   │
 1 │ blank: Declaration
-  │                  ⟫⟪
+  │                  ⟫⟪ missing definition
   │
- help: provide a definition with ‘=’
+ help: provide a definition for the declaration
+  │
+1 │ blank: Declaration = value
+  │                   ~~~~~~~~
+
+error[E012]: the declaration ‘Blank’ does not have a body
+  ┌─ ${TEST_FOLDER}/lowering/abnormally-bodiless.lushui:3:11
+  │
+3 │ data Blank
+  │          ⟫⟪ missing definition
+  │
+ help: provide a definition for the declaration
+  │
+3 │ data Blank of { … }
+  │           ~~~~~~~~~
 
 error[E015]: the declaration ‘Blank’ does not have a type annotation
   ┌─ ${TEST_FOLDER}/lowering/abnormally-bodiless.lushui:3:11
   │
 3 │ data Blank
-  │          ⟫⟪
+  │          ⟫⟪ missing mandatory type annotation
   │
- note: type annotations are mandatory on declarations
- help: provide a type annotation for the declaration with ‘: ?type’
-
-error[E012]: the declaration ‘Blank’ has no definition
-  ┌─ ${TEST_FOLDER}/lowering/abnormally-bodiless.lushui:3:11
+ help: annotate the declaration with a type
   │
-3 │ data Blank
-  │          ⟫⟪
-  │
- help: provide a definition with ‘of’
+3 │ data Blank: Type
+  │           ~~~~~~
 
 error: aborting due to 3 previous errors
 

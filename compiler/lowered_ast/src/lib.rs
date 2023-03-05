@@ -100,7 +100,7 @@ pub enum BareExpression {
     PiType(Box<PiType>),
     Lambda(Box<Lambda>),
     CaseAnalysis(Box<CaseAnalysis>),
-    UseIn,
+    UseBinding,
     Error(ErasedReportedError),
 }
 

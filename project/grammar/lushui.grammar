@@ -72,7 +72,7 @@ Expression ::= Pi-Type-Literal-Or-Lower
 
 ; among other things, the grammar for pretty-printers differs from the one for parsers
 ; in that `Pi-Type-Literal-Or-Lower` also includes several complex (in the sense that they
-; contain further expressions) `Lower-Expression`s namely let/in, use/in, lambda literals,
+; contain further expressions) `Lower-Expression`s namely let- & use-bindings, lambda literals,
 ; case analyses and do blocks (not sure about sequence literals)
 Pi-Type-Literal-Or-Lower ::=
     (Designated-Pi-Type-Domain | Application-Expression-Or-Lower)
@@ -98,8 +98,8 @@ Lowest-Expression ::=
     | #Number-Literal
     | #Text-Literal
     | Typed-Hole
-    | Let-In
-    | Use-In
+    | Let-Binding
+    | Use-Binding
     | Lambda-Literal
     | Case-Analysis
     | Do-Block
@@ -114,13 +114,13 @@ Path-Hanger ::= "extern" | "topmost" | "super" | "self"
 
 Lambda-Literal ::= "\" Parameters Type-Annotation? "=>" Expression
 
-Let-In ::=
+Let-Binding ::=
     "let" #Word Parameters Type-Annotation?
     ("=" Expression)?
     #Virtual-Semicolon?
     "in" Expression
 
-Use-In ::=
+Use-Binding ::=
     "use" Use-Path-Tree
     #Virtual-Semicolon?
     "in" Expression

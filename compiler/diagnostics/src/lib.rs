@@ -6,7 +6,12 @@
 //! * display style: rich (current system) <-> short
 //! * a rust script (in /misc) that finds the lowest [`ErrorCode`] that can be used
 //!   as well as any unused error codes (searching `compiler/`)
-#![feature(associated_type_bounds, adt_const_params, default_free_fn)]
+#![feature(
+    adt_const_params,
+    anonymous_lifetime_in_impl_trait,
+    associated_type_bounds,
+    default_free_fn
+)]
 #![allow(incomplete_features)] // adt_const_params
 
 pub use code::{Code, ErrorCode, LintCode};
@@ -142,6 +147,20 @@ impl<const S: Severity> Diagnostic<S> {
         self.subdiagnostic(Subseverity::Help, message.into())
     }
 
+    pub fn suggest(
+        mut self,
+        span: impl Spanning,
+        message: impl Into<Str>,
+        substitution: impl Into<Substitution>,
+    ) -> Self {
+        self.untagged.suggestions.push(Suggestion {
+            message: message.into(),
+            span: span.span(),
+            substitution: substitution.into(),
+        });
+        self
+    }
+
     pub fn path(mut self, path: PathBuf) -> Self {
         self.untagged.path = Some(path);
         self
@@ -213,6 +232,7 @@ impl<const S: Severity> Deref for Diagnostic<S> {
 
 pub type UntaggedDiagnostic = Box<UnboxedUntaggedDiagnostic>;
 
+// @Task rethink ordering: message should be higher I guess
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 pub struct UnboxedUntaggedDiagnostic {
     pub path: Option<PathBuf>,
@@ -223,6 +243,7 @@ pub struct UnboxedUntaggedDiagnostic {
     // terminal for example), those lower down in the source also come last in the output.
     pub highlights: BTreeSet<Highlight>,
     pub subdiagnostics: Vec<Subdiagnostic>,
+    pub suggestions: Vec<Suggestion>,
     pub code: Option<Code>,
     pub message: Option<Str>,
     pub severity: Severity,
@@ -234,15 +255,33 @@ impl UnboxedUntaggedDiagnostic {
             path: None,
             highlights: BTreeSet::new(),
             subdiagnostics: Vec::new(),
+            suggestions: Vec::new(),
             code: None,
-            severity,
             message: None,
+            severity,
         }
     }
 
     pub fn format(&self, map: Option<&SourceMap>) -> String {
         format::format(self, map)
     }
+}
+
+/// A highlighted code snippet.
+#[derive(PartialEq, Eq, Debug, Clone, PartialOrd, Ord)]
+pub struct Highlight {
+    pub span: Span,
+    pub role: Role,
+    pub label: Option<Str>,
+}
+
+/// The role of a highlighted code snippet — focal point or auxiliary note.
+#[derive(PartialEq, Eq, Debug, Clone, Copy, PartialOrd, Ord)]
+pub enum Role {
+    /// A focal point of the diagnostic.
+    Primary,
+    /// An auxilary note of the diagnostic.
+    Secondary,
 }
 
 /// Part of a [complex error message](Diagnostic) providing extra text messages.
@@ -272,19 +311,43 @@ pub enum Subseverity {
     Help,
 }
 
-/// A highlighted code snippet.
 #[derive(PartialEq, Eq, Debug, Clone, PartialOrd, Ord)]
-pub struct Highlight {
+pub struct Suggestion {
+    pub message: Str,
     pub span: Span,
-    pub role: Role,
-    pub label: Option<Str>,
+    pub substitution: Substitution,
 }
 
-/// The role of a highlighted code snippet — focal point or auxiliary note.
-#[derive(PartialEq, Eq, Debug, Clone, Copy, PartialOrd, Ord)]
-pub enum Role {
-    /// A focal point of the diagnostic.
-    Primary,
-    /// An auxilary note of the diagnostic.
-    Secondary,
+#[derive(PartialEq, Eq, Debug, Clone, PartialOrd, Ord, Default)]
+pub struct Substitution {
+    pub parts: Vec<SubstitutionPart>,
+}
+
+impl Substitution {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn str(mut self, value: impl Into<Str>) -> Self {
+        self.parts.push(SubstitutionPart::Str(value.into()));
+        self
+    }
+
+    pub fn placeholder(mut self, name: impl Into<Str>) -> Self {
+        self.parts.push(SubstitutionPart::Placeholder(name.into()));
+        self
+    }
+}
+
+impl<S: Into<Str>> From<S> for Substitution {
+    fn from(value: S) -> Self {
+        Substitution::new().str(value)
+    }
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, PartialOrd, Ord)]
+
+pub enum SubstitutionPart {
+    Str(Str),
+    Placeholder(Str),
 }

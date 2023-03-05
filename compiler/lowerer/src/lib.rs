@@ -6,7 +6,7 @@
 //!
 //! This pass does the following:
 //!
-//! * lower let/in expressions to lambda literals
+//! * lower let-bindings to lambda literals
 //! * lower parameters to simple lambda literals
 //! * open out-of-line modules (this will probably move to the parser in the future
 //!   for parallel reading and independent error reporting)
@@ -29,7 +29,7 @@ use ast::{BareHanger, Explicit, Parameter, Path};
 use diagnostics::{
     error::{Handler, Health, Outcome, PossiblyErroneous, Result},
     reporter::ErasedReportedError,
-    Diagnostic, ErrorCode, Reporter,
+    Diagnostic, ErrorCode, Reporter, Substitution,
 };
 use lowered_ast::{
     attribute::{Predicate, Public, Query, Special, Target},
@@ -39,7 +39,7 @@ use session::Session;
 use span::{Span, Spanned, Spanning};
 use std::{default::default, fmt, iter::once};
 use utilities::{
-    smallvec, Atom, Conjunction, FormatError, ListingExt, QuoteExt, SmallVec, Str, FILE_EXTENSION,
+    smallvec, Atom, Conjunction, FormatError, ListingExt, QuoteExt, SmallVec, FILE_EXTENSION,
 };
 
 /// Lower a file.
@@ -139,7 +139,7 @@ impl<'a> Lowerer<'a> {
             Some(type_annotation) => type_annotation,
             None => missing_mandatory_type_annotation_error(
                 function.binder.span().fit_end(&function.parameters).end(),
-                AnnotationTarget::Declaration(&function.binder),
+                TypeAnnotationTarget::Declaration(&function.binder),
             )
             .handle(&mut *self),
         };
@@ -160,7 +160,7 @@ impl<'a> Lowerer<'a> {
                             Some(type_annotation) => type_annotation.clone(),
                             None => missing_mandatory_type_annotation_error(
                                 parameter,
-                                AnnotationTarget::Parameter(parameter),
+                                TypeAnnotationTarget::Parameter(parameter),
                             )
                             .handle(&mut *self),
                         };
@@ -203,7 +203,7 @@ impl<'a> Lowerer<'a> {
             Some(type_annotation) => type_annotation,
             None => missing_mandatory_type_annotation_error(
                 type_.binder.span().fit_end(&type_.parameters).end(),
-                AnnotationTarget::Declaration(&type_.binder),
+                TypeAnnotationTarget::Declaration(&type_.binder),
             )
             .handle(&mut *self),
         };
@@ -237,7 +237,7 @@ impl<'a> Lowerer<'a> {
                     .span()
                     .fit_end(&constructor.parameters)
                     .end(),
-                AnnotationTarget::Declaration(&constructor.binder),
+                TypeAnnotationTarget::Declaration(&constructor.binder),
             )
             .handle(&mut *self),
         };
@@ -294,7 +294,7 @@ impl<'a> Lowerer<'a> {
                 match attributes.get::<{ AttributeName::Location }>() {
                     Some(location) => {
                         let mut inline_modules = &context.inline_modules[..];
-                        let _ = inline_modules.take_last();
+                        _ = inline_modules.take_last();
 
                         path.extend(inline_modules);
                         path.push(location.bare);
@@ -612,37 +612,42 @@ impl<'a> Lowerer<'a> {
 
                 expression
             }
-            LetIn(let_in) => {
+            LetBinding(binding) => {
                 let expression = {
-                    let binder = &let_in.binder;
+                    let binder = &binding.binder;
 
-                    match let_in.expression {
+                    match binding.expression {
                         Some(expression) => expression,
-                        // @Task use suggestion API once available
-                        None => Diagnostic::error()
-                            .code(ErrorCode::E012)
-                            .message(format!("the let-binding ‘{binder}’ has no definition"))
-                            .primary_span(
-                                let_in
-                                    .binder
-                                    .span()
-                                    .fit_end(&let_in.parameters)
-                                    .fit_end(&let_in.type_annotation)
-                                    .end(),
-                            )
-                            .help("provide a definition with ‘= ?value’")
-                            .handle(&mut *self),
+                        None => {
+                            let span = binding
+                                .binder
+                                .span()
+                                .fit_end(&binding.parameters)
+                                .fit_end(&binding.type_annotation)
+                                .end();
+
+                            Diagnostic::error()
+                                .code(ErrorCode::E012)
+                                .message(format!("the let-binding ‘{binder}’ does not have a body"))
+                                .labeled_primary_span(span, "missing definition")
+                                .suggest(
+                                    span,
+                                    "provide a definition for the let-binding",
+                                    Substitution::from(" = ").placeholder("value"),
+                                )
+                                .handle(&mut *self)
+                        }
                     }
                 };
 
                 let mut expression = self.lower_expression(expression);
 
-                let mut type_annotation = let_in
+                let mut type_annotation = binding
                     .type_annotation
                     .map(|type_annotation| self.lower_expression(type_annotation))
                     .into_iter();
 
-                for parameter in let_in.parameters.iter().rev() {
+                for parameter in binding.parameters.iter().rev() {
                     let parameter_type_annotation = parameter
                         .bare
                         .type_annotation
@@ -664,7 +669,7 @@ impl<'a> Lowerer<'a> {
                     );
                 }
 
-                let body = self.lower_expression(let_in.scope);
+                let body = self.lower_expression(binding.scope);
 
                 lowered_ast::Expression::new(
                     default(),
@@ -674,7 +679,7 @@ impl<'a> Lowerer<'a> {
                             default(),
                             default(),
                             lowered_ast::Lambda {
-                                parameter: let_in.binder,
+                                parameter: binding.binder,
                                 // @Note we cannot simply lower parameters and a type annotation because
                                 // in the chain (`->`) of parameters, there might always be one missing and
                                 // we don't support partial type annotations yet (using `_`)
@@ -694,8 +699,8 @@ impl<'a> Lowerer<'a> {
                     .into(),
                 )
             }
-            UseIn(_use_in) => Diagnostic::error()
-                .message("use/in-expressions are not supported yet")
+            UseBinding(_binding) => Diagnostic::error()
+                .message("use-bindings are not supported yet")
                 .primary_span(expression.span)
                 .handle(&mut *self),
             CaseAnalysis(analysis) => {
@@ -945,7 +950,7 @@ impl<'a> Lowerer<'a> {
                 Some(type_annotation) => type_annotation,
                 None => missing_mandatory_type_annotation_error(
                     &parameter,
-                    AnnotationTarget::Parameter(&parameter),
+                    TypeAnnotationTarget::Parameter(&parameter),
                 )
                 .handle(&mut *self),
             };
@@ -1010,7 +1015,7 @@ impl TargetExt for ast::Declaration {
     fn check_attributes(&self, attributes: &Attributes, lowerer: &mut Lowerer<'_>) {
         use ast::BareDeclaration::*;
 
-        let (binder, missing_definition_location, definition_marker, body) = match &self.bare {
+        let (binder, missing_definition_location, substitution, body) = match &self.bare {
             Function(function) => {
                 let missing_definition_location = function
                     .binder
@@ -1022,7 +1027,7 @@ impl TargetExt for ast::Declaration {
                 (
                     &function.binder,
                     missing_definition_location,
-                    "=",
+                    Substitution::from(" = ").placeholder("value"),
                     function.body.as_ref().map(|expression| {
                         let eq = missing_definition_location
                             .between(self.span.end())
@@ -1049,7 +1054,9 @@ impl TargetExt for ast::Declaration {
                 (
                     &type_.binder,
                     missing_definition_location,
-                    "of",
+                    // @Task placeholder should be heavily improved by being made more actionable and
+                    // by not relying on curly brackets
+                    Substitution::from(" of ").placeholder("{ … }"),
                     type_.constructors.as_ref().map(|constructors| {
                         let of = missing_definition_location
                             .between(self.span.end())
@@ -1093,9 +1100,13 @@ the body containing a set of constructors
                 .handle(lowerer),
             (None, None) => Diagnostic::error()
                 .code(ErrorCode::E012)
-                .message(format!("the declaration ‘{binder}’ has no definition"))
-                .primary_span(missing_definition_location)
-                .help(format!("provide a definition with ‘{definition_marker}’"))
+                .message(format!("the declaration ‘{binder}’ does not have a body"))
+                .labeled_primary_span(missing_definition_location, "missing definition")
+                .suggest(
+                    missing_definition_location,
+                    "provide a definition for the declaration",
+                    substitution,
+                )
                 .handle(lowerer),
             _ => return,
         };
@@ -1560,47 +1571,42 @@ fn invalid_attribute_argument_type_error(
 
 fn missing_mandatory_type_annotation_error(
     spanning: impl Spanning,
-    target: AnnotationTarget<'_>,
+    target: TypeAnnotationTarget<'_>,
 ) -> Diagnostic {
-    use AnnotationTarget::*;
+    let substitution = match target {
+        TypeAnnotationTarget::Parameter(parameter) => {
+            let explicitness = parameter.bare.explicitness;
+            let binder = &parameter.bare.binder;
 
-    // @Task change `?type` to `?Type` (to respect Lushui's naming convention) once
-    // we successfully parse `?Type` (currently only words are allowed as tags)
-    let suggestion: Str = match target {
-        Parameter(parameter) => format!(
-            "‘{}({}: ?type)’",
-            parameter.bare.explicitness, parameter.bare.binder
-        )
-        .into(),
-        Declaration(_) => "‘: ?type’".into(),
+            Substitution::from(format!("{explicitness}({binder}: "))
+                .placeholder("Type")
+                .str(")")
+        }
+        TypeAnnotationTarget::Declaration(_) => Substitution::from(": ").placeholder("Type"),
     };
+
+    let span = spanning.span();
 
     Diagnostic::error()
         .code(ErrorCode::E015)
         .message(format!("the {target} does not have a type annotation"))
-        .primary_span(spanning)
-        .note(format!(
-            "type annotations are mandatory on {}",
-            match target {
-                Parameter(_) => "parameters of declarations",
-                Declaration(_) => "declarations",
-            }
-        ))
-        .help(format!(
-            "provide a type annotation for the {} with {suggestion}",
-            target.name()
-        ))
+        .labeled_primary_span(span, "missing mandatory type annotation")
+        .suggest(
+            span,
+            format!("annotate the {} with a type", target.name()),
+            substitution,
+        )
 }
 
 /// A place in the AST which can have a syntactically optional type annotation.
 ///
 /// Exclusively used for error reporting.
-enum AnnotationTarget<'a> {
+enum TypeAnnotationTarget<'a> {
     Parameter(&'a Parameter),
     Declaration(&'a ast::Identifier),
 }
 
-impl AnnotationTarget<'_> {
+impl TypeAnnotationTarget<'_> {
     const fn name(&self) -> &'static str {
         match self {
             Self::Parameter(_) => "parameter",
@@ -1609,7 +1615,7 @@ impl AnnotationTarget<'_> {
     }
 }
 
-impl fmt::Display for AnnotationTarget<'_> {
+impl fmt::Display for TypeAnnotationTarget<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} ", self.name())?;
 

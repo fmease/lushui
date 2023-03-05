@@ -100,8 +100,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    assert_ne!(snippet_state, OutsideCodeSnippet);
-    assert_ne!(ebnf_definition_state, Collected);
+    assert_eq!(snippet_state, OutsideCodeSnippet);
+    assert_eq!(ebnf_definition_state, Collected);
 
     fs::write(program_directory_path.join(OUTPUT_PATH), grammar)?;
 
@@ -115,7 +115,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 use SnippetState::*;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum SnippetState {
     OutsideCodeSnippet,
     InsideOtherCodeSnippet,
@@ -124,7 +124,7 @@ enum SnippetState {
 
 use EbnfDefinitionState::*;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum EbnfDefinitionState {
     NotCollectedYet,
     Collecting,

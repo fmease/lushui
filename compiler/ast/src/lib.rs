@@ -186,8 +186,8 @@ pub enum BareExpression {
     NumberLiteral(Box<NumberLiteral>),
     TextLiteral(Box<TextLiteral>),
     TypedHole(Box<TypedHole>),
-    LetIn(Box<LetIn>),
-    UseIn(Box<UseIn>),
+    LetBinding(Box<LetBinding>),
+    UseBinding(Box<UseBinding>),
     LambdaLiteral(Box<LambdaLiteral>),
     CaseAnalysis(Box<CaseAnalysis>),
     DoBlock(Box<DoBlock>),
@@ -271,9 +271,9 @@ impl From<TypedHole> for BareExpression {
     }
 }
 
-/// The syntax-node of a let/in expression.
+/// The syntax-node of a let-bindings.
 #[derive(Clone, PartialEq, Eq)]
-pub struct LetIn {
+pub struct LetBinding {
     pub binder: Identifier,
     pub parameters: Parameters,
     pub type_annotation: Option<Expression>,
@@ -281,22 +281,22 @@ pub struct LetIn {
     pub scope: Expression,
 }
 
-impl From<LetIn> for BareExpression {
-    fn from(let_in: LetIn) -> Self {
-        Self::LetIn(Box::new(let_in))
+impl From<LetBinding> for BareExpression {
+    fn from(binding: LetBinding) -> Self {
+        Self::LetBinding(Box::new(binding))
     }
 }
 
-/// The syntax node of a use/in expression.
+/// The syntax node of a use-binding.
 #[derive(Clone, PartialEq, Eq)]
-pub struct UseIn {
+pub struct UseBinding {
     pub bindings: UsePathTree,
     pub scope: Expression,
 }
 
-impl From<UseIn> for BareExpression {
-    fn from(use_in: UseIn) -> Self {
-        Self::UseIn(Box::new(use_in))
+impl From<UseBinding> for BareExpression {
+    fn from(binding: UseBinding) -> Self {
+        Self::UseBinding(Box::new(binding))
     }
 }
 

@@ -59,10 +59,12 @@ error[E015]: the declaration ‘thing’ does not have a type annotation
    ┌─ ${TEST_FOLDER}/lowering/intrinsic-declaration-with-explicit-body.lushui:16:17
    │
 16 │ @intrinsic thing = 0
-   │                ⟫⟪
+   │                ⟫⟪ missing mandatory type annotation
    │
-  note: type annotations are mandatory on declarations
-  help: provide a type annotation for the declaration with ‘: ?type’
+  help: annotate the declaration with a type
+   │
+16 │ @intrinsic thing: Type = 0
+   │                 ~~~~~~
 
 error: aborting due to 5 previous errors
 

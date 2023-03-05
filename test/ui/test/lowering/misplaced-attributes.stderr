@@ -121,10 +121,12 @@ error[E015]: the declaration ‘manifest’ does not have a type annotation
    ┌─ ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:16:21
    │
 16 │     @public manifest
-   │                    ⟫⟪
+   │                    ⟫⟪ missing mandatory type annotation
    │
-  note: type annotations are mandatory on declarations
-  help: provide a type annotation for the declaration with ‘: ?type’
+  help: annotate the declaration with a type
+   │
+16 │     @public manifest: Type
+   │                     ~~~~~~
 
 error[E013]: attribute ‘static’ is ascribed to a path pattern
    ┌─ ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:20:9

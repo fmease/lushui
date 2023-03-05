@@ -939,7 +939,7 @@ impl<'a> Parser<'a> {
     /// ```ebnf
     /// ; among other things, the grammar for pretty-printers differs from the one for parsers
     /// ; in that `Pi-Type-Literal-Or-Lower` also includes several complex (in the sense that they
-    /// ; contain further expressions) `Lower-Expression`s namely let/in, use/in, lambda literals,
+    /// ; contain further expressions) `Lower-Expression`s namely let- & use-bindings, lambda literals,
     /// ; case analyses and do blocks (not sure about sequence literals)
     /// Pi-Type-Literal-Or-Lower ::=
     ///     (Designated-Pi-Type-Domain | Application-Expression-Or-Lower)
@@ -1048,8 +1048,8 @@ impl<'a> Parser<'a> {
     ///     | #Number-Literal
     ///     | #Text-Literal
     ///     | Typed-Hole
-    ///     | Let-In
-    ///     | Use-In
+    ///     | Let-Binding
+    ///     | Use-Binding
     ///     | Lambda-Literal
     ///     | Case-Analysis
     ///     | Do-Block
@@ -1099,11 +1099,11 @@ impl<'a> Parser<'a> {
             }
             Let => {
                 self.advance();
-                self.finish_parse_let_in(span)?
+                self.finish_parse_let_binding(span)?
             }
             Use => {
                 self.advance();
-                self.finish_parse_use_in(span)?
+                self.finish_parse_use_binding(span)?
             }
             Backslash => {
                 self.advance();
@@ -1234,18 +1234,18 @@ impl<'a> Parser<'a> {
         ))
     }
 
-    /// Finish parsing an let/in-expression given the span of the already parsed leading `let` keyword.
+    /// Finish parsing a let-binding given the span of the already parsed leading `let` keyword.
     ///
     /// # Grammar
     ///
     /// ```ebnf
-    /// Let-In ::=
+    /// Let-Binding ::=
     ///     "let" #Word Parameters Type-Annotation?
     ///     ("=" Expression)?
     ///     #Virtual-Semicolon?
     ///     "in" Expression
     /// ```
-    fn finish_parse_let_in(&mut self, mut span: Span) -> Result<Expression> {
+    fn finish_parse_let_binding(&mut self, mut span: Span) -> Result<Expression> {
         let binder = self.consume_word()?;
 
         let parameters = self.parse_parameters(&[
@@ -1272,7 +1272,7 @@ impl<'a> Parser<'a> {
         Ok(Expression::new(
             Attributes::new(),
             span,
-            ast::LetIn {
+            ast::LetBinding {
                 binder,
                 parameters,
                 type_annotation,
@@ -1283,17 +1283,17 @@ impl<'a> Parser<'a> {
         ))
     }
 
-    /// Finish parsing a use/in-expression given the span of the already parsed leading `use` keyword.
+    /// Finish parsing a use-binding given the span of the already parsed leading `use` keyword.
     ///
     /// # Grammar
     ///
     /// ```ebnf
-    /// Use-In ::=
+    /// Use-Binding ::=
     ///     "use" Use-Path-Tree
     ///     #Virtual-Semicolon?
     ///     "in" Expression
     /// ```
-    fn finish_parse_use_in(&mut self, span: Span) -> Result<Expression> {
+    fn finish_parse_use_binding(&mut self, span: Span) -> Result<Expression> {
         let bindings = self.parse_use_path_tree(&[In.into()])?;
 
         if self.current_token().is_line_break() {
@@ -1307,7 +1307,7 @@ impl<'a> Parser<'a> {
         Ok(Expression::new(
             Attributes::new(),
             span.merge(&scope),
-            ast::UseIn { bindings, scope }.into(),
+            ast::UseBinding { bindings, scope }.into(),
         ))
     }
 

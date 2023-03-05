@@ -1,4 +1,4 @@
-error: use/in-expressions are not supported yet
+error: use-bindings are not supported yet
   ┌─ ${TEST_FOLDER}/lowering/use-in-unsupported.lushui:2:5
   │
 2 │       use qualified.thing as matter in

@@ -361,8 +361,8 @@ impl Format for super::BareExpression {
             Self::Path(path) => path.format(f, indentation),
             Self::Field(field) => field.format(f, indentation),
             Self::LambdaLiteral(lambda) => lambda.format(f, indentation),
-            Self::LetIn(let_in) => let_in.format(f, indentation),
-            Self::UseIn(use_in) => use_in.format(f, indentation),
+            Self::LetBinding(binding) => binding.format(f, indentation),
+            Self::UseBinding(binding) => binding.format(f, indentation),
             Self::CaseAnalysis(analysis) => analysis.format(f, indentation),
             Self::DoBlock(do_) => do_.format(f, indentation),
             Self::SequenceLiteral(sequence) => sequence.format(f, indentation),
@@ -503,7 +503,7 @@ impl Format for super::LambdaLiteral {
     }
 }
 
-impl Format for super::LetIn {
+impl Format for super::LetBinding {
     fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
         FormatStruct::new(f, indentation)
             .name("Let-In")
@@ -516,7 +516,7 @@ impl Format for super::LetIn {
     }
 }
 
-impl Format for super::UseIn {
+impl Format for super::UseBinding {
     fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
         FormatStruct::new(f, indentation)
             .name("Use-In")

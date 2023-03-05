@@ -2,10 +2,12 @@ error[E015]: the declaration ‘container’ does not have a type annotation
   ┌─ ${TEST_FOLDER}/lowering/constructor-with-explicit-body.lushui:2:14
   │
 2 │     container = attachment
-  │             ⟫⟪
+  │             ⟫⟪ missing mandatory type annotation
   │
- note: type annotations are mandatory on declarations
- help: provide a type annotation for the declaration with ‘: ?type’
+ help: annotate the declaration with a type
+  │
+2 │     container: Type = attachment
+  │              ~~~~~~
 
 error[E020]: ‘container’ is defined multiple times in this scope
   ┌─ ${TEST_FOLDER}/lowering/constructor-with-explicit-body.lushui:2:17
