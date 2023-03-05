@@ -1,5 +1,5 @@
 use crate::{DeclarationIndex, Identifier};
-use diagnostics::{error::Result, Diagnostic, ErrorCode};
+use diagnostics::{error::Result, Diagnostic, ErrorCode, Substitution};
 use num_traits::{CheckedDiv, CheckedSub};
 use span::{Span, Spanning};
 use std::fmt;
@@ -535,7 +535,13 @@ impl Bindings {
                                 Kind::Known => "claims the binding is known to the compiler",
                             },
                         )
-                        .help(format!("consider adding an explicit name to the attribute to overwrite the derived one:\n‘@({kind} name)’")),
+                        .suggest(
+                            attribute,
+                            "consider adding an explicit name to the attribute to overwrite the derived one",
+                            Substitution::from(format!("@({kind} "))
+                                .placeholder("name")
+                                .str(")"),
+                        ),
                     DefinitionStyle::Explicit { .. } => error,
                 })
                 // @Task add a UI test for this case

@@ -9,8 +9,10 @@ error[E061]: ‘unrecognized-intrinsic-function.i-definitely-do-not-exist’ is 
 11 │ i-definitely-do-not-exist: I-Do-Exist
    │ ═════════════════════════
    │
-  help: consider adding an explicit name to the attribute to overwrite the derived one:
-        ‘@(intrinsic name)’
+  help: consider adding an explicit name to the attribute to overwrite the derived one
+   │
+10 │ @(intrinsic name)
+   │ ~~~~~~~~~~~~~~~~~
 
 error: aborting due to previous error
 

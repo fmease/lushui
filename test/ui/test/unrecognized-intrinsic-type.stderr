@@ -9,8 +9,10 @@ error[E061]: ‘I-Definitely-Do-Not-Exist’ is not an intrinsic binding
 7 │ data I-Definitely-Do-Not-Exist: extern.core.type.Type
   │      ═════════════════════════
   │
- help: consider adding an explicit name to the attribute to overwrite the derived one:
-       ‘@(intrinsic name)’
+ help: consider adding an explicit name to the attribute to overwrite the derived one
+  │
+6 │ @(intrinsic name)
+  │ ~~~~~~~~~~~~~~~~~
 
 error: aborting due to previous error
 

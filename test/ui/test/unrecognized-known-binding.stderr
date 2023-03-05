@@ -9,8 +9,10 @@ error[E063]: ‘I-Am-Definitely-Unknown’ is not a known binding
 4 │ data I-Am-Definitely-Unknown: extern.core.type.Type of
   │      ═══════════════════════
   │
- help: consider adding an explicit name to the attribute to overwrite the derived one:
-       ‘@(known name)’
+ help: consider adding an explicit name to the attribute to overwrite the derived one
+  │
+3 │ @(known name)
+  │ ~~~~~~~~~~~~~
 
 error: aborting due to previous error
 

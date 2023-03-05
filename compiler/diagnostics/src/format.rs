@@ -461,7 +461,7 @@ impl Formatter<'_, '_> {
             false => highlight_prefix_width,
         });
         let underline = if !zero_length_highlight {
-            "~".repeat(substitution_width)
+            SUBSTITUTION.repeat(substitution_width)
         } else {
             format!(
                 "{}{}",
@@ -605,6 +605,7 @@ fn format_file_name(name: &FileName, f: &mut fmt::Formatter<'_>) -> fmt::Result 
 }
 
 const ELLIPSIS: &str = "·";
+const SUBSTITUTION: &str = "~";
 
 mod palette {
     use colored::Color;
