@@ -9,5 +9,5 @@ publish = false
 colored = "2.0.0"
 derivation = { path = "../../project/library/derivation" }
 span = { path = "../span" }
-unicode-width = "0.1.9"
+unicode-width = "0.1.10"
 utilities = { path = "../utilities" }

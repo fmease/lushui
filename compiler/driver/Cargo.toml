@@ -12,7 +12,7 @@ lsp = ["dep:server", "dep:tokio"]
 
 [dependencies]
 ast = { path = "../ast" }
-clap = { version = "4.0.26", features = ["deprecated", "string"] }
+clap = { version = "4.1.8", features = ["deprecated", "string"] }
 codegen_cranelift = { path = "../codegen_cranelift", optional = true }
 codegen_llvm = { path = "../codegen_llvm", optional = true }
 colored = "2.0.0"
@@ -25,7 +25,7 @@ lexer = { path = "../lexer" }
 lowered_ast = { path = "../lowered_ast" }
 lowerer = { path = "../lowerer" }
 metadata = { path = "../metadata" }
-open = "3.0.1"
+open = "3.4.0"
 package = { path = "../package" }
 resolver = { path = "../resolver" }
 server = { path = "../server", optional = true }
@@ -37,6 +37,6 @@ typer = { path = "../typer" }
 utilities = { path = "../utilities" }
 
 [dependencies.tokio]
-version = "1.19.2"
+version = "1.26.0"
 features = ["io-std", "rt-multi-thread"]
 optional = true

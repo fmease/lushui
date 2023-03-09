@@ -6,10 +6,10 @@ edition = "2021"
 publish = false
 
 [dependencies]
-cranelift = "0.85.1"
-cranelift-module = "0.85.1"
-cranelift-native = "0.85.1"
-cranelift-object = "0.85.1"
+cranelift = "0.93.1"
+cranelift-module = "0.93.1"
+cranelift-native = "0.93.1"
+cranelift-object = "0.93.1"
 diagnostics = { path = "../diagnostics" }
 hir = { path = "../hir" }
 session = { path = "../session" }

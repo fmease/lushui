@@ -35,3 +35,6 @@ inherits = "release"
 rustflags = ["-Dwarnings"]
 # unsupported: cargo#10271
 #rustdocflags = ["-Dwarnings", "--check", "-Zunstable-options"]
+
+[registries.crates-io]
+protocol = "sparse"

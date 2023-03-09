@@ -17,5 +17,5 @@ session = { path = "../session" }
 span = { path = "../span" }
 strsim = "0.10.0"
 token = { path = "../token" }
-unicode-width = "0.1.9"
+unicode-width = "0.1.10"
 utilities = { path = "../utilities" }
