@@ -205,7 +205,7 @@ pub fn convert<T: TryFrom<BareValue, Error = TypeError>>(
                     .message(format!(
                         "expected type ‘{expected}’ but got type ‘{actual}’",
                     ))
-                    .labeled_primary_span(value.span, "has the wrong type")
+                    .span(value.span, "has the wrong type")
                     .report(reporter)
             })?,
     ))
@@ -230,7 +230,7 @@ impl<'r> RecordWalker<'r> {
             None => Err(Diagnostic::error()
                 .code(ErrorCode::E802)
                 .message(format!("the record does not contain the entry ‘{key}’"))
-                .primary_span(&self.record)
+                .unlabeled_span(&self.record)
                 .report(self.reporter)),
         }
     }
@@ -252,7 +252,7 @@ impl<'r> RecordWalker<'r> {
                 Diagnostic::error()
                     .code(ErrorCode::E801)
                     .message(format!("the record contains the unknown entry ‘{key}’"))
-                    .primary_span(key)
+                    .unlabeled_span(key)
                     .report(self.reporter);
             }
 

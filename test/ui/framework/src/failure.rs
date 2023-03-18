@@ -90,7 +90,7 @@ impl FailedTest {
                         None => error,
                     })
                     .with(|error| match span {
-                        Some(span) => error.primary_span(span),
+                        Some(span) => error.unlabeled_span(span),
                         None => error,
                     });
 
@@ -100,7 +100,7 @@ impl FailedTest {
                 // @Temporary
                 let diagnostic = Diagnostic::error()
                     .message(error.message.clone())
-                    .primary_span(error.span);
+                    .unlabeled_span(error.span);
 
                 write!(sink, "{}", diagnostic.format(Some(map)))
             }

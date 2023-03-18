@@ -189,7 +189,7 @@ impl BuildQueue {
                     {
                         let error = Diagnostic::error()
                             .message(format!("the component type ‘{type_}’ is not supported yet"))
-                            .primary_span(type_)
+                            .unlabeled_span(type_)
                             .report(&self.reporter);
                         health.taint(error);
                     }
@@ -198,7 +198,7 @@ impl BuildQueue {
                     if let Some(public) = component.bare.public {
                         let error = Diagnostic::error()
                             .message("setting the component exposure is not supported yet")
-                            .primary_span(public)
+                            .unlabeled_span(public)
                             .report(&self.reporter);
                         health.taint(error);
                     }
@@ -248,7 +248,7 @@ impl BuildQueue {
                                 pluralize!(cycle.len(), "component"),
                                 pluralize!(cycle.len(), "is", "are"),
                             ))
-                            .primary_spans(cycle)
+                            .unlabeled_spans(cycle)
                             .report(&self.reporter);
                     }
 
@@ -377,7 +377,7 @@ impl BuildQueue {
         if let Some(version) = &declaration.bare.version {
             return Err(Diagnostic::error()
                 .message("version requirements are not supported yet")
-                .primary_span(version)
+                .unlabeled_span(version)
                 .report(&self.reporter)
                 .into());
         }
@@ -386,7 +386,7 @@ impl BuildQueue {
         if let Some(public) = &declaration.bare.public {
             return Err(Diagnostic::error()
                 .message("setting the dependency exposure is not supported yet")
-                .primary_span(public)
+                .unlabeled_span(public)
                 .report(&self.reporter)
                 .into());
         }
@@ -462,7 +462,7 @@ impl BuildQueue {
                                 "the components ‘{dependent_component_name}’ and ‘{component_endonym}’ are circular",
                             ))
                             // @Task add the span of "the" counterpart component
-                            .primary_span(component_exonym)
+                            .unlabeled_span(component_exonym)
                             .report(&self.reporter),
                     ))
                     // @Task this should definitely not be fatal fatal since we wanna catch separate cycles (eg. {{a,b,c}, {a,sep}})
@@ -486,7 +486,7 @@ impl BuildQueue {
                         "could not load the dependency ‘{component_exonym}’",
                     ))
                     .path(manifest_path_unchecked)
-                    .primary_span(match &declaration.bare.path {
+                    .unlabeled_span(match &declaration.bare.path {
                         Some(path) => path.span,
                         None => component_exonym.span,
                     })
@@ -531,7 +531,7 @@ impl BuildQueue {
             return Err(
                 Diagnostic::error()
                     .message("declared package name does not match actual one")
-                    .primary_span(package_name)
+                    .unlabeled_span(package_name)
                     .report(&self.reporter)
                     .into()
             );
@@ -638,7 +638,7 @@ impl BuildQueue {
             return Err(Diagnostic::error()
                 .message("@Task")
                 .with(|error| match declaration.provider {
-                    Some(provider) => error.primary_span(provider),
+                    Some(provider) => error.unlabeled_span(provider),
                     None => error,
                 })
                 .report(&self.reporter));
@@ -651,9 +651,9 @@ impl BuildQueue {
             // @Question can we point at the field/key `path` instead of its value?
             return Err(Diagnostic::error()
                 .message("@Task")
-                .primary_span(path)
+                .unlabeled_span(path)
                 .with(|error| match declaration.provider {
-                    Some(provider) => error.primary_span(provider),
+                    Some(provider) => error.unlabeled_span(provider),
                     None => error,
                 })
                 .report(&self.reporter));
@@ -667,12 +667,10 @@ impl BuildQueue {
                 // @Task improve message
                 None => Err(Diagnostic::error()
                     .message("dependency declaration does not have entry ‘path’")
-                    .primary_span(span)
+                    .unlabeled_span(span)
                     .with(|error| match declaration.provider.as_ref() {
                         // Currently always present in this branch.
-                        Some(provider) => {
-                            error.labeled_secondary_span(provider, "required by this")
-                        }
+                        Some(provider) => error.label(provider, "required by this"),
                         None => error,
                     })
                     .report(&self.reporter)),
@@ -692,10 +690,8 @@ impl BuildQueue {
                 ))
                 // @Task better label! say how it was inferred!!
                 .with(|error| match declaration.provider {
-                    Some(provider) => error.primary_span(provider),
-                    None => {
-                        error.labeled_primary_span(span, format!("implies provider ‘{provider}’"))
-                    }
+                    Some(provider) => error.unlabeled_span(provider),
+                    None => error.span(span, format!("implies provider ‘{provider}’")),
                 })
                 .report(&self.reporter)),
         }

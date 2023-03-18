@@ -306,7 +306,7 @@ fn build_unit(unit: BuildUnit, session: &mut Session<'_>) -> Result<hir::Declara
                     Diagnostic::error()
                         .message(message)
                         .path(path.bare.into())
-                        .primary_span(path)
+                        .unlabeled_span(path)
                         .note(error.format())
                         .report(session.reporter())
                 })?
@@ -338,7 +338,7 @@ fn build_unit(unit: BuildUnit, session: &mut Session<'_>) -> Result<hir::Declara
                 unit.name,
                 Session::PROGRAM_ENTRY_IDENTIFIER,
             ))
-            .primary_span(&session.shared_map()[file])
+            .unlabeled_span(&session.shared_map()[file])
             .report(session.reporter()));
     }
 

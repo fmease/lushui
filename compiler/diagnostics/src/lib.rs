@@ -1,17 +1,5 @@
 //! The diagnostics system.
-//!
-//! # Unimplemented Features
-//!
-//! * (maybe) subdiagnostics with a span
-//! * display style: rich (current system) <-> short
-//! * a rust script (in /misc) that finds the lowest [`ErrorCode`] that can be used
-//!   as well as any unused error codes (searching `compiler/`)
-#![feature(
-    adt_const_params,
-    anonymous_lifetime_in_impl_trait,
-    associated_type_bounds,
-    default_free_fn
-)]
+#![feature(adt_const_params, associated_type_bounds, default_free_fn)]
 #![allow(incomplete_features)] // adt_const_params
 
 pub use code::{Code, ErrorCode, LintCode};
@@ -59,7 +47,7 @@ impl<const S: Severity> Diagnostic<S> {
         self
     }
 
-    fn span(mut self, spanning: impl Spanning, label: Option<Str>, role: Role) -> Self {
+    fn _span(mut self, spanning: impl Spanning, label: Option<Str>, role: Role) -> Self {
         self.untagged.highlights.insert(Highlight {
             span: spanning.span(),
             label: label.map(Into::into),
@@ -68,27 +56,27 @@ impl<const S: Severity> Diagnostic<S> {
         self
     }
 
-    /// Reference a code snippet as one of the focal points of the diagnostic.
-    pub fn primary_span(self, spanning: impl Spanning) -> Self {
-        self.span(spanning, None, Role::Primary)
-    }
-
     /// Reference and label a code snippet as one of the focal points of the diagnostic.
-    pub fn labeled_primary_span(self, spanning: impl Spanning, label: impl Into<Str>) -> Self {
-        self.span(spanning, Some(label.into()), Role::Primary)
+    pub fn span(self, spanning: impl Spanning, label: impl Into<Str>) -> Self {
+        self._span(spanning, Some(label.into()), Role::Primary)
     }
 
-    /// Reference a code snippet as auxiliary information for the diagnostic.
-    pub fn secondary_span(self, spanning: impl Spanning) -> Self {
-        self.span(spanning, None, Role::Secondary)
+    /// Reference a code snippet as one of the focal points of the diagnostic.
+    pub fn unlabeled_span(self, spanning: impl Spanning) -> Self {
+        self._span(spanning, None, Role::Primary)
     }
 
     /// Reference and label a code snippet as auxiliary information for the diagnostic.
-    pub fn labeled_secondary_span(self, spanning: impl Spanning, label: impl Into<Str>) -> Self {
-        self.span(spanning, Some(label.into()), Role::Secondary)
+    pub fn label(self, spanning: impl Spanning, label: impl Into<Str>) -> Self {
+        self._span(spanning, Some(label.into()), Role::Secondary)
     }
 
-    fn spans<I>(mut self, spannings: I, label: Option<Str>, role: Role) -> Self
+    #[cfg(test)]
+    fn unlabeled_secondary_span(self, spanning: impl Spanning) -> Self {
+        self._span(spanning, None, Role::Secondary)
+    }
+
+    fn _spans<I>(mut self, spannings: I, label: Option<Str>, role: Role) -> Self
     where
         I: Iterator<Item: Spanning>,
     {
@@ -101,20 +89,20 @@ impl<const S: Severity> Diagnostic<S> {
         self
     }
 
-    /// Reference several equally important code snippets.
-    pub fn primary_spans<I>(self, spannings: I) -> Self
+    /// Reference and label several very and equally important code snippets.
+    pub fn spans<I>(self, spannings: I, label: impl Into<Str>) -> Self
     where
         I: IntoIterator<Item: Spanning>,
     {
-        self.spans(spannings.into_iter(), None, Role::Primary)
+        self._spans(spannings.into_iter(), Some(label.into()), Role::Primary)
     }
 
-    /// Reference and label several very and equally important code snippets.
-    pub fn labeled_primary_spans<I>(self, spannings: I, label: impl Into<Str>) -> Self
+    /// Reference several equally important code snippets.
+    pub fn unlabeled_spans<I>(self, spannings: I) -> Self
     where
         I: IntoIterator<Item: Spanning>,
     {
-        self.spans(spannings.into_iter(), Some(label.into()), Role::Primary)
+        self._spans(spannings.into_iter(), None, Role::Primary)
     }
 
     fn subdiagnostic(mut self, severity: Subseverity, message: Str) -> Self {

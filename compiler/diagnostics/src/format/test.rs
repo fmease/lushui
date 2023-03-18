@@ -32,7 +32,7 @@ fn format_single_line_primary_highlight() {
 
     let diagnostic = Diagnostic::error()
         .message("message")
-        .primary_span(span(8, 11));
+        .unlabeled_span(span(8, 11));
 
     assert_format(
         &diagnostic,
@@ -51,7 +51,7 @@ fn format_two_line_primary_highlight() {
     let mut map = SourceMap::default();
     map.add_str(Anonymous, "alpha\nbeta\n");
 
-    let diagnostic = Diagnostic::error().primary_span(span(1, 9));
+    let diagnostic = Diagnostic::error().unlabeled_span(span(1, 9));
 
     assert_format(
         &diagnostic,
@@ -75,7 +75,7 @@ fn format_multi_line_primary_highlight() {
     let diagnostic = Diagnostic::error()
         .code(ErrorCode::E000)
         .message("explanation")
-        .primary_span(span(9, 23));
+        .unlabeled_span(span(9, 23));
 
     assert_format(
         &diagnostic,
@@ -106,7 +106,7 @@ fn format_triple_digit_line_number() {
 
     let diagnostic = Diagnostic::warning()
         .message("this is a sentence")
-        .primary_span(span(124, 133));
+        .unlabeled_span(span(124, 133));
 
     assert_format(
         &diagnostic,
@@ -128,9 +128,9 @@ fn format_primary_secondary_highlights() {
     let diagnostic = Diagnostic::error()
         .code(ErrorCode::E001)
         .message("important")
-        .primary_span(span(7, 11))
-        .secondary_span(span(1, 4))
-        .secondary_span(span(15, 17));
+        .unlabeled_span(span(7, 11))
+        .unlabeled_secondary_span(span(1, 4))
+        .unlabeled_secondary_span(span(15, 17));
 
     assert_format(
         &diagnostic,
@@ -161,8 +161,8 @@ fn format_primary_secondary_highlight_differing_line_number_widths() {
 
     let diagnostic = Diagnostic::bug()
         .message("placeholder")
-        .primary_span(span(3, 7))
-        .secondary_span(span(19, 28));
+        .unlabeled_span(span(3, 7))
+        .unlabeled_secondary_span(span(19, 28));
 
     assert_format(
         &diagnostic,
@@ -188,8 +188,8 @@ fn format_highlights_in_different_files() {
     map.add_str("TWO", "zyx");
 
     let diagnostic = Diagnostic::debug()
-        .primary_span(span(4, 5))
-        .secondary_span(span(11, 13));
+        .unlabeled_span(span(4, 5))
+        .unlabeled_secondary_span(span(11, 13));
 
     assert_format(
         &diagnostic,
@@ -215,8 +215,8 @@ fn format_highlights_same_line() {
 
     let diagnostic = Diagnostic::error()
         .message("tag")
-        .primary_span(span(1, 6))
-        .secondary_span(span(5, 9));
+        .unlabeled_span(span(1, 6))
+        .unlabeled_secondary_span(span(5, 9));
 
     assert_format(
         &diagnostic,
@@ -242,10 +242,10 @@ fn format_labeled_highlights() {
 
     let diagnostic = Diagnostic::error()
         .message("labels")
-        .labeled_primary_span(span(2, 4), "pointer")
-        .labeled_secondary_span(span(7, 11), "content")
-        .labeled_primary_span(span(12, 23), "explanation")
-        .labeled_secondary_span(span(28, 33), "message");
+        .span(span(2, 4), "pointer")
+        .label(span(7, 11), "content")
+        .span(span(12, 23), "explanation")
+        .label(span(28, 33), "message");
 
     assert_format(
         &diagnostic,
@@ -285,10 +285,10 @@ fn format_multi_line_labeled_highlights() {
 
     let diagnostic = Diagnostic::error()
         .message("multi-line labels")
-        .labeled_primary_span(span(2, 4), "pointer\ncontext\nfiller")
-        .labeled_secondary_span(span(7, 11), "content\n  indented")
-        .labeled_primary_span(span(12, 23), "explanation\naddendum")
-        .labeled_secondary_span(span(28, 33), "message\n\nbottom");
+        .span(span(2, 4), "pointer\ncontext\nfiller")
+        .label(span(7, 11), "content\n  indented")
+        .span(span(12, 23), "explanation\naddendum")
+        .label(span(28, 33), "message\n\nbottom");
 
     assert_format(
         &diagnostic,
@@ -334,10 +334,10 @@ fn format_multi_line_labeled_highlights_no_trailing_line_break() {
 
     let diagnostic = Diagnostic::error()
         .message("multi-line labels")
-        .labeled_primary_span(span(2, 4), "pointer\ncontext\nfiller")
-        .labeled_secondary_span(span(7, 11), "content\n  indented")
-        .labeled_primary_span(span(12, 23), "explanation\naddendum")
-        .labeled_secondary_span(span(28, 33), "message\n\nbottom");
+        .span(span(2, 4), "pointer\ncontext\nfiller")
+        .label(span(7, 11), "content\n  indented")
+        .span(span(12, 23), "explanation\naddendum")
+        .label(span(28, 33), "message\n\nbottom");
 
     assert_format(
         &diagnostic,
@@ -403,7 +403,7 @@ fn format_subdiagnostics() {
 
     let diagnostic = Diagnostic::warning()
         .message("it")
-        .primary_span(span(5, 7))
+        .unlabeled_span(span(5, 7))
         .help("helpful")
         .help("less helpful");
 
@@ -429,7 +429,7 @@ fn format_subdiagnostics_two_digit_line_numbers() {
 
     let diagnostic = Diagnostic::warning()
         .message("it")
-        .primary_span(span(104, 106))
+        .unlabeled_span(span(104, 106))
         .help("helpful")
         .help("less helpful");
 
@@ -455,7 +455,7 @@ fn format_multi_line_subdiagnostics() {
 
     let diagnostic = Diagnostic::warning()
         .message("it")
-        .primary_span(span(5, 7))
+        .unlabeled_span(span(5, 7))
         .help("helpful\ntip\nhopefully")
         .help("less helpful\ntip\n");
 
@@ -482,7 +482,7 @@ fn format_multiple_primary_highlights() {
     let mut map = SourceMap::default();
     map.add_str(Anonymous, "gamma\n");
 
-    let diagnostic = Diagnostic::error().primary_spans([span(1, 2), span(3, 4), span(5, 6)]);
+    let diagnostic = Diagnostic::error().unlabeled_spans([span(1, 2), span(3, 4), span(5, 6)]);
 
     assert_format(
         &diagnostic,
@@ -511,7 +511,9 @@ fn format_zero_length_highlight() {
     let mut map = SourceMap::default();
     map.add_str(Anonymous, "sample\n");
 
-    let diagnostic = Diagnostic::debug().message("nil").primary_span(span(3, 3));
+    let diagnostic = Diagnostic::debug()
+        .message("nil")
+        .unlabeled_span(span(3, 3));
 
     assert_format(
         &diagnostic,
@@ -530,7 +532,9 @@ fn format_zero_length_highlight_start_of_line() {
     let mut map = SourceMap::default();
     map.add_str(Anonymous, "sample\n");
 
-    let diagnostic = Diagnostic::debug().message("nil").primary_span(span(1, 1));
+    let diagnostic = Diagnostic::debug()
+        .message("nil")
+        .unlabeled_span(span(1, 1));
 
     assert_format(
         &diagnostic,
@@ -551,7 +555,7 @@ fn format_zero_length_secondary_highlight() {
 
     let diagnostic = Diagnostic::debug()
         .message("nil")
-        .secondary_span(span(3, 3));
+        .unlabeled_secondary_span(span(3, 3));
 
     assert_format(
         &diagnostic,
@@ -573,7 +577,7 @@ fn format_highlight_line_break() {
         "This is a sentence.\nThis is a follow-up sentence.\n",
     );
 
-    let diagnostic = Diagnostic::error().labeled_primary_span(span(20, 20), "EOL");
+    let diagnostic = Diagnostic::error().span(span(20, 20), "EOL");
 
     assert_format(
         &diagnostic,
@@ -592,7 +596,7 @@ fn format_highlight_end_of_input() {
     let mut map = SourceMap::default();
     map.add_str(Anonymous, "This is a sentence.");
 
-    let diagnostic = Diagnostic::error().labeled_primary_span(span(20, 20), "EOI");
+    let diagnostic = Diagnostic::error().span(span(20, 20), "EOI");
 
     assert_format(
         &diagnostic,
@@ -613,7 +617,7 @@ fn format_highlight_end_of_input_with_trailing_line_break() {
     let mut map = SourceMap::default();
     map.add_str(Anonymous, "This is a sentence.\n");
 
-    let diagnostic = Diagnostic::error().labeled_primary_span(span(21, 21), "EOI");
+    let diagnostic = Diagnostic::error().span(span(21, 21), "EOI");
 
     assert_format(
         &diagnostic,
@@ -638,7 +642,7 @@ fn format_highlight_containing_final_line_break() {
 
     let diagnostic = Diagnostic::warning()
         .message("weird corner case")
-        .primary_span(span(1, 21));
+        .unlabeled_span(span(1, 21));
 
     assert_format(
         &diagnostic,
@@ -661,7 +665,7 @@ fn format_highlight_containing_final_end_of_input() {
     let mut map = SourceMap::default();
     map.add_str(Anonymous, "EVERYTHING\n");
 
-    let diagnostic = Diagnostic::bug().primary_span(span(1, 13));
+    let diagnostic = Diagnostic::bug().unlabeled_span(span(1, 13));
 
     assert_format(
         &diagnostic,
@@ -682,7 +686,7 @@ fn format_highlight_in_empty_file() {
 
     let diagnostic = Diagnostic::error()
         .message("this file has to contain something reasonable")
-        .primary_span(span(1, 1));
+        .unlabeled_span(span(1, 1));
 
     assert_format(
         &diagnostic,
@@ -733,7 +737,7 @@ fn format_path_together_with_highlight() {
     let diagnostic = Diagnostic::error()
         .message("this file is not acceptable")
         .path("problematic.txt".into())
-        .labeled_primary_span(span(20, 25), "because you set this");
+        .span(span(20, 25), "because you set this");
 
     assert_format(
         &diagnostic,
@@ -774,7 +778,7 @@ fn format_two_line_break_highlight_containing_first() {
     let mut map = SourceMap::default();
     map.add_str(Anonymous, "alpha\nbeta\n\ngamma");
 
-    let diagnostic = Diagnostic::bug().primary_span(span(1, 12));
+    let diagnostic = Diagnostic::bug().unlabeled_span(span(1, 12));
 
     // @Note I don't actually know how it should be rendered
     assert_format(
@@ -798,7 +802,7 @@ fn format_two_line_breaks_highlight_containing_second() {
     let mut map = SourceMap::default();
     map.add_str(Anonymous, "alpha\n\n");
 
-    let diagnostic = Diagnostic::bug().primary_span(span(1, 8));
+    let diagnostic = Diagnostic::bug().unlabeled_span(span(1, 8));
 
     // @Note I don't actually know how it should be rendered
     assert_format(

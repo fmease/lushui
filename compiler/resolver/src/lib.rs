@@ -64,7 +64,7 @@ pub fn resolve_declarations(
                     "‘{}’ is defined multiple times in this scope",
                     resolver.session[binder].source,
                 ))
-                .labeled_primary_spans(naming_conflicts, "conflicting definition")
+                .spans(naming_conflicts, "conflicting definition")
                 .report(resolver.session.reporter());
         }
 
@@ -651,7 +651,7 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
                             pluralize!(cycle.len(), "declaration"),
                             pluralize!(cycle.len(), "is", "are"),
                         ))
-                        .primary_spans(
+                        .unlabeled_spans(
                             cycle
                                 .into_iter()
                                 .map(|&index| self.session[index].source.span()),
@@ -702,14 +702,8 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
                             "re-export of the more private binding ‘{}’",
                             self.session.index_to_path(target_index)
                         ))
-                        .labeled_primary_span(
-                            &entity.source,
-                            "re-exporting binding with greater exposure",
-                        )
-                        .labeled_secondary_span(
-                            &target.source,
-                            "re-exported binding with lower exposure",
-                        )
+                        .span(&entity.source, "re-exporting binding with greater exposure")
+                        .label(&target.source, "re-exported binding with lower exposure")
                         .note(format!(
                             "\
 expected the exposure of ‘{}’
@@ -837,7 +831,7 @@ impl<'a> Resolver<'a> {
             UseBinding => {
                 return Err(Diagnostic::error()
                     .message("use-bindings are not supported yet")
-                    .primary_span(&expression)
+                    .unlabeled_span(&expression)
                     .report(self.session.reporter()));
             }
             CaseAnalysis(analysis) => {
@@ -1011,7 +1005,7 @@ impl<'a> Resolver<'a> {
                 .message(format!(
                     "number literal ‘{literal}’ does not fit type ‘{type_}’",
                 ))
-                .primary_span(literal)
+                .unlabeled_span(literal)
                 .note(format!(
                     "values of this type must fit integer interval {}",
                     type_.interval(),
@@ -1078,7 +1072,7 @@ impl<'a> Resolver<'a> {
         let path = sequence.bare.path.as_ref().ok_or_else(|| {
             Diagnostic::error()
                 .message("sequence literals without explicit type are not supported yet")
-                .primary_span(&sequence.bare.elements)
+                .unlabeled_span(&sequence.bare.elements)
                 .help("consider prefixing the literal with a path to a type followed by a ‘.’")
                 .report(self.session.reporter())
         })?;
@@ -1119,7 +1113,7 @@ impl<'a> Resolver<'a> {
                      element types cannot be inferred and\n\
                      have to be manually supplied as the first “element”",
                 )
-                .primary_span(span)
+                .unlabeled_span(span)
                 .report(self.session.reporter()));
         };
 
@@ -1210,7 +1204,7 @@ impl<'a> Resolver<'a> {
                      element types cannot be inferred and\n\
                      have to be manually supplied as the first “element”",
                 )
-                .primary_span(span)
+                .unlabeled_span(span)
                 .report(self.session.reporter()));
         };
 
@@ -1311,7 +1305,7 @@ impl<'a> Resolver<'a> {
                      element types cannot be inferred and\n\
                      have to be manually supplied to the left of each element",
                 )
-                .primary_span(elements.span)
+                .unlabeled_span(elements.span)
                 .report(self.session.reporter()));
         }
 
@@ -1407,8 +1401,8 @@ impl<'a> Resolver<'a> {
                 "a {name} literal is not a valid constructor for type ‘{}’",
                 self.session[type_.bare].source
             ))
-            .labeled_primary_span(literal, "this literal may not construct the type")
-            .labeled_secondary_span(type_, "the data type")
+            .span(literal, "this literal may not construct the type")
+            .label(type_, "the data type")
     }
 
     fn resolve_path_of_literal(
@@ -1429,11 +1423,8 @@ impl<'a> Resolver<'a> {
                 return Err(Diagnostic::error()
                     .message(format!("binding ‘{path}’ is not a data type"))
                     // @Task future-proof a/an
-                    .labeled_primary_span(path, format!("a {}", entity.kind.name()))
-                    .labeled_secondary_span(
-                        literal,
-                        "literal requires a data type as its namespace",
-                    )
+                    .span(path, format!("a {}", entity.kind.name()))
+                    .label(literal, "literal requires a data type as its namespace")
                     .report(self.session.reporter()));
             }
         }
@@ -1457,7 +1448,7 @@ impl<'a> Resolver<'a> {
                         // @Task improve the error message, code
                         return Err(Diagnostic::error()
                             .message("path ‘extern’ is used in isolation")
-                            .primary_span(hanger)
+                            .unlabeled_span(hanger)
                             .note("the path segment ‘extern’ is only to be used indirectly to refer to specific component")
                             .report(self.session.reporter()).into());
                     };
@@ -1470,7 +1461,7 @@ impl<'a> Resolver<'a> {
                             .message(format!(
                                 "the component name ‘{component}’ is not a valid word"
                             ))
-                            .primary_span(component)
+                            .unlabeled_span(component)
                             .report(self.session.reporter())
                     })?;
 
@@ -1490,7 +1481,7 @@ impl<'a> Resolver<'a> {
                         // @Task better phrasing
                         return Err(Diagnostic::error()
                             .message(format!("the component ‘{component}’ is not defined"))
-                            .primary_span(component)
+                            .unlabeled_span(component)
                             .report(self.session.reporter())
                             .into());
                     };
@@ -1571,7 +1562,7 @@ impl<'a> Resolver<'a> {
             Diagnostic::error()
                 .code(ErrorCode::E021) // @Question use a dedicated code?
                 .message("the root module does not have a parent module")
-                .primary_span(hanger)
+                .unlabeled_span(hanger)
                 .report(self.session.reporter())
         })
     }
@@ -1618,7 +1609,7 @@ impl<'a> Resolver<'a> {
             Diagnostic::warning()
                 .code(LintCode::Deprecated)
                 .message(message)
-                .primary_span(identifier)
+                .unlabeled_span(identifier)
                 .report(self.session.reporter());
         }
 
@@ -1654,7 +1645,7 @@ impl<'a> Resolver<'a> {
                         "binding ‘{}’ is private",
                         self.session.index_to_path(index)
                     ))
-                    .primary_span(identifier)
+                    .unlabeled_span(identifier)
                     .report(self.session.reporter())
                     .into());
             }
@@ -1716,7 +1707,7 @@ impl<'a> Resolver<'a> {
                     return Err(Diagnostic::error()
                         .code(ErrorCode::E037)
                         .message("exposure can only be restricted to ancestor modules")
-                        .primary_span(path)
+                        .unlabeled_span(path)
                         .report(self.session.reporter()));
                 }
 
@@ -1949,7 +1940,7 @@ impl<'a> Resolver<'a> {
                 Diagnostic::error()
                     .code(ErrorCode::E021)
                     .message(message)
-                    .primary_span(&identifier)
+                    .unlabeled_span(&identifier)
                     .with(
                         |error| match lookalike_finder(identifier.as_str(), namespace) {
                             Some(lookalike) => error.help(format!(
@@ -1973,7 +1964,7 @@ impl<'a> Resolver<'a> {
                         "exposure reach ‘{}’ is circular",
                         self.session.index_to_path(binder)
                     ))
-                    .primary_span(extra)
+                    .unlabeled_span(extra)
                     .report(self.session.reporter())
             }
         }
@@ -2007,8 +1998,8 @@ impl<'a> Resolver<'a> {
         Diagnostic::error()
             .code(ErrorCode::E017)
             .message(format!("binding ‘{binder}’ is not a namespace"))
-            .labeled_primary_span(binder, format!("not a namespace but a {}", kind.name()))
-            .labeled_secondary_span(
+            .span(binder, format!("not a namespace but a {}", kind.name()))
+            .label(
                 // the subbinder together with the leading dot
                 // @Task trim_start_matches ascii_whitespace
                 binder.span().end().merge(subbinder),
@@ -2324,7 +2315,7 @@ fn module_used_as_a_value_error(module: Spanned<impl fmt::Display>) -> Diagnosti
     Diagnostic::error()
             .code(ErrorCode::E023)
             .message(format!("module ‘{module}’ is used as a value"))
-            .primary_span(module)
+            .unlabeled_span(module)
             .help("modules are not first-class citizens, consider utilizing records for such cases instead")
 }
 
@@ -2453,7 +2444,7 @@ mod target {
                 return Err(Diagnostic::error()
                     .code(ErrorCode::E022)
                     .message(format!("binding ‘{identifier}’ is not a module"))
-                    .primary_span(identifier));
+                    .unlabeled_span(identifier));
             }
 
             Ok(())

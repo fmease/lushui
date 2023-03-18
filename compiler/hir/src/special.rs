@@ -520,13 +520,13 @@ impl Bindings {
                     style.as_path(&binder),
                     kind.article()
                 ))
-                .primary_span(match style {
+                .unlabeled_span(match style {
                     DefinitionStyle::Implicit { .. } => binder.span(),
                     DefinitionStyle::Explicit { name } => name.span(),
                 })
                 .with(|error| match style {
                     DefinitionStyle::Implicit { .. } => error
-                        .labeled_secondary_span(
+                        .label(
                             attribute,
                             match kind {
                                 Kind::Intrinsic => {
@@ -563,8 +563,8 @@ impl Bindings {
                 .message(format!(
                     "the {kind} binding ‘{special}’ is defined multiple times"
                 ))
-                .labeled_primary_span(binder, "redefinition")
-                .labeled_secondary_span(previous, "previous definition"));
+                .span(binder, "redefinition")
+                .label(previous, "previous definition"));
         }
 
         self.insert_unchecked(special, binder);
@@ -655,7 +655,7 @@ fn missing_binding_error(special: Binding, user: Option<Span>) -> Diagnostic {
         .message(format!("the {kind} binding ‘{special}’ is not defined"))
         .with(|error| match user {
             // @Task label
-            Some(user) => error.labeled_primary_span(user, "the type of this expression"),
+            Some(user) => error.span(user, "the type of this expression"),
             None => error,
         })
 }

@@ -81,7 +81,7 @@ impl<'a> Parser<'a> {
         } else {
             Err(Diagnostic::error()
                 .message(format!("found {token} but expected {expected}"))
-                .primary_span(token)
+                .unlabeled_span(token)
                 .report(self.reporter))
         }
     }
@@ -188,7 +188,7 @@ impl<'a> Parser<'a> {
             }
             _ => Err(Diagnostic::error()
                 .message(format!("found {} but expected value", self.current_token()))
-                .primary_span(span)
+                .unlabeled_span(span)
                 .report(self.reporter)),
         }
     }
@@ -251,8 +251,8 @@ impl<'a> Parser<'a> {
                 let error = Diagnostic::error()
                     .code(ErrorCode::E803)
                     .message(format!("the entry ‘{key}’ is defined multiple times"))
-                    .labeled_primary_span(key.span, "redefinition")
-                    .labeled_secondary_span(previous_key.span, "previous definition")
+                    .span(key.span, "redefinition")
+                    .label(previous_key.span, "previous definition")
                     .report(self.reporter);
                 self.health.taint(error);
             } else {
@@ -316,7 +316,7 @@ impl<'a> Parser<'a> {
             token => {
                 return Err(Diagnostic::error()
                     .message(format!("found {token} but expected record key"))
-                    .primary_span(span)
+                    .unlabeled_span(span)
                     .report(self.reporter));
             }
         };

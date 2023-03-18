@@ -25,7 +25,7 @@ pub(crate) fn undefined_component(name: Spanned<&Word>, package: &Word) -> Diagn
         .message(format!(
             "the package ‘{package}’ does not contain a component called ‘{name}’"
         ))
-        .primary_span(name)
+        .unlabeled_span(name)
 }
 
 pub(crate) fn non_library_dependency(
@@ -37,6 +37,6 @@ pub(crate) fn non_library_dependency(
         .message(format!(
             "the component ‘{name}’ in package ‘{package}’ is not a library",
         ))
-        .primary_span(name)
+        .unlabeled_span(name)
         .note(format!("one cannot depend on {type_} components"))
 }

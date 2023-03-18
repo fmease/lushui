@@ -365,12 +365,12 @@ impl From<Error> for Diagnostic {
 
                 Diagnostic::error()
                     .message(message)
-                    .labeled_primary_span(token, "unexpected token")
+                    .span(token, "unexpected token")
             }
             // @Task improve message, mention closing it with quotes
             Error::UnterminatedText(span) => Diagnostic::error()
                 .message("unterminated text")
-                .primary_span(span),
+                .unlabeled_span(span),
             Error::NumberExceedsSizeLimit(parse_error) => {
                 use std::num::IntErrorKind::*;
 
@@ -381,7 +381,7 @@ impl From<Error> for Diagnostic {
                         NegOverflow => error.note("numbers must not be smaller than -2^63"),
                         _ => error,
                     })
-                    .primary_span(parse_error)
+                    .unlabeled_span(parse_error)
             }
         }
     }

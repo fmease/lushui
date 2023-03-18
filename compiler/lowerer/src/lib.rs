@@ -248,7 +248,7 @@ impl<'a> Lowerer<'a> {
                     "‘{}’ is defined multiple times in this scope",
                     constructor.binder
                 ))
-                .labeled_primary_span(&body, "conflicting definition")
+                .span(&body, "conflicting definition")
                 .note(
                     "the body of the constructor is implied but it also has a body introduced by ‘= ?value’",
                 ).handle(&mut *self);
@@ -311,7 +311,7 @@ impl<'a> Lowerer<'a> {
                             .code(ErrorCode::E016)
                             .message(format!("could not load the module ‘{}’", module.binder))
                             .path(path)
-                            .primary_span(span)
+                            .unlabeled_span(span)
                             .note(error.format())
                             .handle(&mut *self);
                     }
@@ -359,7 +359,7 @@ impl<'a> Lowerer<'a> {
                     let _: ErasedReportedError = Diagnostic::error()
                         .code(ErrorCode::E041)
                         .message("the module header has to be the first declaration of the module")
-                        .primary_span(&declaration)
+                        .unlabeled_span(&declaration)
                         .with(|error| {
                             if has_header {
                                 // @Task make this a note with a span/highlight!
@@ -556,14 +556,14 @@ impl<'a> Lowerer<'a> {
                 // @Beacon @Task add UI test for this
                 ast::Quantifier::Sigma => Diagnostic::error()
                     .message("sigma-type expressions are not supported yet")
-                    .primary_span(expression.span)
+                    .unlabeled_span(expression.span)
                     .handle(&mut *self),
             },
             Application(application) => {
                 if let Some(binder) = &application.binder {
                     let _: ErasedReportedError = Diagnostic::error()
                         .message("named arguments are not supported yet")
-                        .primary_span(binder)
+                        .unlabeled_span(binder)
                         .handle(&mut *self);
                 }
 
@@ -591,13 +591,13 @@ impl<'a> Lowerer<'a> {
             }
             TypedHole(_hole) => Diagnostic::error()
                 .message("typed holes are not supported yet")
-                .primary_span(expression.span)
+                .unlabeled_span(expression.span)
                 .handle(&mut *self),
             // @Task avoid re-boxing!
             Path(path) => lowered_ast::Expression::new(attributes, expression.span, (*path).into()),
             Projection(_projection) => Diagnostic::error()
                 .message("record field projections are not supported yet")
-                .primary_span(expression.span)
+                .unlabeled_span(expression.span)
                 .handle(&mut *self),
             LambdaLiteral(lambda) => {
                 // @Task transfer expression.attributes to lowered form in some way or the other.
@@ -648,7 +648,7 @@ impl<'a> Lowerer<'a> {
                             Diagnostic::error()
                                 .code(ErrorCode::E012)
                                 .message(format!("the let-binding ‘{binder}’ does not have a body"))
-                                .labeled_primary_span(span, "missing definition")
+                                .span(span, "missing definition")
                                 .suggest(
                                     span,
                                     "provide a definition for the let-binding",
@@ -718,7 +718,7 @@ impl<'a> Lowerer<'a> {
             }
             UseBinding(_binding) => Diagnostic::error()
                 .message("use-bindings are not supported yet")
-                .primary_span(expression.span)
+                .unlabeled_span(expression.span)
                 .handle(&mut *self),
             CaseAnalysis(analysis) => {
                 let mut cases = Vec::new();
@@ -740,7 +740,7 @@ impl<'a> Lowerer<'a> {
             }
             DoBlock(_block) => Diagnostic::error()
                 .message("do blocks are not supported yet")
-                .primary_span(expression.span)
+                .unlabeled_span(expression.span)
                 .handle(&mut *self),
             SequenceLiteral(sequence) => lowered_ast::Expression::new(
                 attributes,
@@ -779,7 +779,7 @@ impl<'a> Lowerer<'a> {
                 if let Some(binder) = &application.binder {
                     let _: ErasedReportedError = Diagnostic::error()
                         .message("named arguments are not supported yet")
-                        .primary_span(binder)
+                        .unlabeled_span(binder)
                         .handle(&mut *self);
                 }
 
@@ -847,8 +847,8 @@ impl<'a> Lowerer<'a> {
                             attribute.bare.name(),
                             target.name()
                         ))
-                        .labeled_primary_span(&attribute, "misplaced attribute")
-                        .labeled_secondary_span(target, "incompatible item")
+                        .span(&attribute, "misplaced attribute")
+                        .label(target, "incompatible item")
                         .note(format!(
                             "attribute ‘{}’ can only be ascribed to {}",
                             attribute.bare.name(),
@@ -891,10 +891,7 @@ impl<'a> Lowerer<'a> {
                 let _: ErasedReportedError = Diagnostic::error()
                     .code(ErrorCode::E006)
                     .message(format!("multiple ‘{}’ attributes", first.bare.name()))
-                    .labeled_primary_spans(
-                        homonymous_attributes,
-                        "duplicate or conflicting attribute",
-                    )
+                    .spans(homonymous_attributes, "duplicate or conflicting attribute")
                     .handle(&mut *self);
             }
         }
@@ -916,7 +913,7 @@ impl<'a> Lowerer<'a> {
                     "the attribute ‘{}’ is not supported yet",
                     attribute.bare.name()
                 ))
-                .primary_span(attribute)
+                .unlabeled_span(attribute)
                 .handle(&mut *self);
         }
 
@@ -929,7 +926,7 @@ impl<'a> Lowerer<'a> {
                         "the attribute ‘{}’ is an internal feature",
                         attribute.bare.name()
                     ))
-                    .primary_span(attribute)
+                    .unlabeled_span(attribute)
                     .handle(&mut *self);
             }
         }
@@ -949,7 +946,7 @@ impl<'a> Lowerer<'a> {
             let _: ErasedReportedError = Diagnostic::error()
                 .code(ErrorCode::E014)
                 .message(format!("attributes {listing} are mutually exclusive"))
-                .labeled_primary_spans(attributes, "conflicting attribute")
+                .spans(attributes, "conflicting attribute")
                 .handle(self);
         }
     }
@@ -1107,8 +1104,8 @@ the body containing a set of constructors
                 .message(format!(
                     "the declaration ‘{binder}’ marked as ‘intrinsic’ has a body",
                 ))
-                .labeled_primary_span(body_span, body_label)
-                .labeled_secondary_span(
+                .span(body_span, body_label)
+                .label(
                     intrinsic,
                     "marks the declaration as being defined outside of the language",
                 )
@@ -1117,7 +1114,7 @@ the body containing a set of constructors
             (None, None) => Diagnostic::error()
                 .code(ErrorCode::E012)
                 .message(format!("the declaration ‘{binder}’ does not have a body"))
-                .labeled_primary_span(missing_definition_span, "missing definition")
+                .span(missing_definition_span, "missing definition")
                 .suggest(
                     missing_definition_span,
                     "provide a definition for the declaration",
@@ -1189,7 +1186,7 @@ impl BareAttributeExt for lowered_ast::BareAttribute {
                     Diagnostic::error()
                         .code(ErrorCode::E019)
                         .message("too few attribute arguments provided")
-                        .primary_span(span)
+                        .unlabeled_span(span)
                         .report(reporter),
                 )
             })?;
@@ -1261,7 +1258,7 @@ impl BareAttributeExt for lowered_ast::BareAttribute {
                     return Err(AttributeParsingError::Erased(
                         Diagnostic::error()
                             .message("the attribute ‘if’ is not supported yet")
-                            .primary_span(attribute)
+                            .unlabeled_span(attribute)
                             .report(session.reporter()),
                     ));
                 }
@@ -1304,7 +1301,7 @@ impl BareAttributeExt for lowered_ast::BareAttribute {
                                         "attribute argument does not fit integer interval \
                                         {NAT32_INTERVAL_REPRESENTATION}",
                                     ))
-                                    .primary_span(depth)
+                                    .unlabeled_span(depth)
                                     .report(session.reporter()),
                             )
                         })?;
@@ -1319,7 +1316,7 @@ impl BareAttributeExt for lowered_ast::BareAttribute {
                     return Err(AttributeParsingError::Erased(
                         Diagnostic::error()
                             .message("the attribute ‘unstable’ is not supported yet")
-                            .primary_span(attribute)
+                            .unlabeled_span(attribute)
                             .report(session.reporter()),
                     ));
                 }
@@ -1336,7 +1333,7 @@ impl BareAttributeExt for lowered_ast::BareAttribute {
                 let error = Diagnostic::error()
                     .code(ErrorCode::E019)
                     .message("too many attribute arguments provided")
-                    .primary_span(argument.span.merge(arguments.last()))
+                    .unlabeled_span(argument.span.merge(arguments.last()))
                     .report(session.reporter());
                 health.taint(error);
             }
@@ -1347,7 +1344,7 @@ impl BareAttributeExt for lowered_ast::BareAttribute {
                 AttributeParsingError::UndefinedAttribute(binder) => Diagnostic::error()
                     .code(ErrorCode::E011)
                     .message(format!("the attribute ‘{binder}’ is not defined"))
-                    .primary_span(&binder)
+                    .unlabeled_span(&binder)
                     .report(session.reporter()),
                 AttributeParsingError::Erased(error) => error,
             })
@@ -1538,7 +1535,7 @@ impl LintExt for lowered_ast::attribute::Lint {
             Diagnostic::error()
                 .code(ErrorCode::E018)
                 .message(format!("the lint ‘{binder}’ is not defined"))
-                .primary_span(binder.span())
+                .unlabeled_span(binder.span())
                 .report(reporter),
         ))
     }
@@ -1548,7 +1545,7 @@ fn invalid_unnamed_path_hanger(hanger: ast::Hanger) -> Diagnostic {
     Diagnostic::error()
         .code(ErrorCode::E025)
         .message(format!("path ‘{hanger}’ is not bound to an identifier"))
-        .primary_span(hanger)
+        .unlabeled_span(hanger)
         .note("a use-declaration has to introduce at least one new binder")
         .help("bind the path to a name with ‘as’")
 }
@@ -1557,7 +1554,7 @@ fn incorrectly_positioned_path_hanger(hanger: ast::Hanger) -> Diagnostic {
     Diagnostic::error()
         .code(ErrorCode::E026)
         .message(format!("path ‘{hanger}’ not allowed in this position"))
-        .primary_span(hanger)
+        .unlabeled_span(hanger)
         .help("consider moving this path to a separate use-declaration")
 }
 
@@ -1571,7 +1568,7 @@ fn unexpected_named_attribute_argument_error(
         .message(format!(
             "found named argument ‘{actual}’ but expected ‘{expected}’"
         ))
-        .primary_span(actual)
+        .unlabeled_span(actual)
 }
 
 // @Temporary signature
@@ -1582,7 +1579,7 @@ fn invalid_attribute_argument_type_error(
     Diagnostic::error()
         .code(ErrorCode::E027)
         .message(format!("found {actual} but expected {expected}"))
-        .primary_span(actual)
+        .unlabeled_span(actual)
 }
 
 fn missing_mandatory_type_annotation_error(
@@ -1606,7 +1603,7 @@ fn missing_mandatory_type_annotation_error(
     Diagnostic::error()
         .code(ErrorCode::E015)
         .message(format!("the {target} does not have a type annotation"))
-        .labeled_primary_span(span, "missing mandatory type annotation")
+        .span(span, "missing mandatory type annotation")
         .suggest(
             span,
             format!("annotate the {} with a type", target.name()),

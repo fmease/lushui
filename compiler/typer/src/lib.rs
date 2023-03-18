@@ -373,9 +373,9 @@ impl<'sess, 'ctx> Typer<'sess, 'ctx> {
                 .code(ErrorCode::E032)
                 // @Task put back some more information into the message: use `_`s to shorten the type
                 .message("type mismatch")
-                .labeled_primary_span(actual_value, "has the wrong type")
+                .span(actual_value, "has the wrong type")
                 .with(|error| match expectation_cause {
-                    Some(cause) => error.labeled_secondary_span(cause, "expected due to this"),
+                    Some(cause) => error.label(cause, "expected due to this"),
                     None => error,
                 })
                 .note(format!(
@@ -540,8 +540,8 @@ expected type ‘{}’
                                 .code(ErrorCode::E032)
                                 // @Task put back some more information into the message: use `_`s to shorten the type
                                 .message("type mismatch")
-                                .labeled_primary_span(&application.argument, "has the wrong type")
-                                .labeled_secondary_span(&expected, "expected due to this")
+                                .span(&application.argument, "has the wrong type")
+                                .label(&expected, "expected due to this")
                                 .note(format!(
                                     "\
 expected type ‘{}’
@@ -570,8 +570,8 @@ expected type ‘{}’
                         .code(ErrorCode::E031)
                         // @Task put back some more information into the message: use `_`s to shorten the type
                         .message("type mismatch")
-                        .labeled_primary_span(&application.callee, "has wrong type")
-                        .labeled_secondary_span(&application.argument, "applied to this")
+                        .span(&application.callee, "has wrong type")
+                        .label(&application.argument, "applied to this")
                         .note(format!(
                             "\
 expected type ‘_ -> _’
@@ -609,7 +609,7 @@ expected type ‘_ -> _’
                         return Err(Diagnostic::error()
                             .code(ErrorCode::E035)
                             .message("attempt to analyze a type")
-                            .primary_span(expression.span)
+                            .unlabeled_span(expression.span)
                             .note("forbidden to uphold parametricity and type erasure")
                             .report(self.session.reporter())
                             .into());
@@ -701,7 +701,7 @@ expected type ‘_ -> _’
                                             "binder ‘{}’ used in callee position inside pattern",
                                             binder.0
                                         ))
-                                        .primary_span(&binder.0)
+                                        .unlabeled_span(&binder.0)
                                         .help("consider referring to a concrete binding")
                                         .report(self.session.reporter())
                                         .into());
@@ -751,8 +751,8 @@ expected type ‘_ -> _’
                 .code(ErrorCode::E032)
                 // @Task put back some more information into the message: use `_`s to shorten the type
                 .message("type mismatch")
-                .labeled_primary_span(pattern, "has the wrong type")
-                .labeled_secondary_span(scrutinee, "expected due to this")
+                .span(pattern, "has the wrong type")
+                .label(scrutinee, "expected due to this")
                 .note(format!(
                     "\
 expected type ‘{}’
@@ -872,7 +872,7 @@ but got type ‘{}’",
                     self.display(&result_type),
                     self.display(&type_),
                 ))
-                .primary_span(result_type.span)
+                .unlabeled_span(result_type.span)
                 .report(self.session.reporter()))
         }
     }

@@ -920,10 +920,7 @@ impl Parser<'_> {
                 return Err(
                     expected_one_of![Expected::Parameter, ThinArrowRight, DoubleAsterisk]
                         .but_actual_is(self.token())
-                        .labeled_secondary_span(
-                            span,
-                            "while parsing this quantified type starting here",
-                        )
+                        .label(span, "while parsing this quantified type starting here")
                         .report(self.reporter),
                 );
             }
@@ -1429,8 +1426,8 @@ impl Parser<'_> {
             } else if let Some(explicitness) = explicitness {
                 return Err(Expected::Category("function argument")
                     .but_actual_is(self.token())
-                    .labeled_secondary_span(&callee, "while parsing this function application")
-                    .labeled_secondary_span(
+                    .label(&callee, "while parsing this function application")
+                    .label(
                         explicitness,
                         "this apostrophe marks the start of an implicit argument",
                     )
@@ -1617,7 +1614,7 @@ impl Parser<'_> {
             _ => {
                 return Err(expected_one_of![Word, OpeningRoundBracket]
                     .but_actual_is(self.token())
-                    .labeled_secondary_span(span, "while parsing this attribute starting here")
+                    .label(span, "while parsing this attribute starting here")
                     .report(self.reporter));
             }
         }

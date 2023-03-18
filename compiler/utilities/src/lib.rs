@@ -163,7 +163,7 @@ impl fmt::Display for Conjunction {
     }
 }
 
-/// Use the singular or form the plural of the given word depending on the given amount.
+/// Use the singular or the plural form of the given word depending on the given amount.
 ///
 /// # Examples
 ///

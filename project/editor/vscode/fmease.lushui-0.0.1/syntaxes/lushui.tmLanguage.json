@@ -82,7 +82,7 @@
                 },
                 {
                     "match": "(?<![\\w\\-])(For)(?![\\w\\-])",
-                    "name": "storage.typelushui"
+                    "name": "storage.type.lushui"
                 },
                 {
                     "match": "(?<![\\w\\-])as(?![\\w\\-])",

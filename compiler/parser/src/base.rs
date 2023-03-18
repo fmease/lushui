@@ -200,7 +200,7 @@ impl Expected {
         Diagnostic::error()
             .code(ErrorCode::E010)
             .message(format!("found {actual} but expected {self}"))
-            .labeled_primary_span(actual, "unexpected token")
+            .span(actual, "unexpected token")
     }
 }
 
@@ -296,7 +296,7 @@ impl LexerErrorExt for lexer::Error {
                     "invalid indentation consisting of {} spaces",
                     difference.0
                 ))
-                .primary_span(self.span)
+                .unlabeled_span(self.span)
                 .note(match error {
                     IndentationError::Misaligned => {
                         format!("indentation needs to be a multiple of {}", INDENTATION.0)
@@ -312,12 +312,12 @@ impl LexerErrorExt for lexer::Error {
                 // @Task code
                 Diagnostic::error()
                     .message(message)
-                    .labeled_primary_span(self.span, "unexpected token")
+                    .span(self.span, "unexpected token")
             }
             UnbalancedBracket(bracket) => Diagnostic::error()
                 .code(ErrorCode::E044)
                 .message(format!("unbalanced {} bracket", bracket.kind))
-                .labeled_primary_span(
+                .span(
                     self.span,
                     format!(
                         "has no matching {} {} bracket",
@@ -328,7 +328,7 @@ impl LexerErrorExt for lexer::Error {
             UnterminatedTextLiteral => Diagnostic::error()
                 .code(ErrorCode::E047)
                 .message("unterminated text literal")
-                .primary_span(self.span),
+                .unlabeled_span(self.span),
         }
     }
 }

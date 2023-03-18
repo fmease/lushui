@@ -69,7 +69,7 @@ fn parse_name(
             Diagnostic::error()
                 .code(ErrorCode::E036)
                 .message(format!("the {kind} name ‘{name}’ is not a valid word"))
-                .primary_span(span)
+                .unlabeled_span(span)
                 .report(reporter)
         })
 }
@@ -160,7 +160,7 @@ fn parse_component_type(
             //       fine-tuned suggestion
             Diagnostic::error()
                 .message(format!("‘{type_}’ is not a valid component type"))
-                .primary_span(span)
+                .unlabeled_span(span)
                 .note(format!(
                     "valid component types are {}",
                     ComponentType::elements()
@@ -214,7 +214,7 @@ fn parse_dependencies(
                         //       fine-tuned suggestion
                         Diagnostic::error()
                             .message(format!("‘{name}’ is not a valid dependency provider"))
-                            .primary_span(span)
+                            .unlabeled_span(span)
                             .note(format!(
                                 "valid dependency providers are {}",
                                 DependencyProvider::elements()

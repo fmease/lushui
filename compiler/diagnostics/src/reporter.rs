@@ -13,6 +13,9 @@ use std::{
 };
 use utilities::{pluralize, Conjunction, ListingExt};
 
+// @Task diagnostic formatting options
+// like display style: verbose (current default) vs. terse
+
 /// A diagnostic reporter.
 pub struct Reporter {
     kind: ReporterKind,
