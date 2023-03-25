@@ -771,6 +771,82 @@ warning: this file looks spooky
     )
 }
 
+#[test]
+fn format_suggestion() {
+    let mut map = SourceMap::default();
+    map.add_str(Anonymous, "Would you like some more tea?");
+
+    let diagnostic = Diagnostic::debug()
+        .message("this phrasing is too euphemistic")
+        .unlabeled_span(span(16, 25))
+        .suggest(span(16, 25), "be more business-minded", "to buy a pot of");
+
+    assert_format(
+        &diagnostic,
+        Some(&map),
+        "\
+internal debugging message: this phrasing is too euphemistic
+  ┌─ ⟨anonymous⟩:1:16
+  │
+1 │ Would you like some more tea?
+  │                ═════════
+  │
+ help: be more business-minded
+  ┌─ ⟨anonymous⟩:1:16
+  │
+1 │ Would you like to buy a pot of tea?
+  │                ~~~~~~~~~~~~~~~",
+    );
+}
+
+// @Beacon @Task don't "omit" the file location (file:line:col) if the file differs from the one of the
+// primary highlight (and if there is no (primary/secondary) highlight at all, always show)
+
+/// If there is no preceeding primary or secondary highlight, show the file information (path, line, column)
+/// accociated with the suggestion to give the needed context.
+#[test]
+fn format_suggestion_no_preceeding_highlight() {
+    let mut map = SourceMap::default();
+    map.add_str(Anonymous, "Would you like some more tea?");
+
+    let diagnostic =
+        Diagnostic::debug().suggest(span(16, 25), "be more business-minded", "to buy a pot of");
+
+    assert_format(
+        &diagnostic,
+        Some(&map),
+        "\
+internal debugging message
+ help: be more business-minded
+  ┌─ ⟨anonymous⟩:1:16
+  │
+1 │ Would you like to buy a pot of tea?
+  │                ~~~~~~~~~~~~~~~",
+    );
+}
+
+#[test]
+fn format_suggestion_removal() {
+    let mut map = SourceMap::default();
+    map.add_str(Anonymous, "This is the the best!");
+
+    let diagnostic = Diagnostic::error()
+        .message("duplicate consecutive word ‘the’")
+        .suggest(span(13, 17), "remove the second occurrence of the word", "");
+
+    assert_format(
+        &diagnostic,
+        Some(&map),
+        "\
+error: duplicate consecutive word ‘the’
+ help: remove the second occurrence of the word
+  ┌─ ⟨anonymous⟩:1:13
+  │
+1 │ This is the best!
+  │            ⟩⟨",
+    );
+}
+
 // @Task Fix this!
 #[test]
 #[ignore = "weird corner case"]

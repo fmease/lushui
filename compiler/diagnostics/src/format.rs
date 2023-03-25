@@ -1,15 +1,20 @@
 //! Diagnostic formatting.
 
-// @Note Diagnostics with primary and secondary spans are not *that* readable because of
-// all those lengthy paths. That didn't use to be the case.
 // @Task make absolute paths relative to the current working directory
-// @Task if there is only a single primary highlight, hide the paths for all secondary
-// highlights that coincide with the one of the primary one
-// @Note tabs in snippets (and others?) mess up the alignment!
+// @Bug tabs in snippets (and others?) mess up the alignment!
 // @Task replace them with N spaces when rendering (don't forget to readjust the rest)!
 // @Task dedent long lines of highlighted source code by collapsing long sequences of whitespace
-// at the start of a snippet and adding frame-colored ellipses `...` or `…` as a marker
+// (or any character?) at the start of a snippet and adding frame-colored ellipses `...` or `…` as a marker
 // @Task special-case trailing line breaks in snippets
+
+// @Task :span_path_omission
+// * (optional) sort highlights such that those whose file contains primary highlights, they come before
+//   those that don't contain any
+// * for the first secondary highlight of a file containing primary highlights, show the path of the next primary highlight
+// * for any other secondary highlight of a file containing primary highlights, omit the file path
+// * for primary highlights, omit the file path if all previous highlights in the same file are secondary ones
+// * for any other primary highlight, always show the file path
+// * (imprecise) for suggestions, do something very similar to omit file paths if they aren't "necessary"
 
 use super::{
     Role, Severity, Subseverity, Substitution, SubstitutionPart, UnboxedUntaggedDiagnostic,
@@ -183,28 +188,8 @@ impl Formatter<'_, '_> {
             !self.diagnostic.subdiagnostics.is_empty() || !self.diagnostic.suggestions.is_empty();
 
         for (index, highlight) in highlights.iter().enumerate() {
-            let file = displayed(|f| format_file_name(highlight.lines.file, f));
-            let line = highlight.lines.first.number;
-            let column = highlight.lines.first.highlight.start;
-
-            let connector = if needs_upward_connection {
-                Line::VerticalAndRight
-            } else {
-                Line::DownAndRight
-            }
-            .single();
-
-            writeln!(self.f)?;
-            write!(
-                self.f,
-                "{} {}",
-                self.padding,
-                format!(
-                    "{connector}{} {file}:{line}:{column}",
-                    Line::Horizontal.single()
-                )
-                .color(palette::FRAME)
-            )?;
+            // @Task omit in certain cases :span_path_omission
+            self.write_span_path(&highlight.lines, needs_upward_connection)?;
 
             match &highlight.lines.last {
                 None => self.write_single_line_highlight(
@@ -230,6 +215,35 @@ impl Formatter<'_, '_> {
         }
 
         Ok(())
+    }
+
+    fn write_span_path(
+        &mut self,
+        lines: &LinesWithHighlight<'_>,
+        needs_upward_connection: bool,
+    ) -> fmt::Result {
+        let file = displayed(|f| format_file_name(lines.file, f));
+        let line = lines.first.number;
+        let column = lines.first.highlight.start;
+
+        let connector = if needs_upward_connection {
+            Line::VerticalAndRight
+        } else {
+            Line::DownAndRight
+        }
+        .single();
+
+        writeln!(self.f)?;
+        write!(
+            self.f,
+            "{} {}",
+            self.padding,
+            format!(
+                "{connector}{} {file}:{line}:{column}",
+                Line::Horizontal.single()
+            )
+            .color(palette::FRAME)
+        )
     }
 
     fn write_single_line_highlight(
@@ -412,6 +426,9 @@ impl Formatter<'_, '_> {
     // @Task write unit tests for this!
     fn write_suggestion(&mut self, suggestion: &ResolvedSuggestion<'_>) -> fmt::Result {
         self.write_subdiagnostic(Subseverity::Help, suggestion.message)?;
+
+        // @Task omit in certain cases :span_path_omission
+        self.write_span_path(&suggestion.lines, false)?;
 
         let line = &suggestion.lines.first;
         let snippet = line.content;

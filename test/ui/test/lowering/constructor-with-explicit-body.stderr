@@ -5,6 +5,7 @@ error[E015]: the declaration ‘container’ does not have a type annotation
   │             ⟫⟪ missing mandatory type annotation
   │
  help: annotate the declaration with a type
+  ┌─ ${TEST_FOLDER}/lowering/constructor-with-explicit-body.lushui:2:14
   │
 2 │     container: Type = attachment
   │              ~~~~~~

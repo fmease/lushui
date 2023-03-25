@@ -5,6 +5,7 @@ error[E015]: the declaration ‘Alpha’ does not have a type annotation
   │          ⟫⟪ missing mandatory type annotation
   │
  help: annotate the declaration with a type
+  ┌─ ${TEST_FOLDER}/lowering/toplevel-obligatory-annotations.lushui:1:11
   │
 1 │ data Alpha: Type of
   │           ~~~~~~
@@ -16,6 +17,7 @@ error[E015]: the parameter ‘a’ does not have a type annotation
   │           ═ missing mandatory type annotation
   │
  help: annotate the parameter with a type
+  ┌─ ${TEST_FOLDER}/lowering/toplevel-obligatory-annotations.lushui:2:11
   │
 2 │     alpha (a: Type)
   │           ~~~~~~~~~
@@ -27,6 +29,7 @@ error[E015]: the declaration ‘alpha’ does not have a type annotation
   │           ⟫⟪ missing mandatory type annotation
   │
  help: annotate the declaration with a type
+  ┌─ ${TEST_FOLDER}/lowering/toplevel-obligatory-annotations.lushui:2:12
   │
 2 │     alpha a: Type
   │            ~~~~~~
@@ -38,6 +41,7 @@ error[E015]: the parameter ‘A’ does not have a type annotation
   │           ═ missing mandatory type annotation
   │
  help: annotate the parameter with a type
+  ┌─ ${TEST_FOLDER}/lowering/toplevel-obligatory-annotations.lushui:4:11
   │
 4 │ data Beta (A: Type) of
   │           ~~~~~~~~~
@@ -49,6 +53,7 @@ error[E015]: the declaration ‘Beta’ does not have a type annotation
   │           ⟫⟪ missing mandatory type annotation
   │
  help: annotate the declaration with a type
+  ┌─ ${TEST_FOLDER}/lowering/toplevel-obligatory-annotations.lushui:4:12
   │
 4 │ data Beta A: Type of
   │            ~~~~~~
@@ -60,6 +65,7 @@ error[E015]: the parameter ‘A’ does not have a type annotation
   │          ═ missing mandatory type annotation
   │
  help: annotate the parameter with a type
+  ┌─ ${TEST_FOLDER}/lowering/toplevel-obligatory-annotations.lushui:5:10
   │
 5 │     beta (A: Type): Beta A
   │          ~~~~~~~~~
@@ -71,6 +77,7 @@ error[E015]: the declaration ‘number’ does not have a type annotation
   │      ⟫⟪ missing mandatory type annotation
   │
  help: annotate the declaration with a type
+  ┌─ ${TEST_FOLDER}/lowering/toplevel-obligatory-annotations.lushui:7:7
   │
 7 │ number: Type = 0
   │       ~~~~~~
@@ -82,6 +89,7 @@ error[E015]: the parameter ‘f’ does not have a type annotation
   │       ═ missing mandatory type annotation
   │
  help: annotate the parameter with a type
+  ┌─ ${TEST_FOLDER}/lowering/toplevel-obligatory-annotations.lushui:9:7
   │
 9 │ apply (f: Type) x (y) = f x
   │       ~~~~~~~~~
@@ -93,6 +101,7 @@ error[E015]: the parameter ‘x’ does not have a type annotation
   │         ═ missing mandatory type annotation
   │
  help: annotate the parameter with a type
+  ┌─ ${TEST_FOLDER}/lowering/toplevel-obligatory-annotations.lushui:9:9
   │
 9 │ apply f (x: Type) (y) = f x
   │         ~~~~~~~~~
@@ -104,6 +113,7 @@ error[E015]: the parameter ‘y’ does not have a type annotation
   │           ═══ missing mandatory type annotation
   │
  help: annotate the parameter with a type
+  ┌─ ${TEST_FOLDER}/lowering/toplevel-obligatory-annotations.lushui:9:11
   │
 9 │ apply f x (y: Type) = f x
   │           ~~~~~~~~~
@@ -115,6 +125,7 @@ error[E015]: the declaration ‘apply’ does not have a type annotation
   │             ⟫⟪ missing mandatory type annotation
   │
  help: annotate the declaration with a type
+  ┌─ ${TEST_FOLDER}/lowering/toplevel-obligatory-annotations.lushui:9:14
   │
 9 │ apply f x (y): Type = f x
   │              ~~~~~~

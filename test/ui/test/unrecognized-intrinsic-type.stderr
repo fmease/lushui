@@ -10,6 +10,7 @@ error[E061]: ‘I-Definitely-Do-Not-Exist’ is not an intrinsic binding
   │      ═════════════════════════
   │
  help: consider adding an explicit name to the attribute to overwrite the derived one
+  ┌─ ${TEST_FOLDER}/unrecognized-intrinsic-type.lushui:6:1
   │
 6 │ @(intrinsic name)
   │ ~~~~~~~~~~~~~~~~~

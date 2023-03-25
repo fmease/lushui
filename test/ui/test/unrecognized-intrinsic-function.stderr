@@ -10,6 +10,7 @@ error[E061]: ‘unrecognized-intrinsic-function.i-definitely-do-not-exist’ is 
    │ ═════════════════════════
    │
   help: consider adding an explicit name to the attribute to overwrite the derived one
+   ┌─ ${TEST_FOLDER}/unrecognized-intrinsic-function.lushui:10:1
    │
 10 │ @(intrinsic name)
    │ ~~~~~~~~~~~~~~~~~

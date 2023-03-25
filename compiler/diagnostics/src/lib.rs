@@ -149,6 +149,17 @@ impl<const S: Severity> Diagnostic<S> {
         self
     }
 
+    /// Reference a path in the diagnostic.
+    ///
+    /// Useful if the given path is not registered in the [`SourceMap`] (e.g. if the
+    /// path does not point to a file that could not be opened) or if one would like to
+    /// highlight the entirety of a file without the need to reside to the whole [file span]
+    /// which might divert attention from the intend of the diagnostic.
+    ///
+    /// A diagnostic may only ever have a single such path.
+    /// Calling this function again overwrites the previous one.
+    ///
+    /// [file span]: span::SourceFile::span
     pub fn path(mut self, path: PathBuf) -> Self {
         self.untagged.path = Some(path);
         self
