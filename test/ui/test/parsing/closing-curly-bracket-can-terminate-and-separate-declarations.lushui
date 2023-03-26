@@ -1,4 +1,0 @@
-;;; TEST pass check
-;;; TEST compiler-args -Z parse-only --no-core
-
-module m of { module a of {} module b of {} }

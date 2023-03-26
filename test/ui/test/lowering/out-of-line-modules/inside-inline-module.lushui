@@ -1,3 +1,4 @@
 ;;; TEST pass check
 
-module container of { module content }
+module container of
+    module content

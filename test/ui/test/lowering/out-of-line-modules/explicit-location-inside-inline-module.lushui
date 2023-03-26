@@ -1,8 +1,5 @@
 ;;; TEST pass check
 
-module inline of {
-
-@(location "alias")
-module binder 
-
-}
+module inline of
+    @(location "alias")
+    module binder

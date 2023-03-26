@@ -1,13 +1,13 @@
 error[E060]: the intrinsic binding ‘Text’ is not defined
-   ┌─ ${TEST_FOLDER}/missing-intrinsic-type.lushui:10:16
+   ┌─ ${TEST_FOLDER}/missing-intrinsic-type.lushui:11:16
    │
-10 │ it0: It = make "test"
+11 │ it0: It = make "test"
    │                ══════ the type of this expression
 
 error[E060]: the intrinsic binding ‘Nat’ is not defined
-   ┌─ ${TEST_FOLDER}/missing-intrinsic-type.lushui:11:16
+   ┌─ ${TEST_FOLDER}/missing-intrinsic-type.lushui:12:16
    │
-11 │ it1: It = make 344
+12 │ it1: It = make 344
    │                ═══ the type of this expression
 
 error: aborting due to 2 previous errors

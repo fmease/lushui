@@ -138,7 +138,7 @@ impl Parser<'_> {
         let mut declarations = Vec::new();
 
         loop {
-            if self.maybe_consume(Semicolon) {
+            if self.maybe_consume(LineBreak) {
                 continue;
             }
 
@@ -239,7 +239,7 @@ impl Parser<'_> {
         //     Delimiter::DefinitionPrefix, // only if we dont have a def
         //     Delimiter::Terminator,
         // ]
-        self.expect_terminator()?;
+        self.parse_terminator()?;
 
         Ok(Declaration::new(
             attributes,
@@ -264,7 +264,7 @@ impl Parser<'_> {
     /// Data-Declaration ::=
     ///     "data" #Word
     ///     Parameters Type-Annotation?
-    ///     ("of" ("{" (Terminator | Constructor)* "}")?)?
+    ///     ("of" (#Indentation (Terminator | Constructor)* #Dedentation)?)?
     ///     Terminator
     /// ```
     ///
@@ -280,7 +280,7 @@ impl Parser<'_> {
 
         let constructors = match self.token().name() {
             name @ Terminator!() => {
-                if name == Semicolon {
+                if name == LineBreak {
                     self.advance();
                 }
                 None
@@ -297,7 +297,7 @@ impl Parser<'_> {
                 })?;
 
                 span.merging(constructors.last());
-                self.expect_terminator()?;
+                self.parse_terminator()?;
 
                 Some(constructors)
             }
@@ -335,7 +335,7 @@ impl Parser<'_> {
     /// ```grammar
     /// Module-Declaration ::=
     ///     | Header
-    ///     | "module" #Word ("of" ("{" (Terminator | Declaration)* "}")?)? Terminator
+    ///     | "module" #Word ("of" (#Indentation (Terminator | Declaration)* #Dedentation)?)? Terminator
     /// Header ::= "module" Terminator
     /// ```
     ///
@@ -347,7 +347,7 @@ impl Parser<'_> {
     ) -> Result<Declaration> {
         // @Task abstract over this (used below as well), good idea?
         if let name @ Terminator!() = self.token().name() {
-            if name == Semicolon {
+            if name == LineBreak {
                 self.advance();
             }
 
@@ -364,7 +364,7 @@ impl Parser<'_> {
             // Out-of-line module declaration.
             // @Task abstract over this (used above as well), good idea?
             name @ Terminator!() => {
-                if name == Semicolon {
+                if name == LineBreak {
                     self.advance();
                 }
 
@@ -388,7 +388,7 @@ impl Parser<'_> {
                     Ok(())
                 })?;
 
-                span.merging(self.expect_terminator()?);
+                span.merging(self.parse_terminator()?);
 
                 Ok(Declaration::new(
                     attributes,
@@ -408,11 +408,11 @@ impl Parser<'_> {
     }
 
     fn parse_optional_block(&mut self, mut parser: impl FnMut(&mut Self) -> Result) -> Result {
-        if self.maybe_consume(OpeningCurlyBracket) {
+        if self.maybe_consume(Indentation) {
             loop {
-                while self.maybe_consume(Semicolon) {}
+                while self.maybe_consume(LineBreak) {}
 
-                if self.maybe_consume(ClosingCurlyBracket) {
+                if self.maybe_consume(Dedentation) {
                     break;
                 }
 
@@ -440,7 +440,7 @@ impl Parser<'_> {
         attributes: Attributes,
     ) -> Result<Declaration> {
         let bindings = self.parse_use_path_tree(&[Delimiter::Terminator])?;
-        self.expect_terminator()?;
+        self.parse_terminator()?;
 
         Ok(Declaration::new(
             attributes,
@@ -584,7 +584,7 @@ impl Parser<'_> {
         //     Delimiter::DefinitionPrefix, // Or Equals // Only if we don't have a definition
         //     Delimiter::Terminator,
         // ]
-        self.expect_terminator()?;
+        self.parse_terminator()?;
 
         Ok(Declaration::new(
             attributes,
@@ -949,7 +949,7 @@ impl Parser<'_> {
     /// Let-Binding ::=
     ///     "let" #Word Parameters Type-Annotation?
     ///     ("=" Expression)?
-    ///     #Virtual-Semicolon?
+    ///     #LineBreak?
     ///     "in" Expression
     /// ```
     ///
@@ -972,7 +972,7 @@ impl Parser<'_> {
             None
         };
 
-        if self.token().is_line_break() {
+        if let LineBreak = self.token().name() {
             self.advance();
         }
 
@@ -1001,7 +1001,7 @@ impl Parser<'_> {
     /// ```grammar
     /// Use-Binding ::=
     ///     "use" Use-Path-Tree
-    ///     #Virtual-Semicolon?
+    ///     #LineBreak?
     ///     "in" Expression
     /// ```
     ///
@@ -1009,7 +1009,7 @@ impl Parser<'_> {
     fn finish_parse_use_binding(&mut self, span: Span) -> Result<Expression> {
         let bindings = self.parse_use_path_tree(&[In.into()])?;
 
-        if self.token().is_line_break() {
+        if let LineBreak = self.token().name() {
             self.advance();
         }
 
@@ -1029,7 +1029,7 @@ impl Parser<'_> {
     /// # Grammar
     ///
     /// ```grammar
-    /// Case-Analysis ::= "case" Expression "of" ("{" Case* "}")?
+    /// Case-Analysis ::= "case" Expression "of" (#Indentation Case* #Dedentation)?
     /// Case ::= Pattern "=>" Expression Terminator
     /// ```
     ///
@@ -1040,14 +1040,14 @@ impl Parser<'_> {
 
         let mut cases = Vec::new();
 
-        if self.maybe_consume(OpeningCurlyBracket) {
+        if self.maybe_consume(Indentation) {
             // @Task use parse_block function for this (but don't trash the span!)
 
-            while self.token().name() != ClosingCurlyBracket {
+            while self.token().name() != Dedentation {
                 let pattern = self.parse_pattern()?;
                 self.consume(WideArrowRight)?;
                 let body = self.parse_expression()?;
-                self.expect_terminator()?;
+                self.parse_terminator()?;
 
                 cases.push(ast::Case { pattern, body });
             }
@@ -1069,7 +1069,7 @@ impl Parser<'_> {
     /// # Grammar
     ///
     /// ```grammar
-    /// Do-Block ::= "do" "{" Statement* "}"
+    /// Do-Block ::= "do" #Indentation Statement* #Dedentation
     /// Statement ::= Let-Statement | Use-Declaration | Expression-Statement
     /// Let-Statement ::= "let" #Word Parameter* Type-Annotation? Binding-Mode Expression Terminator
     /// Expression-Statement ::= Expression Terminator
@@ -1080,11 +1080,11 @@ impl Parser<'_> {
     fn finish_parse_do_block(&mut self, mut span: Span) -> Result<Expression> {
         let mut statements = Vec::new();
 
-        self.consume(OpeningCurlyBracket)?;
+        self.consume(Indentation)?;
 
-        while self.token().name() != ClosingCurlyBracket {
+        while self.token().name() != Dedentation {
             // @Note necessary I guess in cases where we have #Line-Break ##Comment+ #Line-Break
-            if self.maybe_consume(Semicolon) {
+            if self.maybe_consume(LineBreak) {
                 continue;
             }
 
@@ -1118,7 +1118,7 @@ impl Parser<'_> {
                     //     Delimiter::DefinitionPrefix,
                     //     `<-`
                     // ])?;
-                    self.expect_terminator()?;
+                    self.parse_terminator()?;
 
                     ast::Statement::Let(ast::LetStatement {
                         binder,
@@ -1130,7 +1130,7 @@ impl Parser<'_> {
                 Use => {
                     self.advance();
                     let bindings = self.parse_use_path_tree(&[Delimiter::Terminator])?;
-                    self.expect_terminator()?;
+                    self.parse_terminator()?;
 
                     ast::Statement::Use(ast::Use { bindings })
                 }
@@ -1138,7 +1138,7 @@ impl Parser<'_> {
                     // @Beacon @Task improve error diagnostics for an unexpected token to not only mention an
                     // expression was expected but also statements were
                     let expression = self.parse_expression()?;
-                    self.expect_terminator()?;
+                    self.parse_terminator()?;
 
                     ast::Statement::Expression(expression)
                 }
@@ -1561,14 +1561,14 @@ impl Parser<'_> {
                     self.advance();
                     let attribute = self.finish_parse_regular_attribute(span)?;
                     if skip_line_breaks == SkipLineBreaks::Yes {
-                        while self.maybe_consume(Semicolon) {}
+                        while self.maybe_consume(LineBreak) {}
                     }
                     attribute
                 }
                 DocumentationComment => {
                     self.advance();
                     if skip_line_breaks == SkipLineBreaks::Yes {
-                        while self.maybe_consume(Semicolon) {}
+                        while self.maybe_consume(LineBreak) {}
                     }
                     ast::Attribute::new(span, ast::BareAttribute::Documentation)
                 }
@@ -1698,28 +1698,31 @@ impl Parser<'_> {
         }
     }
 
-    /// [Expect] a terminator.
+    /// Parse a terminator.
     ///
-    /// If the terminator is a semicolon, [consume] it.
+    /// If the terminator is a line break, [consume] it. Otherwise, don't.
     ///
     /// # Grammar
     ///
     /// ```grammar
     /// ; #Start-Of-Input is not actually emitted by the lexer, the parser needs to bound-check instead.
     /// ;
-    /// Terminator ::= ";" | (> "}" | #End-Of-Input) | (< #Start-Of-Input | ";" | "}")
+    /// Terminator ::= #Line-Break
+    ///     | (> #Dedentation | #End-Of-Input)
+    ///     | (< #Start-Of-Input | #Line-Break | #Dedentation)
     /// ```
     ///
-    /// [Expect]: Self::expect
     /// [consume]: Self::consume
-    fn expect_terminator(&mut self) -> Result<Option<Token>> {
+    // @Task now with delimited sections being gone, we might be able to simplify the
+    // definition of a terminator, maybe?
+    fn parse_terminator(&mut self) -> Result<Option<Token>> {
         let token = self.token();
         if matches!(token.name(), Terminator!())
             || self
                 .preceeding_token()
                 .map_or(true, |token| matches!(token.name(), Terminator!()))
         {
-            Ok(if token.name() == Semicolon {
+            Ok(if token.name() == LineBreak {
                 let token = token.clone();
                 self.advance();
 
@@ -1869,6 +1872,6 @@ mod pattern {
 
     /// A declaration terminator.
     pub(crate) macro Terminator() {
-        Semicolon | ClosingCurlyBracket | EndOfInput
+        LineBreak | Dedentation | EndOfInput
     }
 }

@@ -19,8 +19,8 @@ error[E012]: the declaration ‘Blank’ does not have a body
  help: provide a definition for the declaration
   ┌─ ${TEST_FOLDER}/lowering/abnormally-bodiless.lushui:3:11
   │
-3 │ data Blank of { … }
-  │           ~~~~~~~~~
+3 │ data Blank of …
+  │           ~~~~~
 
 error[E015]: the declaration ‘Blank’ does not have a type annotation
   ┌─ ${TEST_FOLDER}/lowering/abnormally-bodiless.lushui:3:11

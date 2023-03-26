@@ -4,9 +4,8 @@
 data Void: Type of
 
 @intrinsic
-data Unit: Type of { unit: Unit }
-;;;                            ^^ @Bug the span does not inclide the trailing curly bracket
-;;;                               @Task define & use Span::expand_end_matches to recover it
+data Unit: Type of
+    unit: Unit
 
 @intrinsic
 data Bool: Type of

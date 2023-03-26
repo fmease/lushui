@@ -1,32 +1,32 @@
 error[E016]: could not load the module ‘alpha1’
   ┌─ ${TEST_FOLDER}/lowering/out-of-line-modules/inside-inline-module-missing-subfolders/alpha0/alpha1.lushui
   │
-  ├─ ${TEST_FOLDER}/lowering/out-of-line-modules/inside-inline-module-missing-subfolders.lushui:3:20
+  ├─ ${TEST_FOLDER}/lowering/out-of-line-modules/inside-inline-module-missing-subfolders.lushui:4:5
   │
-3 │ module alpha0 of { module alpha1 }
-  │                    ═════════════
+4 │     module alpha1
+  │     ═════════════
   │
  note: No such file or directory (os error 2)
 
 error[E016]: could not load the module ‘beta2’
   ┌─ ${TEST_FOLDER}/lowering/out-of-line-modules/inside-inline-module-missing-subfolders/beta0/beta1/beta2.lushui
   │
-  ├─ ${TEST_FOLDER}/lowering/out-of-line-modules/inside-inline-module-missing-subfolders.lushui:5:37
+  ├─ ${TEST_FOLDER}/lowering/out-of-line-modules/inside-inline-module-missing-subfolders.lushui:8:9
   │
-5 │ module beta0 of { module beta1 of { module beta2 } }
-  │                                     ════════════
+8 │         module beta2
+  │         ════════════
   │
  note: No such file or directory (os error 2)
 
 error[E016]: could not load the module ‘chi2’
-  ┌─ ${TEST_FOLDER}/lowering/out-of-line-modules/inside-inline-module-missing-subfolders/stopper/chi0/chi1/chi2.lushui
-  │
-  ├─ ${TEST_FOLDER}/lowering/out-of-line-modules/inside-inline-module-missing-subfolders/stopper.lushui:7:35
-  │
-7 │ module chi0 of { module chi1 of { module chi2 } }
-  │                                   ═══════════
-  │
- note: No such file or directory (os error 2)
+   ┌─ ${TEST_FOLDER}/lowering/out-of-line-modules/inside-inline-module-missing-subfolders/stopper/chi0/chi1/chi2.lushui
+   │
+   ├─ ${TEST_FOLDER}/lowering/out-of-line-modules/inside-inline-module-missing-subfolders/stopper.lushui:10:9
+   │
+10 │         module chi2
+   │         ═══════════
+   │
+  note: No such file or directory (os error 2)
 
 error[E016]: could not load the module ‘omega0’
   ┌─ ${TEST_FOLDER}/lowering/out-of-line-modules/inside-inline-module-missing-subfolders/stopper/omega0.lushui
@@ -41,10 +41,10 @@ error[E016]: could not load the module ‘omega0’
 error[E016]: could not load the module ‘psi1’
   ┌─ ${TEST_FOLDER}/lowering/out-of-line-modules/inside-inline-module-missing-subfolders/stopper/psi0/psi1.lushui
   │
-  ├─ ${TEST_FOLDER}/lowering/out-of-line-modules/inside-inline-module-missing-subfolders/stopper.lushui:5:18
+  ├─ ${TEST_FOLDER}/lowering/out-of-line-modules/inside-inline-module-missing-subfolders/stopper.lushui:6:5
   │
-5 │ module psi0 of { module psi1 }
-  │                  ═══════════
+6 │     module psi1
+  │     ═══════════
   │
  note: No such file or directory (os error 2)
 

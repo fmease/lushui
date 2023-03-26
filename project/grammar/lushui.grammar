@@ -37,12 +37,12 @@ Function-Declaration ::=
 Data-Declaration ::=
     "data" #Word
     Parameters Type-Annotation?
-    ("of" ("{" (Terminator | Constructor)* "}")?)?
+    ("of" (#Indentation (Terminator | Constructor)* #Dedentation)?)?
     Terminator
 
 Module-Declaration ::=
     | Header
-    | "module" #Word ("of" ("{" (Terminator | Declaration)* "}")?)? Terminator
+    | "module" #Word ("of" (#Indentation (Terminator | Declaration)* #Dedentation)?)? Terminator
 Header ::= "module" Terminator
 
 Use-Declaration ::= "use" Use-Path-Tree Terminator
@@ -113,18 +113,18 @@ Quantified-Type ::= "For" Parameter* Quantifier Expression
 Let-Binding ::=
     "let" #Word Parameters Type-Annotation?
     ("=" Expression)?
-    #Virtual-Semicolon?
+    #LineBreak?
     "in" Expression
 
 Use-Binding ::=
     "use" Use-Path-Tree
-    #Virtual-Semicolon?
+    #LineBreak?
     "in" Expression
 
-Case-Analysis ::= "case" Expression "of" ("{" Case* "}")?
+Case-Analysis ::= "case" Expression "of" (#Indentation Case* #Dedentation)?
 Case ::= Pattern "=>" Expression Terminator
 
-Do-Block ::= "do" "{" Statement* "}"
+Do-Block ::= "do" #Indentation Statement* #Dedentation
 Statement ::= Let-Statement | Use-Declaration | Expression-Statement
 Let-Statement ::= "let" #Word Parameter* Type-Annotation? Binding-Mode Expression Terminator
 Expression-Statement ::= Expression Terminator
@@ -178,7 +178,9 @@ Identifier ::= #Word | #Symbol
 
 ; #Start-Of-Input is not actually emitted by the lexer, the parser needs to bound-check instead.
 ;
-Terminator ::= ";" | (> "}" | #End-Of-Input) | (< #Start-Of-Input | ";" | "}")
+Terminator ::= #Line-Break
+    | (> #Dedentation | #End-Of-Input)
+    | (< #Start-Of-Input | #Line-Break | #Dedentation)
 
 Explicitness ::= "'"?
 

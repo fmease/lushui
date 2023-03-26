@@ -2,7 +2,9 @@
 
 use extern.core.unit.Unit
 
-module alpha of { @public inner: super.Unit = super.Unit.unit }
+module alpha of
+    @public
+    inner: super.Unit = super.Unit.unit
 
 mapping (alpha: Unit): Unit =
     let beta: Unit = Unit.unit in
@@ -10,5 +12,6 @@ mapping (alpha: Unit): Unit =
     let dummy: Unit = beta.body in
     Unit.unit
 
-module beta of { @public body: super.Unit = super.Unit.unit }
-
+module beta of
+    @public
+    body: super.Unit = super.Unit.unit

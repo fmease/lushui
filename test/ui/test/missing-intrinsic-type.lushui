@@ -3,7 +3,8 @@
 @intrinsic
 data Type: Type
 
-data It: Type of { it: It }
+data It: Type of
+    it: It
 
 make (it: It): It = It.it
 

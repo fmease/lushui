@@ -1,6 +1,8 @@
+use crate::Terminator;
 use ast::Identifier;
 use diagnostics::{error::Result, Diagnostic, ErrorCode, Reporter};
 use span::{SourceFileIndex, SourceMap, Span};
+use std::fmt;
 use token::{IndentationError, Token, TokenExt, TokenName, TokenName::*, INDENTATION};
 use utilities::{Conjunction, ListingExt};
 
@@ -199,7 +201,7 @@ impl Expected {
     pub(crate) fn but_actual_is(self, actual: &Token) -> Diagnostic {
         Diagnostic::error()
             .code(ErrorCode::E010)
-            .message(format!("found {actual} but expected {self}"))
+            .message(format!("found {} but expected {self}", actual.name()))
             .span(actual, "unexpected token")
     }
 }
@@ -215,8 +217,6 @@ impl From<Delimiter> for Expected {
         Self::Delimiter(delimiter)
     }
 }
-
-use std::fmt;
 
 impl fmt::Display for Expected {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -250,7 +250,7 @@ impl Delimiter {
         match (self, token) {
             (Self::TypeAnnotationPrefix, Colon)
             | (Self::DefinitionPrefix, Equals)
-            | (Self::Terminator, Semicolon | ClosingCurlyBracket | EndOfInput) => true,
+            | (Self::Terminator, Terminator!()) => true,
             (Self::Token(expected), actual) => expected == actual,
             _ => false,
         }

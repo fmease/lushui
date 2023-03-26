@@ -1,11 +1,11 @@
 //! The lexical analyzer (lexer).
-#![feature(default_free_fn, decl_macro)]
+#![feature(default_free_fn, decl_macro, let_chains)]
 
 use span::{FileName, LocalByteIndex, LocalSpan, SourceFile, SourceMap, Span, Spanned};
 use std::{cmp::Ordering, default::default, iter::Peekable, mem, str::CharIndices, sync::Arc};
 use token::{
-    BareToken, Bracket, BracketKind, BracketOrientation, Indentation, IndentationError, Provenance,
-    Spaces, Token, TokenExt,
+    BareToken, Bracket, BracketKind, BracketOrientation, Indentation, IndentationError, Spaces,
+    Token, TokenExt,
 };
 use utilities::{self, GetFromEndExt};
 use BareToken::*;
@@ -74,16 +74,15 @@ impl<'a> Lexer<'a> {
                     if let Some(';') = self.peek() {
                         self.lex_comment();
                     } else {
-                        self.add(Semicolon(Provenance::Source));
+                        self.add(Semicolon);
                     }
                 }
                 character if is_identifier_segment_start(character) => self.lex_identifier(),
-                '\n' if self.sections.current() != Section::Delimited => {
+                '\n' => {
                     self.take();
                     self.advance();
                     self.lex_indentation();
                 }
-                '\n' => self.advance(),
                 '-' => self.lex_symbol_or_number_literal(),
                 character if character.is_ascii_digit() => {
                     self.take();
@@ -98,22 +97,10 @@ impl<'a> Lexer<'a> {
                 '"' => self.lex_text_literal(),
                 '(' => self.add_opening_bracket(BracketKind::Round),
                 '[' => self.add_opening_bracket(BracketKind::Square),
-                '{' => {
-                    self.sections.enter(Section::Delimited);
-                    self.add_opening_bracket(BracketKind::Curly);
-                }
-                ')' => {
-                    self.add_closing_bracket(BracketKind::Round);
-                }
-                ']' => {
-                    self.add_closing_bracket(BracketKind::Square);
-                }
-                '}' => {
-                    if self.sections.current() == Section::Delimited {
-                        self.sections.exit();
-                    }
-                    self.add_closing_bracket(BracketKind::Curly);
-                }
+                '{' => self.add_opening_bracket(BracketKind::Curly),
+                ')' => self.add_closing_bracket(BracketKind::Round),
+                ']' => self.add_closing_bracket(BracketKind::Square),
+                '}' => self.add_closing_bracket(BracketKind::Curly),
                 '\'' => self.consume(Apostrophe),
                 character => {
                     self.take();
@@ -135,8 +122,8 @@ impl<'a> Lexer<'a> {
         self.local_span = self.file.local_span().end();
         for section in self.sections.exit_all() {
             if section.is_indented() {
-                self.add(ClosingCurlyBracket(Provenance::Lexer));
-                self.add(Semicolon(Provenance::Lexer));
+                self.add(Dedentation);
+                self.add(LineBreak);
             }
         }
         self.add(EndOfInput);
@@ -160,7 +147,7 @@ impl<'a> Lexer<'a> {
 
         if let (Section::Indented { brackets }, size) = self.sections.current_continued() {
             if self.brackets.stack.len() <= brackets {
-                self.add(ClosingCurlyBracket(Provenance::Lexer));
+                self.add(Dedentation);
                 // @Question can this panic??
                 let dedentation = self.sections.0.len() - size;
                 self.sections.0.truncate(size);
@@ -297,7 +284,7 @@ impl<'a> Lexer<'a> {
         // squash consecutive line breaks into a single one
         self.take_while(|character| character == '\n');
         // might be removed again under certain conditions later on
-        self.add(Semicolon(Provenance::Lexer));
+        self.add(LineBreak);
 
         self.local_span = self
             .index()
@@ -328,7 +315,7 @@ impl<'a> Lexer<'a> {
         if is_start_of_indented_section {
             if change == Ordering::Greater {
                 self.tokens.pop(); // remove the line break again
-                self.add(OpeningCurlyBracket(Provenance::Lexer));
+                self.add(BareToken::Indentation);
                 self.sections.enter(Section::Indented {
                     brackets: self.brackets.stack.len(),
                 });
@@ -357,7 +344,7 @@ impl<'a> Lexer<'a> {
             // Remove syntactically legal but superfluous virtual semicolons before virtual
             // closing curly brackets (which also act as terminators).
             if self.sections.current_continued().0.is_indented()
-                && self.tokens.last().map_or(false, Token::is_line_break)
+                && let Some(Spanned!(_, BareToken::LineBreak)) = self.tokens.last()
             {
                 self.tokens.pop();
             }
@@ -367,8 +354,8 @@ impl<'a> Lexer<'a> {
 
                 // @Task handle the case where `!section.brackets.is_empty()`
                 if section.is_indented() {
-                    self.add(ClosingCurlyBracket(Provenance::Lexer));
-                    self.add(Semicolon(Provenance::Lexer));
+                    self.add(Dedentation);
+                    self.add(LineBreak);
                 }
             }
         }
@@ -556,10 +543,6 @@ enum Section {
     /// zero.
     #[default]
     Top,
-    /// A section of code within curly brackets.
-    ///
-    /// Line breaks are not terminators and it is not indentation-sensitive.
-    Delimited,
     /// An indented section of code following the keyword `of` or `do`.
     ///
     /// Stores the amount of open brackets coming before it.

@@ -2,6 +2,9 @@
 
 module omega0
 
-module psi0 of { module psi1 }
+module psi0 of
+    module psi1
 
-module chi0 of { module chi1 of { module chi2 } }
+module chi0 of
+    module chi1 of
+        module chi2

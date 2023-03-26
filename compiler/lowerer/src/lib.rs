@@ -1067,9 +1067,9 @@ impl TargetExt for ast::Declaration {
                 (
                     &type_.binder,
                     missing_definition_span,
-                    // @Task placeholder should be heavily improved by being made more actionable and
-                    // by not relying on curly brackets
-                    Substitution::from(" of ").placeholder("{ … }"),
+                    // @Bug the placeholder does not really make sense
+                    // @Task use a multi-line suggestion once we support that
+                    Substitution::from(" of ").placeholder("…"),
                     type_.constructors.as_ref().map(|constructors| {
                         let of = missing_definition_span
                             .between(self.span.end())

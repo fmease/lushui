@@ -1,5 +1,7 @@
 use indirect.thing
-module indirect of { @public use super.thing }
+module indirect of
+    @public
+    use super.thing
 
 use alpha.alpha
 
