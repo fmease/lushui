@@ -101,7 +101,7 @@ jobs:
         run: rustup update --no-self-update nightly
       - name: Check the rustdoc documentation
         # @Task document with LLVM
-        run: cargo doc --profile ci --features cranelift,lsp
+        run: cargo doc --profile ci --features cranelift,lsp --workspace --no-deps
         env:
           # Unfortunately, we *do* need to resort to an ostracized env var here
           # since ‘rustdocflags’ (or an equivalent) is not supported in
