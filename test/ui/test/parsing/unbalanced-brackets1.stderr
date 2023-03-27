@@ -4,7 +4,7 @@ error[E044]: unbalanced round bracket
 1 │ )) it ]
   │ ═ has no matching opening round bracket
 
-error[E010]: found ‘)’ but expected declaration
+error[E010]: found ‘)’ but expected line break, end of input or declaration
   ┌─ ${TEST_FOLDER}/parsing/unbalanced-brackets1.lushui:1:1
   │
 1 │ )) it ]

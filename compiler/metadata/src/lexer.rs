@@ -376,10 +376,10 @@ impl From<Error> for Diagnostic {
 
                 Diagnostic::error()
                     .message("the number exceeds the size limit")
-                    .with(|error| match parse_error.bare.kind() {
-                        PosOverflow => error.note("numbers must not be larger than 2^63 - 1"),
-                        NegOverflow => error.note("numbers must not be smaller than -2^63"),
-                        _ => error,
+                    .with(|it| match parse_error.bare.kind() {
+                        PosOverflow => it.note("numbers must not be larger than 2^63 - 1"),
+                        NegOverflow => it.note("numbers must not be smaller than -2^63"),
+                        _ => it,
                     })
                     .unlabeled_span(parse_error)
             }

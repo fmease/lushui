@@ -1540,7 +1540,7 @@ impl<'a> Resolver<'a> {
                     // @Task add rationale why `last`
                     Ok(Target::output(index, identifiers.last().unwrap()))
                 } else {
-                    let diagnostic = self.attempt_to_access_subbinder_of_non_namespace(
+                    let diagnostic = self.attempt_to_access_subbinder_of_non_namespace_error(
                         identifier,
                         &entity.kind,
                         context.namespace,
@@ -1971,7 +1971,7 @@ impl<'a> Resolver<'a> {
     }
 
     // @Question parent: *Local*DeclarationIndex?
-    fn attempt_to_access_subbinder_of_non_namespace(
+    fn attempt_to_access_subbinder_of_non_namespace_error(
         &self,
         binder: &ast::Identifier,
         kind: &EntityKind,
@@ -2005,22 +2005,22 @@ impl<'a> Resolver<'a> {
                 binder.span().end().merge(subbinder),
                 "denotes a reference to a binding inside of a namespace",
             )
-            .with(|error| match similarly_named_namespace {
-                Some(lookalike) => error.help(format!(
+            .with(|it| match similarly_named_namespace {
+                Some(lookalike) => it.help(format!(
                 "a namespace with a similar name exists in scope containing the binding:\n    {}",
                 Lookalike {
                     actual: binder.as_str(),
                     lookalike
                 },
             )),
-                None => error,
+                None => it,
             })
-            .with(|error| {
+            .with(|it| {
                 if show_very_general_help {
                     // no type information here yet to check if the non-namespace is indeed a record
-                    error.help("use ‘::’ to reference a field of a record")
+                    it.help("use ‘::’ to reference a field of a record")
                 } else {
-                    error
+                    it
                 }
             })
     }

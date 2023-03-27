@@ -4,7 +4,7 @@ error[E044]: unbalanced square bracket
 1 │ x: X ] X [
   │      ═ has no matching opening square bracket
 
-error[E010]: found ‘]’ but expected terminator
+error[E010]: found ‘]’ but expected ‘.’, ‘::’, ‘=’ or terminator
   ┌─ ${TEST_FOLDER}/parsing/unbalanced-brackets.lushui:1:6
   │
 1 │ x: X ] X [

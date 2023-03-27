@@ -374,9 +374,9 @@ impl<'sess, 'ctx> Typer<'sess, 'ctx> {
                 // @Task put back some more information into the message: use `_`s to shorten the type
                 .message("type mismatch")
                 .span(actual_value, "has the wrong type")
-                .with(|error| match expectation_cause {
-                    Some(cause) => error.label(cause, "expected due to this"),
-                    None => error,
+                .with(|it| match expectation_cause {
+                    Some(cause) => it.label(cause, "expected due to this"),
+                    None => it,
                 })
                 .note(format!(
                     "\

@@ -85,13 +85,13 @@ impl FailedTest {
                 let diagnostic = Diagnostic::error()
                     .path(shorten(&self.path).into())
                     .message(message.clone())
-                    .with(|error| match note {
-                        Some(note) => error.note(note.clone()),
-                        None => error,
+                    .with(|it| match note {
+                        Some(note) => it.note(note.clone()),
+                        None => it,
                     })
-                    .with(|error| match span {
-                        Some(span) => error.unlabeled_span(span),
-                        None => error,
+                    .with(|it| match span {
+                        Some(span) => it.unlabeled_span(span),
+                        None => it,
                     });
 
                 write!(sink, "{}", diagnostic.format(None))

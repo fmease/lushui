@@ -1,0 +1,2 @@
+Polymorphic =
+    For (A: Type) => A

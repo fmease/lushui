@@ -103,6 +103,7 @@ Lowest-Expression ::=
 Typed-Hole ::= "?" #Word
 
 Path ::= Path-Head ("." Identifier)*
+
 Path-Head ::= Path-Hanger | Identifier
 Path-Hanger ::= "extern" | "topmost" | "super" | "self"
 
@@ -131,7 +132,6 @@ Expression-Statement ::= Expression Terminator
 Binding-Mode ::=  "=" | "<-"
 
 Parameters ::= Parameter*
-
 Parameter ::= Explicitness Bare-Parameter
 Bare-Parameter ::= #Word | "(" #Word Type-Annotation? ")"
 

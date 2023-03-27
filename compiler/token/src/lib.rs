@@ -120,10 +120,6 @@ impl TokenName {
 
 impl fmt::Display for TokenName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        macro keyword($keyword:ident) {
-            concat!("keyword ", quoted!(stringify!($keyword)))
-        }
-
         f.write_str(match self {
             //
             // Comment-Like Tokens
@@ -134,22 +130,22 @@ impl fmt::Display for TokenName {
             //
             // Keywords
             //
-            As => keyword!(as),
-            Case => keyword!(case),
-            Data => keyword!(data),
-            Do => keyword!(do),
-            Extern => keyword!(extern),
-            ForUpper => keyword!(For),
-            ForLower => keyword!(for),
-            In => keyword!(in),
-            Let => keyword!(let),
-            Module => keyword!(module),
-            Of => keyword!(of),
-            Self_ => keyword!(self),
-            Super => keyword!(super),
-            Topmost => keyword!(topmost),
+            As => quoted!("as"),
+            Case => quoted!("case"),
+            Data => quoted!("data"),
+            Do => quoted!("do"),
+            Extern => quoted!("extern"),
+            ForUpper => quoted!("For"),
+            ForLower => quoted!("for"),
+            In => quoted!("in"),
+            Let => quoted!("let"),
+            Module => quoted!("module"),
+            Of => quoted!("of"),
+            Self_ => quoted!("self"),
+            Super => quoted!("super"),
+            Topmost => quoted!("topmost"),
             Underscore => quoted!("_"),
-            Use => keyword!(use),
+            Use => quoted!("use"),
             //
             // Reserved Symbols
             At => quoted!("@"),

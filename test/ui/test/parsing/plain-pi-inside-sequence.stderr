@@ -1,4 +1,4 @@
-error[E010]: found ‘->’ but expected expression
+error[E010]: found ‘->’ but expected ‘.’, ‘::’ or expression
   ┌─ ${TEST_FOLDER}/parsing/plain-pi-inside-sequence.lushui:1:19
   │
 1 │ target = [Int Nat -> Nat]

@@ -151,26 +151,25 @@ impl StderrBuffer {
                 "aborting due to previous error",
                 format!("aborting due to {} previous errors", errors.len()),
             ))
-            .with(|error| {
+            .with(|it| {
                 if !explained_codes.is_empty() {
-                    error
-                        .note(format!(
-                            "the {errors} {codes} {have} a detailed explanation",
-                            errors = pluralize!(explained_codes.len(), "error"),
-                            codes = explained_codes.iter().list(Conjunction::And),
-                            have = pluralize!(explained_codes.len(), "has", "have"),
-                        ))
-                        // @Task don't use the CLI syntax outside of the driver (separation of concerns)
-                        .help(pluralize!(
-                            explained_codes.len(),
-                            format!(
-                                "run ‘lushui explain {}’ to view it",
-                                explained_codes.first().unwrap()
-                            ),
-                            "run ‘lushui explain <CODES...>’ to view a selection of them"
-                        ))
+                    it.note(format!(
+                        "the {errors} {codes} {have} a detailed explanation",
+                        errors = pluralize!(explained_codes.len(), "error"),
+                        codes = explained_codes.iter().list(Conjunction::And),
+                        have = pluralize!(explained_codes.len(), "has", "have"),
+                    ))
+                    // @Task don't use the CLI syntax outside of the driver (separation of concerns)
+                    .help(pluralize!(
+                        explained_codes.len(),
+                        format!(
+                            "run ‘lushui explain {}’ to view it",
+                            explained_codes.first().unwrap()
+                        ),
+                        "run ‘lushui explain <CODES...>’ to view a selection of them"
+                    ))
                 } else {
-                    error
+                    it
                 }
             })
             .format(map);

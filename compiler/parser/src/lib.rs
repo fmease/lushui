@@ -1,7 +1,7 @@
 //! The syntactic analyzer (parser).
 //!
-//! It is a handwritten top-down recursive-descent parser with arbitrary look-ahead
-//! and backtracking. Backtracking is only used to parse expressions and patterns.
+//! It is a handwritten top-down recursive-descent parser with bounded look-ahead & look-behind and
+//! no backtracking.
 //!
 //! # Grammar Notation
 //!
@@ -26,16 +26,13 @@
 #![allow(clippy::unnested_or_patterns)] // false positive with macros, see #9899
 
 use ast::{Attributes, Declaration, Explicitness::Explicit, Expression, Identifier, Pattern};
-use base::{
-    delimiters_with_expected, expected_one_of, Delimiter, Expected, LexerErrorExt, Parser,
-    SkipLineBreaks,
-};
+use base::{LexerErrorExt, Parser, SkipLineBreaks};
 use diagnostics::{error::Result, Diagnostic, ErrorCode, Reporter};
 use lexer::word::WordExt;
-#[allow(clippy::wildcard_imports)] // it's an inline module which only exists for shared docs
-use pattern::*;
 use span::{SourceFileIndex, SourceMap, Span, Spanned, Spanning};
 use std::default::default;
+#[allow(clippy::wildcard_imports)] // it's an inline module which only exists for shared docs
+use synonym::*;
 use token::{
     Token, TokenExt as _,
     TokenName::{self, *},
@@ -194,9 +191,10 @@ impl Parser<'_> {
                 self.advance();
                 self.finish_parse_use_declaration(span, attributes)
             }
-            _ => Err(Expected::Declaration
-                .but_actual_is(self.token())
-                .report(self.reporter)),
+            _ => {
+                self.expected("declaration");
+                self.error()
+            }
         }
     }
 
@@ -223,7 +221,6 @@ impl Parser<'_> {
         let mut span = binder.span();
 
         let parameters = span.merging(self.parse_parameters()?);
-
         let type_ = span.merging(self.parse_optional_type_annotation()?);
 
         let body = if self.maybe_consume(Equals) {
@@ -232,13 +229,6 @@ impl Parser<'_> {
             None
         };
 
-        // @Bug this only says "expected terminator", @Task it should say it
-        // expected_one_of![
-        //     Expected::Parameter, // only before ty & def
-        //     Delimiter::TypeAnnotationPrefix, // only if we dont have a ty
-        //     Delimiter::DefinitionPrefix, // only if we dont have a def
-        //     Delimiter::Terminator,
-        // ]
         self.parse_terminator()?;
 
         Ok(Declaration::new(
@@ -279,12 +269,6 @@ impl Parser<'_> {
         let type_ = span.merging(self.parse_optional_type_annotation()?);
 
         let constructors = match self.token().name() {
-            name @ Terminator!() => {
-                if name == LineBreak {
-                    self.advance();
-                }
-                None
-            }
             Of => {
                 span.merging(self.token().span);
                 self.advance();
@@ -301,15 +285,16 @@ impl Parser<'_> {
 
                 Some(constructors)
             }
+            name @ Terminator!() => {
+                if name == LineBreak {
+                    self.advance();
+                }
+                None
+            }
             _ => {
-                return Err(expected_one_of![
-                    Expected::Parameter,             // @Bug only before ty & of!
-                    Delimiter::TypeAnnotationPrefix, // @Bug only if we don't have a type
-                    Of,
-                    Delimiter::Terminator,
-                ]
-                .but_actual_is(self.token())
-                .report(self.reporter));
+                self.expected(Of);
+                self.expected(TERMINATOR);
+                return self.error();
             }
         };
 
@@ -401,9 +386,11 @@ impl Parser<'_> {
                     .into(),
                 ))
             }
-            _ => Err(expected_one_of![Delimiter::Terminator, Of]
-                .but_actual_is(self.token())
-                .report(self.reporter)),
+            _ => {
+                self.expected(TERMINATOR);
+                self.expected(Of);
+                self.error()
+            }
         }
     }
 
@@ -439,7 +426,7 @@ impl Parser<'_> {
         span: Span,
         attributes: Attributes,
     ) -> Result<Declaration> {
-        let bindings = self.parse_use_path_tree(&[Delimiter::Terminator])?;
+        let bindings = self.parse_use_path_tree()?;
         self.parse_terminator()?;
 
         Ok(Declaration::new(
@@ -460,9 +447,8 @@ impl Parser<'_> {
     ///     | Renaming
     /// Renaming ::= Path "as" Identifier
     /// ```
-    // @Task rewrite this following a simpler grammar mirroring expression applications
-    fn parse_use_path_tree(&mut self, delimiters: &[Delimiter]) -> Result<ast::UsePathTree> {
-        let mut path = self.parse_first_path_segment()?;
+    fn parse_use_path_tree(&mut self) -> Result<ast::UsePathTree> {
+        let mut path = self.parse_path_head()?;
 
         while self.maybe_consume(Dot) {
             match self.token().name() {
@@ -492,24 +478,12 @@ impl Parser<'_> {
                                 },
                             ));
                         } else {
-                            // @Note @Bug this is really really fragile=non-extensible!
-                            bindings.push(self.parse_use_path_tree(&[
-                                OpeningRoundBracket.into(),
-                                ClosingRoundBracket.into(),
-                                // @Question Expected::Identifier?
-                                Word.into(),
-                                Symbol.into(),
-                                Self_.into(),
-                                Super.into(),
-                                Topmost.into(),
-                            ])?);
+                            bindings.push(self.parse_use_path_tree()?);
                         }
                     }
 
-                    // @Note constructs and wastes a diagnostic
-                    // @Task transform above while into a loop
-                    // @Beacon :while_current_not
-                    span.merging(&self.consume(ClosingRoundBracket).unwrap());
+                    span.merging(&self.token());
+                    self.advance(); // ")"
 
                     return Ok(ast::UsePathTree::new(
                         path.span().merge(span),
@@ -517,24 +491,17 @@ impl Parser<'_> {
                     ));
                 }
                 _ => {
-                    return Err(expected_one_of![Expected::Identifier, OpeningRoundBracket]
-                        .but_actual_is(self.token())
-                        .report(self.reporter));
+                    self.expected(IDENTIFIER);
+                    self.expected(OpeningRoundBracket);
+                    return self.error();
                 }
             }
         }
 
-        // @Question is there a grammar transformation to a self-contained construct
-        // instead of a delimited one?
-        let binder = if self.token_is_delimiter(delimiters) {
-            None
-        } else if self.maybe_consume(As) {
-            self.token();
+        let binder = if self.maybe_consume(As) {
             Some(self.parse_identifier()?)
         } else {
-            return Err(delimiters_with_expected(delimiters, Some(As.into()))
-                .but_actual_is(self.token())
-                .report(self.reporter));
+            None
         };
 
         Ok(ast::UsePathTree::new(
@@ -576,14 +543,6 @@ impl Parser<'_> {
             None
         };
 
-        // @Bug only mentions "expected terminator"
-        // @Task it should say
-        // expected_one_of![
-        //     Expected::Parameter, // Only before ty & def!
-        //     Delimiter::TypeAnnotationPrefix, // Or Colon // Only if we don't have a type ann
-        //     Delimiter::DefinitionPrefix, // Or Equals // Only if we don't have a definition
-        //     Delimiter::Terminator,
-        // ]
         self.parse_terminator()?;
 
         Ok(Declaration::new(
@@ -793,23 +752,17 @@ impl Parser<'_> {
             }
             PathHead!() => self.parse_path_or_namespaced_literal()?,
             _ => {
-                return Err(Expected::Category("expression")
-                    .but_actual_is(self.token())
-                    .with(|error| {
-                        // @Beacon @Note this is a prime example for a situation where we can
-                        // make a parsing error non-fatal: we can just skip the `->` and keep
-                        // parsing w/o introducing too many (any?) useless/confusing consequential
-                        // errors!
-                        if self.token().name() == ThinArrowRight {
-                            error.help(
-                                "consider adding round brackets around the potential \
-                                 function type to disambiguate the expression",
-                            )
-                        } else {
-                            error
-                        }
-                    })
-                    .report(self.reporter));
+                self.expected("expression");
+                return self.error_with(|it| {
+                    if self.token().name() == ThinArrowRight {
+                        it.help(
+                            "consider adding round brackets around the potential \
+                             function type to disambiguate the expression",
+                        )
+                    } else {
+                        it
+                    }
+                });
             }
         };
 
@@ -842,11 +795,9 @@ impl Parser<'_> {
     ///
     /// ```grammar
     /// Path ::= Path-Head ("." Identifier)*
-    /// Path-Head ::= Path-Hanger | Identifier
-    /// Path-Hanger ::= "extern" | "topmost" | "super" | "self"
     /// ```
     fn parse_path(&mut self) -> Result<ast::Path> {
-        let mut path = self.parse_first_path_segment()?;
+        let mut path = self.parse_path_head()?;
 
         while self.maybe_consume(Dot) {
             path.segments.push(self.parse_identifier()?);
@@ -855,9 +806,15 @@ impl Parser<'_> {
         Ok(path)
     }
 
-    /// Parse the first segment of a path.
-    // @Task grammar
-    fn parse_first_path_segment(&mut self) -> Result<ast::Path> {
+    /// Parse the head of a path.
+    ///
+    /// # Grammar
+    ///
+    /// ```grammar
+    /// Path-Head ::= Path-Hanger | Identifier
+    /// Path-Hanger ::= "extern" | "topmost" | "super" | "self"
+    /// ```
+    fn parse_path_head(&mut self) -> Result<ast::Path> {
         let token = self.token();
         let path = match token.name() {
             Identifier!() => Identifier::try_from(token.clone()).unwrap().into(),
@@ -865,7 +822,10 @@ impl Parser<'_> {
                 .clone()
                 .map(|token| ast::BareHanger::try_from(token).unwrap())
                 .into(),
-            _ => return Err(Expected::Path.but_actual_is(token).report(self.reporter)),
+            _ => {
+                self.expected("path");
+                return self.error();
+            }
         };
         self.advance();
         Ok(path)
@@ -881,10 +841,9 @@ impl Parser<'_> {
     ///
     /// [lambda literal]: ast::LambdaLiteral
     fn finish_parse_lambda_literal(&mut self, mut span: Span) -> Result<Expression> {
-        // self.parse_parameters(&[Delimiter::TypeAnnotationPrefix, WideArrowRight.into()])?;
-        // @Temporary
         let parameters = self.parse_parameters()?;
         let codomain = self.parse_optional_type_annotation()?;
+        // @Task suggest replacing `->` with `=>`
         self.consume(WideArrowRight)?;
         let body = span.merging(self.parse_expression()?);
 
@@ -916,13 +875,29 @@ impl Parser<'_> {
             ThinArrowRight => ast::Quantifier::Pi,
             DoubleAsterisk => ast::Quantifier::Sigma,
             _ => {
-                // @Task add UI test for this!
-                return Err(
-                    expected_one_of![Expected::Parameter, ThinArrowRight, DoubleAsterisk]
-                        .but_actual_is(self.token())
-                        .label(span, "while parsing this quantified type starting here")
-                        .report(self.reporter),
-                );
+                self.expected(ThinArrowRight);
+                self.expected(DoubleAsterisk);
+
+                return self.error_with(|it| {
+                    let it = it.label(span, "while parsing this quantified type starting here");
+                    let token = self.token();
+
+                    if let WideArrowRight = token.name() {
+                        // @Note users might have also thought that this was the way to denote
+                        // a function type with implicit or auto-implicit arguments.
+                        // @Task add a note or suggestion to teach the actual syntax for those
+                        // if there are apostrophes present, only suggest auto-implicit parameters
+
+                        it.suggest(
+                            token,
+                            "consider replacing the wide arrow with a \
+                             thin one to denote a function type",
+                            "->",
+                        )
+                    } else {
+                        it
+                    }
+                });
             }
         };
         self.advance();
@@ -956,13 +931,6 @@ impl Parser<'_> {
     /// [let-binding]: ast::LetBinding
     fn finish_parse_let_binding(&mut self, mut span: Span) -> Result<Expression> {
         let binder = self.consume_word()?;
-
-        // let parameters = self.parse_parameters(&[
-        //     Delimiter::TypeAnnotationPrefix,
-        //     Delimiter::DefinitionPrefix,
-        //     In.into(),
-        // ])?;
-        // @Temporary
         let parameters = self.parse_parameters()?;
         let type_ = self.parse_optional_type_annotation()?;
 
@@ -1007,7 +975,7 @@ impl Parser<'_> {
     ///
     /// [use-binding]: ast::UseBinding
     fn finish_parse_use_binding(&mut self, span: Span) -> Result<Expression> {
-        let bindings = self.parse_use_path_tree(&[In.into()])?;
+        let bindings = self.parse_use_path_tree()?;
 
         if let LineBreak = self.token().name() {
             self.advance();
@@ -1045,6 +1013,7 @@ impl Parser<'_> {
 
             while self.token().name() != Dedentation {
                 let pattern = self.parse_pattern()?;
+                // @Task suggest replacing `->` with `=>`
                 self.consume(WideArrowRight)?;
                 let body = self.parse_expression()?;
                 self.parse_terminator()?;
@@ -1052,7 +1021,6 @@ impl Parser<'_> {
                 cases.push(ast::Case { pattern, body });
             }
 
-            // @Beacon :while_current_not
             span.merging(self.token());
             self.advance();
         }
@@ -1112,12 +1080,6 @@ impl Parser<'_> {
                         _ => None,
                     };
 
-                    // @Task
-                    // let parameters = self.parse_parameters(&[
-                    //     Delimiter::TypeAnnotationPrefix,
-                    //     Delimiter::DefinitionPrefix,
-                    //     `<-`
-                    // ])?;
                     self.parse_terminator()?;
 
                     ast::Statement::Let(ast::LetStatement {
@@ -1129,14 +1091,14 @@ impl Parser<'_> {
                 }
                 Use => {
                     self.advance();
-                    let bindings = self.parse_use_path_tree(&[Delimiter::Terminator])?;
+                    let bindings = self.parse_use_path_tree()?;
                     self.parse_terminator()?;
 
                     ast::Statement::Use(ast::Use { bindings })
                 }
                 _ => {
-                    // @Beacon @Task improve error diagnostics for an unexpected token to not only mention an
-                    // expression was expected but also statements were
+                    self.expected("statement");
+
                     let expression = self.parse_expression()?;
                     self.parse_terminator()?;
 
@@ -1145,7 +1107,6 @@ impl Parser<'_> {
             });
         }
 
-        // @Beacon :while_current_not
         span.merging(self.token());
         self.advance();
 
@@ -1162,69 +1123,57 @@ impl Parser<'_> {
     ///
     /// ```grammar
     /// Parameters ::= Parameter*
+    /// Parameter ::= Explicitness Bare-Parameter
+    /// Bare-Parameter ::= #Word | "(" #Word Type-Annotation? ")"
     /// ```
     fn parse_parameters(&mut self) -> Result<ast::Parameters> {
         let mut parameters = SmallVec::new();
 
-        while let ParameterPrefix!() = self.token().name() {
-            // @Question inline? this would enable use getting rid of `is_param_prefix`
-            parameters.push(self.parse_parameter()?);
+        loop {
+            let explicitness = self.parse_optional_implicitness();
+            let mut span = self.token().span.merge_into(explicitness);
+
+            let parameter = match self.token().name() {
+                Word => {
+                    let binder = self.token_into_identifier();
+                    self.advance();
+
+                    ast::Parameter::new(
+                        span,
+                        ast::BareParameter {
+                            explicitness: explicitness.into(),
+                            binder,
+                            type_: None,
+                        },
+                    )
+                }
+                OpeningRoundBracket => {
+                    self.advance();
+
+                    let binder = self.consume_word()?;
+                    let type_ = self.parse_optional_type_annotation()?;
+
+                    span.merging(self.consume(ClosingRoundBracket)?);
+
+                    ast::Parameter::new(
+                        span,
+                        ast::BareParameter {
+                            explicitness: explicitness.into(),
+                            binder,
+                            type_,
+                        },
+                    )
+                }
+                _ => {
+                    self.expected("parameter");
+                    break;
+                }
+            };
+
+            parameters.push(parameter);
         }
 
         Ok(parameters)
-    }
-
-    /// Parse a parameter.
-    ///
-    /// # Grammar
-    ///
-    /// ```grammar
-    /// Parameter ::= Explicitness Bare-Parameter
-    /// Bare-Parameter ::= #Word | "(" #Word Type-Annotation? ")"
-    /// ```
-    fn parse_parameter(&mut self) -> Result<ast::Parameter> {
-        let explicitness = self.parse_optional_implicitness();
-        let mut span = self.token().span.merge_into(explicitness);
-
-        match self.token().name() {
-            Word => {
-                let binder = self.token_into_identifier();
-                self.advance();
-
-                Ok(ast::Parameter::new(
-                    span,
-                    ast::BareParameter {
-                        explicitness: explicitness.into(),
-                        binder,
-                        type_: None,
-                    },
-                ))
-            }
-            OpeningRoundBracket => {
-                self.advance();
-
-                let binder = self.consume_word()?;
-                let type_ = self.parse_optional_type_annotation()?;
-
-                // @Task rewrite to use a parser-internal list of expected tokens
-                span.merging(self.consume_after_expecting(
-                    ClosingRoundBracket,
-                    Delimiter::TypeAnnotationPrefix.into(),
-                )?);
-
-                Ok(ast::Parameter::new(
-                    span,
-                    ast::BareParameter {
-                        explicitness: explicitness.into(),
-                        binder,
-                        type_,
-                    },
-                ))
-            }
-            _ => Err(Expected::Parameter
-                .but_actual_is(self.token())
-                .report(self.reporter)),
-        }
     }
 
     /// Parse a pattern.
@@ -1308,7 +1257,7 @@ impl Parser<'_> {
                 }
 
                 span.merging(self.token());
-                self.advance(); // ClosingSquareBracket
+                self.advance(); // "]"
 
                 Pattern::new(
                     default(),
@@ -1330,9 +1279,8 @@ impl Parser<'_> {
             }
             PathHead!() => self.parse_path_or_namespaced_literal()?,
             _ => {
-                return Err(Expected::Category("pattern")
-                    .but_actual_is(self.token())
-                    .report(self.reporter))
+                self.expected("pattern");
+                return self.error();
             }
         };
 
@@ -1367,7 +1315,7 @@ impl Parser<'_> {
         }
 
         span.merging(self.token());
-        self.advance(); // ClosingSquareBracket
+        self.advance(); // "]"
 
         Ok(ast::Item::new(
             default(),
@@ -1424,14 +1372,14 @@ impl Parser<'_> {
                 binder = None;
                 argument = span.merging(T::parse_lower(self)?);
             } else if let Some(explicitness) = explicitness {
-                return Err(Expected::Category("function argument")
-                    .but_actual_is(self.token())
-                    .label(&callee, "while parsing this function application")
-                    .label(
-                        explicitness,
-                        "this apostrophe marks the start of an implicit argument",
-                    )
-                    .report(self.reporter));
+                self.expected("function argument");
+                return self.error_with(|it| {
+                    it.label(&callee, "while parsing this function application")
+                        .label(
+                            explicitness,
+                            "this apostrophe marks the start of an implicit argument",
+                        )
+                });
             } else {
                 // The current token is not the start of an argument.
                 // Hence we are done here.
@@ -1473,7 +1421,7 @@ impl Parser<'_> {
             + From<ast::SequenceLiteral<ast::Item<T>>>
             + From<ast::Path>,
     {
-        let mut path = self.parse_first_path_segment()?;
+        let mut path = self.parse_path_head()?;
 
         while self.maybe_consume(Dot) {
             match self.token().name() {
@@ -1516,14 +1464,11 @@ impl Parser<'_> {
                     return self.finish_parse_sequence_literal(Some(path), span);
                 }
                 _ => {
-                    return Err(expected_one_of![
-                        Expected::Identifier,
-                        NumberLiteral,
-                        TextLiteral,
-                        OpeningSquareBracket
-                    ]
-                    .but_actual_is(self.token())
-                    .report(self.reporter))
+                    self.expected(IDENTIFIER);
+                    self.expected(NumberLiteral);
+                    self.expected(TextLiteral);
+                    self.expected(OpeningSquareBracket);
+                    return self.error();
                 }
             }
         }
@@ -1572,7 +1517,12 @@ impl Parser<'_> {
                     }
                     ast::Attribute::new(span, ast::BareAttribute::Documentation)
                 }
-                _ => break,
+                _ => {
+                    // We could technically add the expectation of *attributes* here but
+                    // since they can be ascribed to "almost anything", I figure it would
+                    // just add noise to the diagnostics.
+                    break;
+                }
             });
         }
 
@@ -1606,16 +1556,14 @@ impl Parser<'_> {
                     arguments.push(self.parse_attribute_argument()?);
                 }
 
-                // @Note constructs and wastes a diagnostic
-                // @Task transform above while into a loop
-                // @Beacon :while_current_not
-                span.merging(self.consume(ClosingRoundBracket).unwrap());
+                span.merging(self.token());
+                self.advance(); // ")"
             }
             _ => {
-                return Err(expected_one_of![Word, OpeningRoundBracket]
-                    .but_actual_is(self.token())
-                    .label(span, "while parsing this attribute starting here")
-                    .report(self.reporter));
+                self.expected(Word);
+                self.expected(OpeningRoundBracket);
+                return self
+                    .error_with(|it| it.label(span, "while parsing this attribute starting here"));
             }
         }
 
@@ -1669,9 +1617,8 @@ impl Parser<'_> {
                 }))
             }
             _ => {
-                return Err(Expected::Category("attribute argument")
-                    .but_actual_is(self.token())
-                    .report(self.reporter))
+                self.expected("attribute argument");
+                return self.error();
             }
         };
 
@@ -1692,9 +1639,10 @@ impl Parser<'_> {
                 self.advance();
                 Ok(identifier)
             }
-            _ => Err(Expected::Identifier
-                .but_actual_is(self.token())
-                .report(self.reporter)),
+            _ => {
+                self.expected(IDENTIFIER);
+                self.error()
+            }
         }
     }
 
@@ -1719,7 +1667,7 @@ impl Parser<'_> {
         let token = self.token();
         if matches!(token.name(), Terminator!())
             || self
-                .preceeding_token()
+                .look_behind(1)
                 .map_or(true, |token| matches!(token.name(), Terminator!()))
         {
             Ok(if token.name() == LineBreak {
@@ -1731,9 +1679,8 @@ impl Parser<'_> {
                 None
             })
         } else {
-            Err(Expected::Delimiter(Delimiter::Terminator)
-                .but_actual_is(self.token())
-                .report(self.reporter))
+            self.expected(TERMINATOR);
+            self.error()
         }
     }
 
@@ -1789,8 +1736,10 @@ impl Parse for ast::BarePattern {
     }
 }
 
-mod pattern {
+const IDENTIFIER: &str = "identifier";
+const TERMINATOR: &str = "terminator";
 
+mod synonym {
     //! A collection of *pattern synonyms*.
     //!
     //! Contrary to methods or arrays, they preserve `match` exhaustiveness & overlap checks at use sites.
@@ -1845,14 +1794,6 @@ mod pattern {
             | OpeningSquareBracket
             | OpeningRoundBracket
             | PathHead!()
-    }
-
-    // @Task inline this!
-    /// The prefix of a [parameter].
-    ///
-    /// [parameter]: ast::Parameter
-    pub(crate) macro ParameterPrefix() {
-        Apostrophe | Word | OpeningRoundBracket
     }
 
     /// The head (i.e. prefix) of a [path].

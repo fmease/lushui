@@ -18,7 +18,7 @@ impl From<ErasedReportedError> for DependencyResolutionError {
     }
 }
 
-pub(crate) fn undefined_component(name: Spanned<&Word>, package: &Word) -> Diagnostic {
+pub(crate) fn undefined_component_error(name: Spanned<&Word>, package: &Word) -> Diagnostic {
     // @Question should we special-case component name = package name?
 
     Diagnostic::error()
@@ -28,7 +28,7 @@ pub(crate) fn undefined_component(name: Spanned<&Word>, package: &Word) -> Diagn
         .unlabeled_span(name)
 }
 
-pub(crate) fn non_library_dependency(
+pub(crate) fn non_library_dependency_error(
     name: Spanned<&Word>,
     type_: ComponentType,
     package: &Word,

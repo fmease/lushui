@@ -1,0 +1,8 @@
+error[E010]: found word but expected ‘.’, ‘as’ or ‘in’
+  ┌─ ${TEST_FOLDER}/parsing/use-binding-typo.lushui:6:29
+  │
+6 │     use extern.core.nat.Nat inn
+  │                             ═══ unexpected token
+
+error: aborting due to previous error
+

@@ -411,7 +411,7 @@ impl BuildQueue {
                         Ok(component)
                     }
                     // @Task add a UI test for this
-                    Some(&Resolved(component)) => Err(error::non_library_dependency(
+                    Some(&Resolved(component)) => Err(error::non_library_dependency_error(
                         component_endonym,
                         self[component].type_,
                         &package.name,
@@ -423,9 +423,11 @@ impl BuildQueue {
                             component_endonym.cloned(),
                         ))
                     }
-                    None => Err(error::undefined_component(component_endonym, &package.name)
-                        .report(&self.reporter)
-                        .into()),
+                    None => Err(
+                        error::undefined_component_error(component_endonym, &package.name)
+                            .report(&self.reporter)
+                            .into(),
+                    ),
                 };
             }
         };
@@ -445,7 +447,7 @@ impl BuildQueue {
                 Some(&Resolved(component)) if self[component].type_ == ComponentType::Library => Ok(component),
                 // @Bug this does not fire when we want to since the it is apparently unresolved at this stage for some reason
                 // @Task test this, is this reachable?
-                Some(&Resolved(component)) => Err(error::non_library_dependency(
+                Some(&Resolved(component)) => Err(error::non_library_dependency_error(
                     component_endonym,
                     self[component].type_,
                     &package.name,
@@ -469,7 +471,7 @@ impl BuildQueue {
                     // Err(error::DependencyResolutionError::Cycle(Spanned::bare(dependent_component_name.clone())))
                 }
                 None => Err(
-                    error::undefined_component(component_endonym, &package.name)
+                    error::undefined_component_error(component_endonym, &package.name)
                         .report(&self.reporter)
                         .into(),
                 )
@@ -553,7 +555,7 @@ impl BuildQueue {
                 &component.bare
             }
             Some(component) => {
-                return Err(error::non_library_dependency(
+                return Err(error::non_library_dependency_error(
                     component_endonym,
                     component.bare.type_.bare,
                     &package_name,
@@ -562,9 +564,11 @@ impl BuildQueue {
                 .into())
             }
             None => {
-                return Err(error::undefined_component(component_endonym, &package_name)
-                    .report(&self.reporter)
-                    .into())
+                return Err(
+                    error::undefined_component_error(component_endonym, &package_name)
+                        .report(&self.reporter)
+                        .into(),
+                )
             }
         };
 
@@ -637,9 +641,9 @@ impl BuildQueue {
             // @Task add test
             return Err(Diagnostic::error()
                 .message("@Task")
-                .with(|error| match declaration.provider {
-                    Some(provider) => error.unlabeled_span(provider),
-                    None => error,
+                .with(|ot| match declaration.provider {
+                    Some(provider) => ot.unlabeled_span(provider),
+                    None => ot,
                 })
                 .report(&self.reporter));
         }
@@ -652,9 +656,9 @@ impl BuildQueue {
             return Err(Diagnostic::error()
                 .message("@Task")
                 .unlabeled_span(path)
-                .with(|error| match declaration.provider {
-                    Some(provider) => error.unlabeled_span(provider),
-                    None => error,
+                .with(|it| match declaration.provider {
+                    Some(provider) => it.unlabeled_span(provider),
+                    None => it,
                 })
                 .report(&self.reporter));
         }
@@ -668,10 +672,10 @@ impl BuildQueue {
                 None => Err(Diagnostic::error()
                     .message("dependency declaration does not have entry ‘path’")
                     .unlabeled_span(span)
-                    .with(|error| match declaration.provider.as_ref() {
+                    .with(|it| match declaration.provider.as_ref() {
                         // Currently always present in this branch.
-                        Some(provider) => error.label(provider, "required by this"),
-                        None => error,
+                        Some(provider) => it.label(provider, "required by this"),
+                        None => it,
                     })
                     .report(&self.reporter)),
             },
@@ -689,9 +693,9 @@ impl BuildQueue {
                     "the dependency provider ‘{provider}’ is not supported yet",
                 ))
                 // @Task better label! say how it was inferred!!
-                .with(|error| match declaration.provider {
-                    Some(provider) => error.unlabeled_span(provider),
-                    None => error.span(span, format!("implies provider ‘{provider}’")),
+                .with(|it| match declaration.provider {
+                    Some(provider) => it.unlabeled_span(provider),
+                    None => it.span(span, format!("implies provider ‘{provider}’")),
                 })
                 .report(&self.reporter)),
         }

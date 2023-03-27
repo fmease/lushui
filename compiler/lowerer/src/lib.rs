@@ -360,13 +360,12 @@ impl<'a> Lowerer<'a> {
                         .code(ErrorCode::E041)
                         .message("the module header has to be the first declaration of the module")
                         .unlabeled_span(&declaration)
-                        .with(|error| {
+                        .with(|it| {
                             if has_header {
                                 // @Task make this a note with a span/highlight!
-                                error
-                                    .note("however, the current module already has a module header")
+                                it.note("however, the current module already has a module header")
                             } else {
-                                error
+                                it
                             }
                         })
                         .handle(&mut *self);
@@ -411,7 +410,7 @@ impl<'a> Lowerer<'a> {
                                 // @Task the message is even worse (it is misleading!) with `use extern.(self)`
                                 // currently leads to the suggestion to bind `self` to an identifier but
                                 // for `extern` that is invalid, too
-                                let _: ErasedReportedError = invalid_unnamed_path_hanger(target.hanger.unwrap())
+                                let _: ErasedReportedError = invalid_unnamed_path_hanger_error(target.hanger.unwrap())
                                     .handle(&mut *self);
                                 break 'discriminate;
                             };
@@ -446,7 +445,7 @@ impl<'a> Lowerer<'a> {
                         Ok(target) => target,
                         Err(hanger) => {
                             let _: ErasedReportedError =
-                                incorrectly_positioned_path_hanger(hanger).handle(&mut *self);
+                                incorrectly_positioned_path_hanger_error(hanger).handle(&mut *self);
                             continue;
                         }
                     };
@@ -466,7 +465,7 @@ impl<'a> Lowerer<'a> {
                     }) else {
                         // @Task improve the message for `use topmost.(self)`: hint that `self`
                         // is effectively unnamed because `topmost` is unnamed
-                        let _: ErasedReportedError = invalid_unnamed_path_hanger(target.hanger.unwrap())
+                        let _: ErasedReportedError = invalid_unnamed_path_hanger_error(target.hanger.unwrap())
                                 .handle(&mut *self);
                         continue
                     };
@@ -489,7 +488,7 @@ impl<'a> Lowerer<'a> {
                         Ok(path) => path,
                         Err(hanger) => {
                             let _: ErasedReportedError =
-                                incorrectly_positioned_path_hanger(hanger).handle(&mut *self);
+                                incorrectly_positioned_path_hanger_error(hanger).handle(&mut *self);
                             continue;
                         }
                     };
@@ -1541,7 +1540,7 @@ impl LintExt for lowered_ast::attribute::Lint {
     }
 }
 
-fn invalid_unnamed_path_hanger(hanger: ast::Hanger) -> Diagnostic {
+fn invalid_unnamed_path_hanger_error(hanger: ast::Hanger) -> Diagnostic {
     Diagnostic::error()
         .code(ErrorCode::E025)
         .message(format!("path ‘{hanger}’ is not bound to an identifier"))
@@ -1550,7 +1549,7 @@ fn invalid_unnamed_path_hanger(hanger: ast::Hanger) -> Diagnostic {
         .help("bind the path to a name with ‘as’")
 }
 
-fn incorrectly_positioned_path_hanger(hanger: ast::Hanger) -> Diagnostic {
+fn incorrectly_positioned_path_hanger_error(hanger: ast::Hanger) -> Diagnostic {
     Diagnostic::error()
         .code(ErrorCode::E026)
         .message(format!("path ‘{hanger}’ not allowed in this position"))

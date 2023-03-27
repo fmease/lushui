@@ -521,9 +521,9 @@ fn set_panic_hook() {
 
         Diagnostic::bug()
             .message(message)
-            .with(|error| match information.location() {
-                Some(location) => error.note(format!("at ‘{location}’")),
-                None => error,
+            .with(|it| match information.location() {
+                Some(location) => it.note(format!("at ‘{location}’")),
+                None => it,
             })
             .note(std::thread::current().name().map_or_else(
                 || Cow::from("in an unnamed thread"),
@@ -537,9 +537,9 @@ fn set_panic_hook() {
                 env!("SHORT_COMMIT_HASH"),
                 env!("COMMIT_DATE")
             ))
-            .with(|error| match backtrace {
-                Some(backtrace) => error.note(format!("with the following backtrace:\n{backtrace}")),
-                None => error.help(
+            .with(|it| match backtrace {
+                Some(backtrace) => it.note(format!("with the following backtrace:\n{backtrace}")),
+                None => it.help(
                     "rerun with the environment variable ‘LUSHUI_BACKTRACE=1’ to display a backtrace",
                 ),
             })

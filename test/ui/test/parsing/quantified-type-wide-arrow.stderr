@@ -1,0 +1,19 @@
+error[E010]: found ‘=>’ but expected parameter, ‘->’ or ‘**’
+  ┌─ ${TEST_FOLDER}/parsing/quantified-type-wide-arrow.lushui:2:5
+  │
+2 │     For (A: Type) => A
+  │     ─── while parsing this quantified type starting here
+  │
+  ├─ ${TEST_FOLDER}/parsing/quantified-type-wide-arrow.lushui:2:19
+  │
+2 │     For (A: Type) => A
+  │                   ══ unexpected token
+  │
+ help: consider replacing the wide arrow with a thin one to denote a function type
+  ┌─ ${TEST_FOLDER}/parsing/quantified-type-wide-arrow.lushui:2:19
+  │
+2 │     For (A: Type) -> A
+  │                   ~~
+
+error: aborting due to previous error
+

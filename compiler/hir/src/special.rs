@@ -524,8 +524,8 @@ impl Bindings {
                     DefinitionStyle::Implicit { .. } => binder.span(),
                     DefinitionStyle::Explicit { name } => name.span(),
                 })
-                .with(|error| match style {
-                    DefinitionStyle::Implicit { .. } => error
+                .with(|it| match style {
+                    DefinitionStyle::Implicit { .. } => it
                         .label(
                             attribute,
                             match kind {
@@ -542,15 +542,15 @@ impl Bindings {
                                 .placeholder("name")
                                 .str(")"),
                         ),
-                    DefinitionStyle::Explicit { .. } => error,
+                    DefinitionStyle::Explicit { .. } => it,
                 })
                 // @Task add a UI test for this case
-                .with(|error| match special {
+                .with(|it| match special {
                     Some(special) => {
                         let kind = special.kind();
-                        error.note(format!("it is {} {kind} binding", kind.article()))
+                        it.note(format!("it is {} {kind} binding", kind.article()))
                     }
-                    None => error,
+                    None => it,
                 }));
         };
 
@@ -653,9 +653,9 @@ fn missing_binding_error(special: Binding, user: Option<Span>) -> Diagnostic {
             Kind::Intrinsic => ErrorCode::E060,
         })
         .message(format!("the {kind} binding ‘{special}’ is not defined"))
-        .with(|error| match user {
+        .with(|it| match user {
             // @Task label
-            Some(user) => error.span(user, "the type of this expression"),
-            None => error,
+            Some(user) => it.span(user, "the type of this expression"),
+            None => it,
         })
 }
