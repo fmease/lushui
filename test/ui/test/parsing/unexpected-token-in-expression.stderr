@@ -1,0 +1,13 @@
+error[E010]: found ‘data’ but expected ‘.’, ‘::’, function argument or terminator
+  ┌─ ${TEST_FOLDER}/parsing/unexpected-token-in-expression.lushui:1:8
+  │
+1 │ main = something data
+  │        ───────── while parsing this expression
+  │
+  ├─ ${TEST_FOLDER}/parsing/unexpected-token-in-expression.lushui:1:18
+  │
+1 │ main = something data
+  │                  ════ unexpected token
+
+error: aborting due to previous error
+

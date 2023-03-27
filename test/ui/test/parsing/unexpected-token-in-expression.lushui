@@ -1,0 +1,8 @@
+main = something data
+
+;;; Historically speaking for the longest time, we used to produce quite bad error messages for
+;;; errors "within" (= while parsing) expressions. Today, after having ripped out backtracking and
+;;; after having introduced a list of token expectations & error contexts to the parser,
+;;; finally our diagnostics are quite okay.
+;;;
+;;; This test ensures that we stay at at least this level of quality.

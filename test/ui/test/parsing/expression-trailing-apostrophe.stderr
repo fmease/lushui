@@ -2,7 +2,7 @@ error[E010]: found line break but expected function argument
   ┌─ ${TEST_FOLDER}/parsing/expression-trailing-apostrophe.lushui:2:5
   │
 2 │     process'
-  │     ─────── while parsing this function application
+  │     ─────── while parsing this expression
   │
   ├─ ${TEST_FOLDER}/parsing/expression-trailing-apostrophe.lushui:2:12
   │

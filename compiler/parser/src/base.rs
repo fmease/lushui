@@ -1,7 +1,7 @@
 use ast::Identifier;
 use diagnostics::{error::Result, Diagnostic, ErrorCode, Reporter};
 use span::{SourceFileIndex, SourceMap, Span};
-use std::fmt;
+use std::{fmt, mem};
 use token::{IndentationError, Token, TokenExt, TokenName, TokenName::*, INDENTATION};
 use utilities::{Conjunction, ListingExt};
 
@@ -11,6 +11,7 @@ pub(crate) struct Parser<'a> {
     pub(crate) file: SourceFileIndex,
     index: usize,
     expectations: Vec<Expectation>,
+    contexts: Vec<Box<dyn FnOnce(Diagnostic) -> Diagnostic>>,
     pub(crate) map: &'a SourceMap,
     pub(crate) reporter: &'a Reporter,
 }
@@ -27,27 +28,31 @@ impl<'a> Parser<'a> {
             file,
             index: 0,
             expectations: Vec::new(),
+            contexts: Vec::new(),
             map,
             reporter,
         }
     }
 
-    pub(crate) fn error<T>(&self) -> Result<T> {
+    pub(crate) fn error<T>(&mut self) -> Result<T> {
         Err(self.unexpected_token_error().report(self.reporter))
     }
 
     pub(crate) fn error_with<T>(
-        &self,
-        builder: impl FnOnce(Diagnostic) -> Diagnostic,
+        &mut self,
+        builder: impl FnOnce(&mut Self, Diagnostic) -> Diagnostic,
     ) -> Result<T> {
         Err(self
             .unexpected_token_error()
-            .with(builder)
+            .with(|it| builder(self, it))
             .report(self.reporter))
     }
 
-    fn unexpected_token_error(&self) -> Diagnostic {
-        assert!(!self.expectations.is_empty());
+    fn unexpected_token_error(&mut self) -> Diagnostic {
+        let expectations = mem::take(&mut self.expectations);
+        let commands = mem::take(&mut self.contexts);
+
+        assert!(!expectations.is_empty());
 
         let token = self.token();
 
@@ -59,22 +64,38 @@ impl<'a> Parser<'a> {
             .message(format!(
                 "found {} but expected {}",
                 token.name(),
-                self.expectations.iter().list(Conjunction::Or),
+                expectations.iter().list(Conjunction::Or),
             ))
+            .with(|it| commands.into_iter().fold(it, |it, command| command(it)))
             .span(token, "unexpected token")
     }
 
-    /// Add the given expectation to the list of expectations.
+    /// Register the given expectation.
     ///
-    /// Once we encounter an unexpected token, we list all relevant expectations.
-    /// Expectations become irrelevant once a token was successfully consumed or
-    /// more precisely once we have [advanced].
+    /// Once we encounter an unexpected token, we list all *relevant* expectations where
+    /// existing expectations become irrelevant once we [advance] the cursor of the parser.
+    /// Most often, this happens through [`Self::consume`].
     ///
     /// [advance]: Self::advance
     // @Task Enhancement: Introduce some kind of ranking mechanism. Motivation: We'd like to
     // list "declaration" first, that is before "line break" and "end of input".
     pub(crate) fn expected(&mut self, expectation: impl Into<Expectation>) {
         self.expectations.push(expectation.into());
+    }
+
+    /// Register the given diagnostic context.
+    ///
+    /// Once we encounter an unexpected token, we report a diagnostic with all *relevant* contexts
+    /// added onto where existing contexts becomes irrelevant once we [advance] the cursor of the
+    /// parser. Most often, this happens through [`Self::consume`].
+    ///
+    /// Taking a command instead of a boxed closure is less general and less ergonomic.
+    /// However, the latter would incur a performance cost in the happy path.
+    /// Hence this defunctionalized API.
+    ///
+    /// [advance]: Self::advance
+    pub(crate) fn context(&mut self, context: impl FnOnce(Diagnostic) -> Diagnostic + 'static) {
+        self.contexts.push(Box::new(context));
     }
 
     fn expect(&mut self, expectation: TokenName) -> Result<Token> {
@@ -106,24 +127,25 @@ impl<'a> Parser<'a> {
     ///
     /// Returns whether the token was found and skipped.
     #[must_use]
-    pub(crate) fn maybe_consume(&mut self, token: TokenName) -> bool {
-        if self.token().name() == token {
+    pub(crate) fn maybe_consume(&mut self, expectation: TokenName) -> bool {
+        if self.token().name() == expectation {
             self.advance();
             true
         } else {
-            self.expected(token);
+            self.expected(expectation);
             false
         }
     }
 
     // @Task find a way to replace this overly specific API
-    pub(crate) fn maybe_consume_span(&mut self, token: TokenName) -> Option<Span> {
-        let span = self.token().span;
-        if self.token().name() == token {
+    pub(crate) fn maybe_consume_span(&mut self, expectation: TokenName) -> Option<Span> {
+        let token = self.token();
+        let span = token.span;
+        if token.name() == expectation {
             self.advance();
             Some(span)
         } else {
-            self.expected(token);
+            self.expected(expectation);
             None
         }
     }
@@ -143,12 +165,15 @@ impl<'a> Parser<'a> {
 
     /// Step to the next token.
     ///
-    /// Clears any [expectations]. Don't advance past [`EndOfInput`].
+    /// Clears any [expectations] and [contexts].
+    /// Don't advance past [`EndOfInput`].
     ///
-    /// [expectations]: Expectation
+    /// [expectations]: Self::expected
+    /// [contexts]: Self::context
     pub(crate) fn advance(&mut self) {
-        self.expectations.clear();
         self.index += 1;
+        self.expectations.clear();
+        self.contexts.clear();
     }
 
     /// Get the current token.

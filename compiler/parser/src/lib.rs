@@ -31,7 +31,8 @@ use diagnostics::{error::Result, Diagnostic, ErrorCode, Reporter};
 use lexer::word::WordExt;
 use span::{SourceFileIndex, SourceMap, Span, Spanned, Spanning};
 use std::default::default;
-#[allow(clippy::wildcard_imports)] // it's an inline module which only exists for shared docs
+// It's a small *inline* module allowing us unify the docs of its items.
+#[allow(clippy::wildcard_imports)]
 use synonym::*;
 use token::{
     Token, TokenExt as _,
@@ -753,8 +754,8 @@ impl Parser<'_> {
             PathHead!() => self.parse_path_or_namespaced_literal()?,
             _ => {
                 self.expected("expression");
-                return self.error_with(|it| {
-                    if self.token().name() == ThinArrowRight {
+                return self.error_with(|this, it| {
+                    if this.token().name() == ThinArrowRight {
                         it.help(
                             "consider adding round brackets around the potential \
                              function type to disambiguate the expression",
@@ -843,8 +844,7 @@ impl Parser<'_> {
     fn finish_parse_lambda_literal(&mut self, mut span: Span) -> Result<Expression> {
         let parameters = self.parse_parameters()?;
         let codomain = self.parse_optional_type_annotation()?;
-        // @Task suggest replacing `->` with `=>`
-        self.consume(WideArrowRight)?;
+        self.parse_wide_arrow()?;
         let body = span.merging(self.parse_expression()?);
 
         Ok(Expression::new(
@@ -878,9 +878,9 @@ impl Parser<'_> {
                 self.expected(ThinArrowRight);
                 self.expected(DoubleAsterisk);
 
-                return self.error_with(|it| {
+                return self.error_with(|this, it| {
                     let it = it.label(span, "while parsing this quantified type starting here");
-                    let token = self.token();
+                    let token = this.token();
 
                     if let WideArrowRight = token.name() {
                         // @Note users might have also thought that this was the way to denote
@@ -1013,8 +1013,7 @@ impl Parser<'_> {
 
             while self.token().name() != Dedentation {
                 let pattern = self.parse_pattern()?;
-                // @Task suggest replacing `->` with `=>`
-                self.consume(WideArrowRight)?;
+                self.parse_wide_arrow()?;
                 let body = self.parse_expression()?;
                 self.parse_terminator()?;
 
@@ -1371,19 +1370,21 @@ impl Parser<'_> {
             } else if T::is_lower_prefix(self.token().name()) {
                 binder = None;
                 argument = span.merging(T::parse_lower(self)?);
-            } else if let Some(explicitness) = explicitness {
+            } else {
                 self.expected("function argument");
-                return self.error_with(|it| {
-                    it.label(&callee, "while parsing this function application")
-                        .label(
+                self.context(move |it| it.label(callee.span, "while parsing this expression"));
+
+                if let Some(explicitness) = explicitness {
+                    return self.error_with(|_, it| {
+                        it.label(
                             explicitness,
                             "this apostrophe marks the start of an implicit argument",
                         )
-                });
-            } else {
+                    });
+                }
+
                 // The current token is not the start of an argument.
                 // Hence we are done here.
-
                 return Ok(callee);
             }
 
@@ -1562,8 +1563,9 @@ impl Parser<'_> {
             _ => {
                 self.expected(Word);
                 self.expected(OpeningRoundBracket);
-                return self
-                    .error_with(|it| it.label(span, "while parsing this attribute starting here"));
+                return self.error_with(|_, it| {
+                    it.label(span, "while parsing this attribute starting here")
+                });
             }
         }
 
@@ -1701,6 +1703,23 @@ impl Parser<'_> {
         } else {
             None
         }
+    }
+
+    fn parse_wide_arrow(&mut self) -> Result<()> {
+        let token = self.token();
+        if let ThinArrowRight = token.name() {
+            let span = token.span;
+            self.context(move |it| {
+                it.suggest(
+                    span,
+                    "consider replacing the thin arrow with a wide one",
+                    "=>",
+                )
+            });
+        }
+
+        self.consume(WideArrowRight)?;
+        Ok(())
     }
 }
 
