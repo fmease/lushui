@@ -204,19 +204,18 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
 
                 match classification {
                     Some((Constant, expression)) => {
-                        let constant = self.module.add_global(
-                            self.translate_type(&function.type_annotation),
-                            None,
-                            self.name(index).as_ref(),
-                        );
-                        constant.set_unnamed_address(UnnamedAddress::Global);
-                        constant.set_linkage(Linkage::Internal);
-                        constant.set_constant(true);
-                        constant.set_initializer(&self.compile_constant_expression(expression));
+                        let type_ = self.translate_type(&function.type_annotation);
+                        let value = self
+                            .module
+                            .add_global(type_, None, self.name(index).as_ref());
+                        value.set_unnamed_address(UnnamedAddress::Global);
+                        value.set_linkage(Linkage::Internal);
+                        value.set_constant(true);
+                        value.set_initializer(&self.compile_constant_expression(expression));
 
                         self.bindings
                             .borrow_mut()
-                            .insert(index, Entity::Constant(constant));
+                            .insert(index, Entity::Constant { value, type_ });
                     }
                     // @Beacon @Task simplify
                     Some((Thunk, _)) => {
@@ -326,7 +325,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
                 let expression = function.expression.as_ref().unwrap();
 
                 match self.bindings.borrow()[&index] {
-                    Entity::Constant(_) | Entity::Intrinsic { .. } => {}
+                    Entity::Constant { .. } | Entity::Intrinsic { .. } => {}
                     Entity::Thunk(thunk) => {
                         let start_block = self.context.append_basic_block(thunk, "start");
                         self.builder.position_at_end(start_block);
@@ -445,8 +444,8 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
                 match binding.0.index {
                     Declaration(index) => {
                         let value = match self.bindings.borrow()[&index] {
-                            Entity::Constant(constant) => {
-                                self.builder.build_load(constant.as_pointer_value(), "")
+                            Entity::Constant { value, type_ } => {
+                                self.builder.build_load(type_, value.as_pointer_value(), "")
                             }
                             Entity::Thunk(thunk) => self
                                 .builder
@@ -590,7 +589,10 @@ impl ExpressionExt for hir::Expression {
 }
 
 enum Entity<'a, 'ctx> {
-    Constant(GlobalValue<'ctx>),
+    Constant {
+        value: GlobalValue<'ctx>,
+        type_: IntType<'ctx>,
+    },
     Thunk(FunctionValue<'ctx>),
     UnaryFunction {
         value: FunctionValue<'ctx>,

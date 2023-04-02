@@ -1,7 +1,7 @@
 #![feature(
     default_free_fn,
     const_option,
-    once_cell,
+    lazy_cell,
     let_chains,
     str_split_remainder,
     drain_filter

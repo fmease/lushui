@@ -83,7 +83,7 @@ jobs:
       run: rustup update --no-self-update nightly
     - name: Run unit tests
       # @Task test with LLVM
-      run: cargo test --workspace --exclude llvm_codegen --features cranelift,lsp
+      run: cargo test --workspace --exclude codegen_llvm --features cranelift,lsp
     - name: Run UI tests
       # @Task build with LLVM and Cranelift
       run: ./tests/ui/run --release --timeout=20
@@ -101,7 +101,7 @@ jobs:
         run: rustup update --no-self-update nightly
       - name: Check the rustdoc documentation
         # @Task document with LLVM
-        run: cargo doc --profile ci --features cranelift,lsp --workspace --no-deps
+        run: cargo doc --profile ci --workspace --exclude codegen_llvm --no-deps --features cranelift,lsp
         env:
           # Unfortunately, we *do* need to resort to an ostracized env var here
           # since ‘rustdocflags’ (or an equivalent) is not supported in
@@ -127,7 +127,7 @@ jobs:
         rustup component add clippy
     - name: Run Clippy
       # @Task check with LLVM
-      run: cargo clippy --profile ci --features cranelift,lsp
+      run: cargo clippy --profile ci --features cranelift,lsp --workspace --exclude codegen_llvm
 
   formatting:
     name: Check code formatting
