@@ -1,8 +1,7 @@
-use ast::Identifier;
 use diagnostics::{error::Result, Diagnostic, ErrorCode, Reporter};
 use span::{SourceFileIndex, SourceMap, Span};
 use std::{fmt, mem};
-use token::{IndentationError, Token, TokenExt, TokenName, TokenName::*, INDENTATION};
+use token::{BareToken, IndentationError, Token, INDENTATION};
 use utilities::{Conjunction, ListingExt};
 
 /// The parser.
@@ -50,11 +49,11 @@ impl<'a> Parser<'a> {
 
     fn unexpected_token_error(&mut self) -> Diagnostic {
         let expectations = mem::take(&mut self.expectations);
-        let commands = mem::take(&mut self.contexts);
+        let contexts = mem::take(&mut self.contexts);
 
         assert!(!expectations.is_empty());
 
-        let token = self.token();
+        let token = self.current();
 
         // @Task for the actual token, also print its token "category", e.g.
         // print `keyword ‘case’` instead of just `‘case’`. NB: Don't do that
@@ -62,11 +61,10 @@ impl<'a> Parser<'a> {
         Diagnostic::error()
             .code(ErrorCode::E010)
             .message(format!(
-                "found {} but expected {}",
-                token.name(),
+                "found {token} but expected {}",
                 expectations.iter().list(Conjunction::Or),
             ))
-            .with(|it| commands.into_iter().fold(it, |it, command| command(it)))
+            .with(|it| contexts.into_iter().fold(it, |it, context| context(it)))
             .span(token, "unexpected token")
     }
 
@@ -89,78 +87,38 @@ impl<'a> Parser<'a> {
     /// added onto where existing contexts becomes irrelevant once we [advance] the cursor of the
     /// parser. Most often, this happens through [`Self::consume`].
     ///
-    /// Taking a command instead of a boxed closure is less general and less ergonomic.
-    /// However, the latter would incur a performance cost in the happy path.
-    /// Hence this defunctionalized API.
-    ///
     /// [advance]: Self::advance
     pub(crate) fn context(&mut self, context: impl FnOnce(Diagnostic) -> Diagnostic + 'static) {
         self.contexts.push(Box::new(context));
     }
 
-    fn expect(&mut self, expectation: TokenName) -> Result<Token> {
-        let token = self.token();
-        if token.name() == expectation {
-            Ok(token.clone())
+    /// Expect the current token to match the given name, [advance] on success and emit an error on failure.
+    ///
+    /// [advance]: Self::advance
+    pub(crate) fn expect(&mut self, expectation: BareToken) -> Result<Span> {
+        let token = self.current();
+        if token.bare == expectation {
+            let span = token.span;
+            self.advance();
+            Ok(span)
         } else {
             self.expected(expectation);
             self.error()
         }
     }
 
-    /// [Expect] the current token to match the given name and [advance] on success.
-    ///
-    /// [Expect]: Self::expect
-    /// [advance]: Self::advance
-    pub(crate) fn consume(&mut self, token: TokenName) -> Result<Token> {
-        let token = self.expect(token)?;
-        self.advance();
-        Ok(token)
-    }
-
-    pub(crate) fn consume_word(&mut self) -> Result<Identifier> {
-        self.consume(Word)
-            .map(|identifier| identifier.try_into().unwrap())
-    }
-
     /// Consume the current token if it matches the given name.
     ///
     /// Returns whether the token was found and skipped.
     #[must_use]
-    pub(crate) fn maybe_consume(&mut self, expectation: TokenName) -> bool {
-        if self.token().name() == expectation {
+    pub(crate) fn consume(&mut self, expectation: BareToken) -> bool {
+        if self.current().bare == expectation {
             self.advance();
             true
         } else {
             self.expected(expectation);
             false
         }
-    }
-
-    // @Task find a way to replace this overly specific API
-    pub(crate) fn maybe_consume_span(&mut self, expectation: TokenName) -> Option<Span> {
-        let token = self.token();
-        let span = token.span;
-        if token.name() == expectation {
-            self.advance();
-            Some(span)
-        } else {
-            self.expected(expectation);
-            None
-        }
-    }
-
-    /// Try to turn the current token into an identifier.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the token is neither a [word] nor a [symbol].
-    ///
-    /// [word]: token::BareToken::Word
-    /// [symbol]: token::BareToken::Symbol
-    // @Task try to create a more general API
-    pub(crate) fn token_into_identifier(&self) -> Identifier {
-        self.token().clone().try_into().unwrap()
     }
 
     /// Step to the next token.
@@ -176,9 +134,19 @@ impl<'a> Parser<'a> {
         self.contexts.clear();
     }
 
-    /// Get the current token.
-    pub(crate) fn token(&self) -> &Token {
+    /// Obtain a reference to the current token.
+    pub(crate) fn current(&self) -> &Token {
         &self.tokens[self.index]
+    }
+
+    /// Obtain the span of the current token.
+    pub(crate) fn span(&self) -> Span {
+        self.current().span
+    }
+
+    /// Obtain a reference to the current (bare) token.
+    pub(crate) fn token(&self) -> &BareToken {
+        &self.current().bare
     }
 
     /// Look ahead by the given amount of tokens.
@@ -196,12 +164,12 @@ impl<'a> Parser<'a> {
 }
 
 pub(crate) enum Expectation {
-    Token(TokenName),
+    Token(BareToken),
     Category(&'static str),
 }
 
-impl From<TokenName> for Expectation {
-    fn from(token: TokenName) -> Self {
+impl From<BareToken> for Expectation {
+    fn from(token: BareToken) -> Self {
         Self::Token(token)
     }
 }

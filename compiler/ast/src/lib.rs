@@ -7,7 +7,7 @@ use diagnostics::{error::PossiblyErroneous, reporter::ErasedReportedError};
 pub use format::{Debug, Format};
 use span::{SourceFileIndex, Span, Spanned, Spanning};
 use std::{fmt, hash::Hash};
-use token::{BareToken, Token, TokenExt, Word};
+use token::{BareToken, Word};
 use utilities::{obtain, smallvec, Atom, SmallVec};
 
 mod format;
@@ -824,17 +824,6 @@ impl Identifier {
     pub fn is_word(&self) -> bool {
         // either all characters are letters or none
         !self.is_symbol()
-    }
-}
-
-impl TryFrom<Token> for Identifier {
-    type Error = ();
-
-    fn try_from(token: Token) -> Result<Self, Self::Error> {
-        Ok(Self(Spanned::new(
-            token.span,
-            token.into_identifier().ok_or(())?,
-        )))
     }
 }
 

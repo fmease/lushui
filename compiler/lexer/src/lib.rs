@@ -5,7 +5,7 @@ use span::{FileName, LocalByteIndex, LocalSpan, SourceFile, SourceMap, Span, Spa
 use std::{cmp::Ordering, default::default, iter::Peekable, mem, str::CharIndices, sync::Arc};
 use token::{
     BareToken, Bracket, BracketKind, BracketOrientation, Indentation, IndentationError, Spaces,
-    Token, TokenExt,
+    Token,
 };
 use utilities::{self, GetFromEndExt};
 use BareToken::*;
@@ -279,7 +279,7 @@ impl<'a> Lexer<'a> {
         let is_start_of_indented_section = self
             .tokens
             .last()
-            .map_or(false, |token| token.name().introduces_indented_section());
+            .map_or(false, |token| token.bare.introduces_indented_section());
 
         // squash consecutive line breaks into a single one
         self.take_while(|character| character == '\n');

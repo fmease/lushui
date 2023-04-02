@@ -1,46 +1,18 @@
 //! The tokens emitted by the lexer.
 #![feature(decl_macro, stmt_expr_attributes, int_roundings)]
 
-use derivation::{Discriminant, Str};
+use derivation::Str;
 use span::Spanned;
 use std::{cmp::Ordering, fmt};
-use utilities::{obtain, quoted, Atom};
+use utilities::{quoted, Atom};
 pub use word::Word;
-use TokenName::*;
+use BareToken::*;
 
 mod word;
 
 pub type Token = Spanned<BareToken>;
 
-pub trait TokenExt {
-    fn name(&self) -> TokenName;
-    fn into_identifier(self) -> Option<Atom>;
-    fn into_number_literal(self) -> Option<Atom>;
-    fn into_text_literal(self) -> Option<Atom>;
-}
-
-impl TokenExt for Token {
-    fn name(&self) -> TokenName {
-        self.bare.name()
-    }
-
-    fn into_identifier(self) -> Option<Atom> {
-        use BareToken::*;
-
-        obtain!(self.bare, Word(identifier) | Symbol(identifier) => identifier)
-    }
-
-    fn into_number_literal(self) -> Option<Atom> {
-        obtain!(self.bare, BareToken::NumberLiteral(number) => number)
-    }
-
-    fn into_text_literal(self) -> Option<Atom> {
-        obtain!(self.bare, BareToken::TextLiteral(text) => text)
-    }
-}
-
-#[derive(Clone, PartialEq, Eq, Discriminant, Debug)]
-#[discriminant(name: TokenName)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum BareToken {
     //
     // Comment-Like Tokens
@@ -112,13 +84,14 @@ pub enum BareToken {
     Word(Atom),
 }
 
-impl TokenName {
-    pub const fn introduces_indented_section(self) -> bool {
+impl BareToken {
+    // @Task move to lexer
+    pub const fn introduces_indented_section(&self) -> bool {
         matches!(self, Do | Of)
     }
 }
 
-impl fmt::Display for TokenName {
+impl fmt::Display for BareToken {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             //
@@ -177,15 +150,15 @@ impl fmt::Display for TokenName {
             EndOfInput => "end of input",
             Self::Indentation => "indentation",
             LineBreak => "line break",
-            NumberLiteral => "number literal",
-            Symbol => "symbol",
-            TextLiteral => "text literal",
-            Self::Word => "word",
+            NumberLiteral(_) => "number literal",
+            Symbol(_) => "symbol",
+            TextLiteral(_) => "text literal",
+            Self::Word(_) => "word",
         })
     }
 }
 
-// @Question should this reside in `lexer`?
+// @Task move to lexer
 pub const fn is_symbol(character: char) -> bool {
     #[rustfmt::skip]
     matches!(

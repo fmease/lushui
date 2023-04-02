@@ -34,11 +34,7 @@ use std::default::default;
 // It's a small *inline* module allowing us unify the docs of its items.
 #[allow(clippy::wildcard_imports)]
 use synonym::*;
-use token::{
-    Token, TokenExt as _,
-    TokenName::{self, *},
-    Word,
-};
+use token::BareToken::{self, *};
 use utilities::{smallvec, SmallVec};
 
 mod base;
@@ -62,7 +58,7 @@ pub fn parse_root_module_file(
         .to_str()
         .unwrap();
 
-    let binder = Word::parse(name.to_owned()).map_err(|_| {
+    let binder = token::Word::parse(name.to_owned()).map_err(|_| {
         Diagnostic::error()
             .code(ErrorCode::E036)
             .message(format!(
@@ -136,11 +132,11 @@ impl Parser<'_> {
         let mut declarations = Vec::new();
 
         loop {
-            if self.maybe_consume(LineBreak) {
+            if self.consume(LineBreak) {
                 continue;
             }
 
-            if self.maybe_consume(EndOfInput) {
+            if self.consume(EndOfInput) {
                 break Ok(Declaration::new(
                     Attributes::new(),
                     self.map[self.file].span(),
@@ -173,12 +169,12 @@ impl Parser<'_> {
     fn parse_declaration(&mut self) -> Result<Declaration> {
         let attributes = self.parse_attributes(SkipLineBreaks::Yes)?;
 
-        let span = self.token().span;
-        match self.token().name() {
-            Word => {
-                let identifier = self.token_into_identifier();
+        let span = self.span();
+        match self.token() {
+            Word(binder) => {
+                let binder = ast::Identifier::new_unchecked(binder.clone(), span);
                 self.advance();
-                self.finish_parse_function_declaration(identifier, attributes)
+                self.finish_parse_function_declaration(binder, attributes)
             }
             Data => {
                 self.advance();
@@ -224,7 +220,7 @@ impl Parser<'_> {
         let parameters = span.merging(self.parse_parameters()?);
         let type_ = span.merging(self.parse_optional_type_annotation()?);
 
-        let body = if self.maybe_consume(Equals) {
+        let body = if self.consume(Equals) {
             Some(span.merging(self.parse_expression()?))
         } else {
             None
@@ -265,13 +261,13 @@ impl Parser<'_> {
         mut span: Span,
         attributes: Attributes,
     ) -> Result<Declaration> {
-        let binder = span.merging(self.consume_word()?);
+        let binder = span.merging(self.parse_word()?);
         let parameters = span.merging(self.parse_parameters()?);
         let type_ = span.merging(self.parse_optional_type_annotation()?);
 
-        let constructors = match self.token().name() {
+        let constructors = match self.token() {
             Of => {
-                span.merging(self.token().span);
+                span.merging(self.span());
                 self.advance();
 
                 let mut constructors = Vec::new();
@@ -287,7 +283,7 @@ impl Parser<'_> {
                 Some(constructors)
             }
             name @ Terminator!() => {
-                if name == LineBreak {
+                if name == &LineBreak {
                     self.advance();
                 }
                 None
@@ -332,8 +328,8 @@ impl Parser<'_> {
         attributes: Attributes,
     ) -> Result<Declaration> {
         // @Task abstract over this (used below as well), good idea?
-        if let name @ Terminator!() = self.token().name() {
-            if name == LineBreak {
+        if let name @ Terminator!() = self.token() {
+            if name == &LineBreak {
                 self.advance();
             }
 
@@ -344,13 +340,13 @@ impl Parser<'_> {
             ));
         }
 
-        let binder = span.merging(self.consume_word()?);
+        let binder = span.merging(self.parse_word()?);
 
-        match self.token().name() {
+        match self.token() {
             // Out-of-line module declaration.
             // @Task abstract over this (used above as well), good idea?
             name @ Terminator!() => {
-                if name == LineBreak {
+                if name == &LineBreak {
                     self.advance();
                 }
 
@@ -396,11 +392,11 @@ impl Parser<'_> {
     }
 
     fn parse_optional_block(&mut self, mut parser: impl FnMut(&mut Self) -> Result) -> Result {
-        if self.maybe_consume(Indentation) {
+        if self.consume(Indentation) {
             loop {
-                while self.maybe_consume(LineBreak) {}
+                while self.consume(LineBreak) {}
 
-                if self.maybe_consume(Dedentation) {
+                if self.consume(Dedentation) {
                     break;
                 }
 
@@ -451,25 +447,26 @@ impl Parser<'_> {
     fn parse_use_path_tree(&mut self) -> Result<ast::UsePathTree> {
         let mut path = self.parse_path_head()?;
 
-        while self.maybe_consume(Dot) {
-            match self.token().name() {
-                Identifier!() => {
-                    let identifier = self.token_into_identifier();
+        while self.consume(Dot) {
+            match self.token() {
+                Identifier!(segment) => {
+                    let segment = ast::Identifier::new_unchecked(segment.clone(), self.span());
                     self.advance();
-                    path.segments.push(identifier);
+                    path.segments.push(segment);
                 }
                 OpeningRoundBracket => {
-                    let mut span = self.token().span;
+                    let mut span = self.span();
                     self.advance();
 
                     let mut bindings = Vec::new();
 
-                    while self.token().name() != ClosingRoundBracket {
-                        if let Some(mut span) = self.maybe_consume_span(OpeningRoundBracket) {
+                    while self.token() != &ClosingRoundBracket {
+                        let mut span = self.span();
+                        if self.consume(OpeningRoundBracket) {
                             let target = self.parse_path()?;
-                            self.consume(As)?;
+                            self.expect(As)?;
                             let binder = self.parse_identifier()?;
-                            span.merging(&self.consume(ClosingRoundBracket)?);
+                            span.merging(self.expect(ClosingRoundBracket)?);
 
                             bindings.push(ast::UsePathTree::new(
                                 span,
@@ -483,7 +480,7 @@ impl Parser<'_> {
                         }
                     }
 
-                    span.merging(&self.token());
+                    span.merging(self.span());
                     self.advance(); // ")"
 
                     return Ok(ast::UsePathTree::new(
@@ -499,7 +496,7 @@ impl Parser<'_> {
             }
         }
 
-        let binder = if self.maybe_consume(As) {
+        let binder = if self.consume(As) {
             Some(self.parse_identifier()?)
         } else {
             None
@@ -532,13 +529,13 @@ impl Parser<'_> {
     fn parse_constructor(&mut self) -> Result<Declaration> {
         let attributes = self.parse_attributes(SkipLineBreaks::Yes)?;
 
-        let binder = self.consume_word()?;
+        let binder = self.parse_word()?;
         let mut span = binder.span();
 
         let parameters = span.merging(self.parse_parameters()?);
         let type_ = span.merging(self.parse_optional_type_annotation()?);
 
-        let body = if self.maybe_consume(Equals) {
+        let body = if self.consume(Equals) {
             Some(span.merging(self.parse_expression()?))
         } else {
             None
@@ -592,7 +589,7 @@ impl Parser<'_> {
         let domain = self.parse_application_expression_or_lower()?;
         let mut span = domain.span;
 
-        let quantifier = match self.token().name() {
+        let quantifier = match self.token() {
             ThinArrowRight => ast::Quantifier::Pi,
             DoubleAsterisk => ast::Quantifier::Sigma,
             // We don't actually have a quantified type but merely an application or lower.
@@ -677,39 +674,39 @@ impl Parser<'_> {
 
         let attributes = self.parse_attributes(SkipLineBreaks::No)?;
 
-        let mut span = self.token().span;
-        let mut expression = match self.token().name() {
-            NumberLiteral => {
-                let token = self.token().clone();
+        let mut span = self.span();
+        let mut expression = match self.token() {
+            NumberLiteral(literal) => {
+                let literal = Spanned::new(span, literal.clone());
                 self.advance();
 
                 Expression::new(
                     default(),
-                    token.span,
+                    span,
                     ast::NumberLiteral {
                         path: None,
-                        literal: Spanned::new(token.span, token.into_number_literal().unwrap()),
+                        literal,
                     }
                     .into(),
                 )
             }
-            TextLiteral => {
-                let token = self.token().clone();
+            TextLiteral(literal) => {
+                let literal = Spanned::new(span, literal.clone());
                 self.advance();
 
                 Expression::new(
                     default(),
-                    token.span,
+                    span,
                     ast::TextLiteral {
                         path: None,
-                        literal: Spanned::new(token.span, token.into_text_literal().unwrap()),
+                        literal,
                     }
                     .into(),
                 )
             }
             QuestionMark => {
                 self.advance();
-                let tag = self.consume_word()?;
+                let tag = self.parse_word()?;
 
                 Expression::new(default(), span.merge(&tag), ast::TypedHole { tag }.into())
             }
@@ -746,7 +743,7 @@ impl Parser<'_> {
 
                 let mut expression = self.parse_expression()?;
 
-                span.merging(self.consume(ClosingRoundBracket)?);
+                span.merging(self.expect(ClosingRoundBracket)?);
                 expression.span = span;
 
                 expression
@@ -755,7 +752,7 @@ impl Parser<'_> {
             _ => {
                 self.expected("expression");
                 return self.error_with(|this, it| {
-                    if this.token().name() == ThinArrowRight {
+                    if this.token() == &ThinArrowRight {
                         it.help(
                             "consider adding round brackets around the potential \
                              function type to disambiguate the expression",
@@ -769,15 +766,15 @@ impl Parser<'_> {
 
         let mut attributes = Some(attributes);
 
-        while self.maybe_consume(DoubleColon) {
-            let member = self.consume_word()?;
+        while self.consume(DoubleColon) {
+            let field = self.parse_word()?;
 
             expression = Expression::new(
                 attributes.take().unwrap_or_default(),
-                expression.span.merge(&member),
+                expression.span.merge(&field),
                 ast::Projection {
                     basis: expression,
-                    field: member,
+                    field,
                 }
                 .into(),
             );
@@ -800,7 +797,7 @@ impl Parser<'_> {
     fn parse_path(&mut self) -> Result<ast::Path> {
         let mut path = self.parse_path_head()?;
 
-        while self.maybe_consume(Dot) {
+        while self.consume(Dot) {
             path.segments.push(self.parse_identifier()?);
         }
 
@@ -816,10 +813,10 @@ impl Parser<'_> {
     /// Path-Hanger ::= "extern" | "topmost" | "super" | "self"
     /// ```
     fn parse_path_head(&mut self) -> Result<ast::Path> {
-        let token = self.token();
-        let path = match token.name() {
-            Identifier!() => Identifier::try_from(token.clone()).unwrap().into(),
-            PathHanger!() => token
+        let path = match self.token() {
+            Identifier!(head) => Identifier::new_unchecked(head.clone(), self.span()).into(),
+            PathHanger!() => self
+                .current()
                 .clone()
                 .map(|token| ast::BareHanger::try_from(token).unwrap())
                 .into(),
@@ -871,7 +868,7 @@ impl Parser<'_> {
     fn finish_parse_quantified_type(&mut self, mut span: Span) -> Result<Expression> {
         let parameters = self.parse_parameters()?;
 
-        let quantifier = match self.token().name() {
+        let quantifier = match self.token() {
             ThinArrowRight => ast::Quantifier::Pi,
             DoubleAsterisk => ast::Quantifier::Sigma,
             _ => {
@@ -880,16 +877,16 @@ impl Parser<'_> {
 
                 return self.error_with(|this, it| {
                     let it = it.label(span, "while parsing this quantified type starting here");
-                    let token = this.token();
+                    let span = this.span();
 
-                    if let WideArrowRight = token.name() {
+                    if let WideArrowRight = this.token() {
                         // @Note users might have also thought that this was the way to denote
                         // a function type with implicit or auto-implicit arguments.
                         // @Task add a note or suggestion to teach the actual syntax for those
                         // if there are apostrophes present, only suggest auto-implicit parameters
 
                         it.suggest(
-                            token,
+                            span,
                             "consider replacing the wide arrow with a \
                              thin one to denote a function type",
                             "->",
@@ -930,21 +927,21 @@ impl Parser<'_> {
     ///
     /// [let-binding]: ast::LetBinding
     fn finish_parse_let_binding(&mut self, mut span: Span) -> Result<Expression> {
-        let binder = self.consume_word()?;
+        let binder = self.parse_word()?;
         let parameters = self.parse_parameters()?;
         let type_ = self.parse_optional_type_annotation()?;
 
-        let body = if self.maybe_consume(Equals) {
+        let body = if self.consume(Equals) {
             Some(self.parse_expression()?)
         } else {
             None
         };
 
-        if let LineBreak = self.token().name() {
+        if let LineBreak = self.token() {
             self.advance();
         }
 
-        self.consume(In)?;
+        self.expect(In)?;
 
         let scope = span.merging(self.parse_expression()?);
 
@@ -977,11 +974,11 @@ impl Parser<'_> {
     fn finish_parse_use_binding(&mut self, span: Span) -> Result<Expression> {
         let bindings = self.parse_use_path_tree()?;
 
-        if let LineBreak = self.token().name() {
+        if let LineBreak = self.token() {
             self.advance();
         }
 
-        self.consume(In)?;
+        self.expect(In)?;
 
         let scope = self.parse_expression()?;
 
@@ -1004,14 +1001,14 @@ impl Parser<'_> {
     /// [case analysis]: ast::CaseAnalysis
     fn finish_parse_case_analysis(&mut self, mut span: Span) -> Result<Expression> {
         let scrutinee = self.parse_expression()?;
-        span.merging(self.consume(Of)?);
+        span.merging(self.expect(Of)?);
 
         let mut cases = Vec::new();
 
-        if self.maybe_consume(Indentation) {
+        if self.consume(Indentation) {
             // @Task use parse_block function for this (but don't trash the span!)
 
-            while self.token().name() != Dedentation {
+            while self.token() != &Dedentation {
                 let pattern = self.parse_pattern()?;
                 self.parse_wide_arrow()?;
                 let body = self.parse_expression()?;
@@ -1020,7 +1017,7 @@ impl Parser<'_> {
                 cases.push(ast::Case { pattern, body });
             }
 
-            span.merging(self.token());
+            span.merging(self.span());
             self.advance();
         }
 
@@ -1047,32 +1044,31 @@ impl Parser<'_> {
     fn finish_parse_do_block(&mut self, mut span: Span) -> Result<Expression> {
         let mut statements = Vec::new();
 
-        self.consume(Indentation)?;
+        self.expect(Indentation)?;
 
-        while self.token().name() != Dedentation {
+        while self.token() != &Dedentation {
             // @Note necessary I guess in cases where we have #Line-Break ##Comment+ #Line-Break
-            if self.maybe_consume(LineBreak) {
+            if self.consume(LineBreak) {
                 continue;
             }
 
-            statements.push(match self.token().name() {
+            statements.push(match self.token() {
                 // @Task move to its own function
                 Let => {
                     self.advance();
-                    let binder = self.consume_word()?;
+                    let binder = self.parse_word()?;
 
                     let parameters = self.parse_parameters()?;
                     let type_ = self.parse_optional_type_annotation()?;
 
-                    let body = match self.token().name() {
+                    let body = match self.token() {
                         token @ (Equals | ThinArrowLeft) => {
-                            self.advance();
-
                             let mode = match token {
                                 Equals => ast::BindingMode::Plain,
                                 ThinArrowLeft => ast::BindingMode::Effectful,
                                 _ => unreachable!(),
                             };
+                            self.advance();
 
                             Some((mode, self.parse_expression()?))
                         }
@@ -1106,7 +1102,7 @@ impl Parser<'_> {
             });
         }
 
-        span.merging(self.token());
+        span.merging(self.span());
         self.advance();
 
         Ok(Expression::new(
@@ -1130,11 +1126,11 @@ impl Parser<'_> {
 
         loop {
             let explicitness = self.parse_optional_implicitness();
-            let mut span = self.token().span.merge_into(explicitness);
+            let mut span = self.span().merge_into(explicitness);
 
-            let parameter = match self.token().name() {
-                Word => {
-                    let binder = self.token_into_identifier();
+            let parameter = match self.token() {
+                Word(binder) => {
+                    let binder = ast::Identifier::new_unchecked(binder.clone(), self.span());
                     self.advance();
 
                     ast::Parameter::new(
@@ -1149,10 +1145,10 @@ impl Parser<'_> {
                 OpeningRoundBracket => {
                     self.advance();
 
-                    let binder = self.consume_word()?;
+                    let binder = self.parse_word()?;
                     let type_ = self.parse_optional_type_annotation()?;
 
-                    span.merging(self.consume(ClosingRoundBracket)?);
+                    span.merging(self.expect(ClosingRoundBracket)?);
 
                     ast::Parameter::new(
                         span,
@@ -1211,51 +1207,51 @@ impl Parser<'_> {
 
         let attributes = self.parse_attributes(SkipLineBreaks::No)?;
 
-        let mut span = self.token().span;
-        let mut pattern = match self.token().name() {
-            NumberLiteral => {
-                let token = self.token().clone();
+        let mut span = self.span();
+        let mut pattern = match self.token() {
+            NumberLiteral(literal) => {
+                let literal = Spanned::new(span, literal.clone());
                 self.advance();
 
                 Pattern::new(
                     default(),
-                    token.span,
+                    span,
                     ast::NumberLiteral {
                         path: None,
-                        literal: Spanned::new(token.span, token.into_number_literal().unwrap()),
+                        literal,
                     }
                     .into(),
                 )
             }
-            TextLiteral => {
-                let token = self.token().clone();
+            TextLiteral(literal) => {
+                let literal = Spanned::new(span, literal.clone());
                 self.advance();
 
                 Pattern::new(
                     default(),
-                    token.span,
+                    span,
                     ast::TextLiteral {
                         path: None,
-                        literal: Spanned::new(token.span, token.into_text_literal().unwrap()),
+                        literal,
                     }
                     .into(),
                 )
             }
             Backslash => {
                 self.advance();
-                self.consume_word()
-                    .map(|binder| Pattern::new(default(), span.merge(&binder), binder.into()))?
+                let binder = self.parse_word()?;
+                Pattern::new(default(), span.merge(&binder), binder.into())
             }
             OpeningSquareBracket => {
                 self.advance();
 
                 let mut elements = Vec::new();
 
-                while self.token().name() != ClosingSquareBracket {
+                while self.token() != &ClosingSquareBracket {
                     elements.push(self.parse_lower_pattern()?);
                 }
 
-                span.merging(self.token());
+                span.merging(self.span());
                 self.advance(); // "]"
 
                 Pattern::new(
@@ -1271,7 +1267,7 @@ impl Parser<'_> {
             OpeningRoundBracket => {
                 self.advance();
                 let mut pattern = self.parse_pattern()?;
-                span.merging(self.consume(ClosingRoundBracket)?);
+                span.merging(self.expect(ClosingRoundBracket)?);
                 pattern.span = span;
 
                 pattern
@@ -1309,11 +1305,11 @@ impl Parser<'_> {
     {
         let mut elements = Vec::new();
 
-        while self.token().name() != ClosingSquareBracket {
+        while self.token() != &ClosingSquareBracket {
             elements.push(T::parse_lower(self)?);
         }
 
-        span.merging(self.token());
+        span.merging(self.span());
         self.advance(); // "]"
 
         Ok(ast::Item::new(
@@ -1349,30 +1345,33 @@ impl Parser<'_> {
         // Using iteration to parse left-associatively.
         loop {
             let explicitness = self.parse_optional_implicitness();
-            let binder;
-            let argument;
 
             //
             // Parse an optional argument.
             //
-            if self.token().name() == OpeningRoundBracket
-                && self.look_ahead(1).name() == Word
-                && self.look_ahead(2).name() == Equals
+            let (binder, argument) = if self.token() == &OpeningRoundBracket
+                && let &Spanned!(binder_span, Word(ref binder)) = self.look_ahead(1)
+                && self.look_ahead(2).bare == Equals
             {
+                let binder = binder.clone();
+
                 self.advance(); // "("
-                binder = Some(self.token_into_identifier());
                 self.advance(); // #Word
                 self.advance(); // "="
 
-                argument = T::parse(self)?;
+                let argument = T::parse(self)?;
 
-                span.merging(self.consume(ClosingRoundBracket)?);
-            } else if T::is_lower_prefix(self.token().name()) {
-                binder = None;
-                argument = span.merging(T::parse_lower(self)?);
+                span.merging(self.expect(ClosingRoundBracket)?);
+
+                (Some(ast::Identifier::new_unchecked(binder, binder_span)), argument)
+            } else if T::is_lower_prefix(self.token()) {
+                (None, span.merging(T::parse_lower(self)?))
             } else {
                 self.expected("function argument");
-                self.context(move |it| it.label(callee.span, "while parsing this expression"));
+                // @Task avoid doing this work in the happy path (vtable construction & heap allocation)
+                self.context(move |it| {
+                    it.label(callee.span, format!("while parsing this {}", T::NAME))
+                });
 
                 if let Some(explicitness) = explicitness {
                     return self.error_with(|_, it| {
@@ -1386,7 +1385,7 @@ impl Parser<'_> {
                 // The current token is not the start of an argument.
                 // Hence we are done here.
                 return Ok(callee);
-            }
+            };
 
             callee = ast::Item::new(
                 default(),
@@ -1424,50 +1423,50 @@ impl Parser<'_> {
     {
         let mut path = self.parse_path_head()?;
 
-        while self.maybe_consume(Dot) {
-            match self.token().name() {
-                Identifier!() => {
-                    let identifier = self.token_into_identifier();
+        while self.consume(Dot) {
+            let span = self.span();
+            match self.token() {
+                Identifier!(segment) => {
+                    let segment = ast::Identifier::new_unchecked(segment.clone(), span);
                     self.advance();
-                    path.segments.push(identifier);
+                    path.segments.push(segment);
                 }
-                NumberLiteral => {
-                    let token = self.token().clone();
+                NumberLiteral(literal) => {
+                    let literal = Spanned::new(span, literal.clone());
                     self.advance();
 
                     return Ok(ast::Item::new(
                         default(),
-                        path.span().merge(&token),
+                        path.span().merge(span),
                         ast::NumberLiteral {
                             path: Some(path),
-                            literal: Spanned::new(token.span, token.into_number_literal().unwrap()),
+                            literal,
                         }
                         .into(),
                     ));
                 }
-                TextLiteral => {
-                    let token = self.token().clone();
+                TextLiteral(literal) => {
+                    let literal = Spanned::new(span, literal.clone());
                     self.advance();
 
                     return Ok(ast::Item::new(
                         default(),
-                        path.span().merge(&token),
+                        path.span().merge(span),
                         ast::TextLiteral {
                             path: Some(path),
-                            literal: Spanned::new(token.span, token.into_text_literal().unwrap()),
+                            literal,
                         }
                         .into(),
                     ));
                 }
                 OpeningSquareBracket => {
-                    let span = self.token().span();
                     self.advance();
                     return self.finish_parse_sequence_literal(Some(path), span);
                 }
                 _ => {
                     self.expected(IDENTIFIER);
-                    self.expected(NumberLiteral);
-                    self.expected(TextLiteral);
+                    self.expected("number literal");
+                    self.expected("text literal");
                     self.expected(OpeningSquareBracket);
                     return self.error();
                 }
@@ -1485,7 +1484,7 @@ impl Parser<'_> {
     /// Type-Annotation ::= ":" Expression
     /// ```
     fn parse_optional_type_annotation(&mut self) -> Result<Option<Expression>> {
-        self.maybe_consume(Colon)
+        self.consume(Colon)
             .then(|| self.parse_expression())
             .transpose()
     }
@@ -1501,20 +1500,20 @@ impl Parser<'_> {
         let mut attributes = Attributes::default();
 
         loop {
-            let span = self.token().span;
-            attributes.push(match self.token().name() {
+            let span = self.span();
+            attributes.push(match self.token() {
                 At => {
                     self.advance();
                     let attribute = self.finish_parse_regular_attribute(span)?;
                     if skip_line_breaks == SkipLineBreaks::Yes {
-                        while self.maybe_consume(LineBreak) {}
+                        while self.consume(LineBreak) {}
                     }
                     attribute
                 }
                 DocumentationComment => {
                     self.advance();
                     if skip_line_breaks == SkipLineBreaks::Yes {
-                        while self.maybe_consume(LineBreak) {}
+                        while self.consume(LineBreak) {}
                     }
                     ast::Attribute::new(span, ast::BareAttribute::Documentation)
                 }
@@ -1541,33 +1540,38 @@ impl Parser<'_> {
     /// Regular-Attribute ::= "@" (#Word | "(" #Word Attribute-Argument* ")")
     /// ```
     fn finish_parse_regular_attribute(&mut self, mut span: Span) -> Result<ast::Attribute> {
-        let binder;
         let mut arguments = SmallVec::new();
 
-        match self.token().name() {
-            Word => {
-                binder = span.merging(self.token_into_identifier());
+        let binder = match self.token() {
+            Word(binder) => {
+                let binder = ast::Identifier::new_unchecked(binder.clone(), self.span());
+
+                span.merging(&binder);
                 self.advance();
+
+                binder
             }
             OpeningRoundBracket => {
                 self.advance();
-                binder = self.consume_word()?;
+                let binder = self.parse_word()?;
 
-                while self.token().name() != ClosingRoundBracket {
+                while self.token() != &ClosingRoundBracket {
                     arguments.push(self.parse_attribute_argument()?);
                 }
 
-                span.merging(self.token());
+                span.merging(self.span());
                 self.advance(); // ")"
+
+                binder
             }
             _ => {
-                self.expected(Word);
+                self.expected(WORD);
                 self.expected(OpeningRoundBracket);
                 return self.error_with(|_, it| {
                     it.label(span, "while parsing this attribute starting here")
                 });
             }
-        }
+        };
 
         Ok(ast::Attribute::new(
             span,
@@ -1585,33 +1589,33 @@ impl Parser<'_> {
     /// ```
     fn parse_attribute_argument(&mut self) -> Result<ast::AttributeArgument> {
         let mut span;
-        let argument = match self.token().name() {
+        let argument = match self.token() {
             PathHead!() => {
                 let path = self.parse_path()?;
                 span = path.span();
 
                 ast::BareAttributeArgument::Path(Box::new(path))
             }
-            NumberLiteral => {
-                let token = self.token().clone();
-                span = token.span;
+            NumberLiteral(literal) => {
+                span = self.span();
+                let literal = literal.clone();
                 self.advance();
 
-                ast::BareAttributeArgument::NumberLiteral(token.into_number_literal().unwrap())
+                ast::BareAttributeArgument::NumberLiteral(literal)
             }
-            TextLiteral => {
-                let token = self.token().clone();
-                span = token.span;
+            TextLiteral(literal) => {
+                span = self.span();
+                let literal = literal.clone();
                 self.advance();
 
-                ast::BareAttributeArgument::TextLiteral(token.into_text_literal().unwrap())
+                ast::BareAttributeArgument::TextLiteral(literal)
             }
             OpeningRoundBracket => {
-                span = self.token().span;
+                span = self.span();
                 self.advance();
-                let binder = self.consume_word()?;
+                let binder = self.parse_word()?;
                 let value = self.parse_attribute_argument()?;
-                span.merging(&self.consume(ClosingRoundBracket)?);
+                span.merging(self.expect(ClosingRoundBracket)?);
 
                 ast::BareAttributeArgument::Named(Box::new(ast::NamedAttributeArgument {
                     binder,
@@ -1635,22 +1639,30 @@ impl Parser<'_> {
     /// Identifier ::= #Word | #Symbol
     /// ```
     fn parse_identifier(&mut self) -> Result<Identifier> {
-        match self.token().name() {
-            Identifier!() => {
-                let identifier = self.token_into_identifier();
-                self.advance();
-                Ok(identifier)
-            }
-            _ => {
-                self.expected(IDENTIFIER);
-                self.error()
-            }
+        if let Identifier!(identifier) = self.token() {
+            let identifier = ast::Identifier::new_unchecked(identifier.clone(), self.span());
+            self.advance();
+            Ok(identifier)
+        } else {
+            self.expected(IDENTIFIER);
+            self.error()
+        }
+    }
+
+    fn parse_word(&mut self) -> Result<Identifier> {
+        if let Word(word) = self.token() {
+            let word = ast::Identifier::new_unchecked(word.clone(), self.span());
+            self.advance();
+            Ok(word)
+        } else {
+            self.expected(WORD);
+            self.error()
         }
     }
 
     /// Parse a terminator.
     ///
-    /// If the terminator is a line break, [consume] it. Otherwise, don't.
+    /// If the terminator is a line break, [advance] past it. Otherwise, don't.
     ///
     /// # Grammar
     ///
@@ -1662,21 +1674,21 @@ impl Parser<'_> {
     ///     | (< #Start-Of-Input | #Line-Break | #Dedentation)
     /// ```
     ///
-    /// [consume]: Self::consume
+    /// [advance]: Self::advance
     // @Task now with delimited sections being gone, we might be able to simplify the
     // definition of a terminator, maybe?
-    fn parse_terminator(&mut self) -> Result<Option<Token>> {
+    fn parse_terminator(&mut self) -> Result<Option<Span>> {
         let token = self.token();
-        if matches!(token.name(), Terminator!())
+        if matches!(token, Terminator!())
             || self
                 .look_behind(1)
-                .map_or(true, |token| matches!(token.name(), Terminator!()))
+                .map_or(true, |token| matches!(token.bare, Terminator!()))
         {
-            Ok(if token.name() == LineBreak {
-                let token = token.clone();
+            Ok(if token == &LineBreak {
+                let span = self.span();
                 self.advance();
 
-                Some(token)
+                Some(span)
             } else {
                 None
             })
@@ -1696,8 +1708,8 @@ impl Parser<'_> {
     ///
     /// [implicitness]: ast::Explicitness
     fn parse_optional_implicitness(&mut self) -> Option<Span> {
-        if self.token().name() == Apostrophe {
-            let span = self.token().span;
+        if self.token() == &Apostrophe {
+            let span = self.span();
             self.advance();
             Some(span)
         } else {
@@ -1706,9 +1718,8 @@ impl Parser<'_> {
     }
 
     fn parse_wide_arrow(&mut self) -> Result<()> {
-        let token = self.token();
-        if let ThinArrowRight = token.name() {
-            let span = token.span;
+        if let ThinArrowRight = self.token() {
+            let span = self.span();
             self.context(move |it| {
                 it.suggest(
                     span,
@@ -1718,18 +1729,22 @@ impl Parser<'_> {
             });
         }
 
-        self.consume(WideArrowRight)?;
+        self.expect(WideArrowRight)?;
         Ok(())
     }
 }
 
 trait Parse: Sized {
+    const NAME: &'static str;
+
     fn parse(parser: &mut Parser<'_>) -> Result<ast::Item<Self>>;
     fn parse_lower(parser: &mut Parser<'_>) -> Result<ast::Item<Self>>;
-    fn is_lower_prefix(token: TokenName) -> bool;
+    fn is_lower_prefix(token: &BareToken) -> bool;
 }
 
 impl Parse for ast::BareExpression {
+    const NAME: &'static str = "expression";
+
     fn parse(parser: &mut Parser<'_>) -> Result<Expression> {
         parser.parse_expression()
     }
@@ -1737,12 +1752,14 @@ impl Parse for ast::BareExpression {
         parser.parse_lower_expression()
     }
 
-    fn is_lower_prefix(token: TokenName) -> bool {
+    fn is_lower_prefix(token: &BareToken) -> bool {
         matches!(token, LowerExpressionPrefix!())
     }
 }
 
 impl Parse for ast::BarePattern {
+    const NAME: &'static str = "pattern";
+
     fn parse(parser: &mut Parser<'_>) -> Result<Pattern> {
         parser.parse_pattern()
     }
@@ -1750,26 +1767,27 @@ impl Parse for ast::BarePattern {
         parser.parse_lower_pattern()
     }
 
-    fn is_lower_prefix(token: TokenName) -> bool {
+    fn is_lower_prefix(token: &BareToken) -> bool {
         matches!(token, LowerPatternPrefix!())
     }
 }
 
 const IDENTIFIER: &str = "identifier";
 const TERMINATOR: &str = "terminator";
+const WORD: &str = "word";
 
 mod synonym {
     //! A collection of *pattern synonyms*.
     //!
     //! Contrary to methods or arrays, they preserve `match` exhaustiveness & overlap checks at use sites.
 
-    use token::TokenName::*;
+    use token::BareToken::*;
 
     /// An [identifier]
     ///
     /// [identifier]: ast::Identifier
-    pub(crate) macro Identifier() {
-        Word | Symbol
+    pub(crate) macro Identifier($identifier:pat) {
+        Word($identifier) | Symbol($identifier)
     }
 
     /// The prefix of an [attribute].
@@ -1786,8 +1804,8 @@ mod synonym {
         //
 
         AttributePrefix!()
-            | NumberLiteral
-            | TextLiteral
+            | NumberLiteral(_)
+            | TextLiteral(_)
             | QuestionMark
             | ForUpper
             | ForLower
@@ -1807,8 +1825,8 @@ mod synonym {
         //
 
         AttributePrefix!()
-            | NumberLiteral
-            | TextLiteral
+            | NumberLiteral(_)
+            | TextLiteral(_)
             | Backslash
             | OpeningSquareBracket
             | OpeningRoundBracket
@@ -1819,7 +1837,7 @@ mod synonym {
     ///
     /// [path]: ast::Path
     pub(crate) macro PathHead() {
-        Identifier!() | PathHanger!()
+        Identifier!(_) | PathHanger!()
     }
 
     /// The [hanger] of a [path].

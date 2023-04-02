@@ -1,0 +1,19 @@
+error[E010]: found ‘->’ but expected ‘.’, function argument or ‘=>’
+  ┌─ ${TEST_FOLDER}/parsing/case-arm-thin-arrow.lushui:2:5
+  │
+2 │     false -> x
+  │     ───── while parsing this pattern
+  │
+  ├─ ${TEST_FOLDER}/parsing/case-arm-thin-arrow.lushui:2:11
+  │
+2 │     false -> x
+  │           ══ unexpected token
+  │
+ help: consider replacing the thin arrow with a wide one
+  ┌─ ${TEST_FOLDER}/parsing/case-arm-thin-arrow.lushui:2:11
+  │
+2 │     false => x
+  │           ~~
+
+error: aborting due to previous error
+

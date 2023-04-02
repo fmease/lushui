@@ -1,0 +1,3 @@
+main = case x of
+    false -> x
+    true -> y
