@@ -20,7 +20,6 @@ use session::{
     Context, Session, OUTPUT_FOLDER_NAME,
 };
 use std::{
-    collections::BTreeSet,
     default::default,
     fs,
     io::BufWriter,
@@ -28,6 +27,7 @@ use std::{
 };
 use text_processor::TextProcessor;
 use token::Word;
+use utilities::Atom;
 
 mod fonts;
 mod format;
@@ -79,7 +79,7 @@ pub fn document_component(
 pub fn index_page(context: &Context) -> PathBuf {
     let mut path = Documenter::folder(context);
     if context.root_package().is_none() {
-        path.push(context.root_component().name.as_str());
+        path.push(context.root_component().name.to_str());
     }
     path.push("index.html");
     path
@@ -125,11 +125,11 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                 let mut path = package.folder().to_path_buf();
                 path.push(OUTPUT_FOLDER_NAME);
                 path.push(DOC_FOLDER_NAME);
-                path.push(package.name.as_str());
+                path.push(package.name.to_str());
                 path
             }
             None => {
-                Path::new(context.root_component().name.as_str()).with_extension(DOC_FOLDER_NAME)
+                Path::new(context.root_component().name.to_str()).with_extension(DOC_FOLDER_NAME)
             }
         }
     }
@@ -183,7 +183,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
             fs::write(&page.path, &page.content)?;
         }
 
-        let component_name = self.session.component().name().as_str();
+        let component_name = self.session.component().name().to_str();
         let component_path = self.path.join(component_name);
 
         if !component_path.exists() {
@@ -335,7 +335,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                 hir::BareDeclaration::Function(function) => {
                     subsections.functions.0.push(subsections::Function {
                         attributes: &declaration.attributes,
-                        binder: function.binder.as_str(),
+                        binder: function.binder.to_str(),
                         type_: format::format_expression(
                             &function.type_annotation,
                             url_prefix,
@@ -352,7 +352,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
 
                             formatted_constructors.push(subsections::Constructor {
                                 attributes: &declaration.attributes,
-                                binder: constructor.binder.as_str(),
+                                binder: constructor.binder.to_str(),
                                 type_: format::format_expression(
                                     &constructor.type_annotation,
                                     url_prefix,
@@ -366,7 +366,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                         // @Task write a custom formatter for this which prints links to the documentation
                         // of the specific attributes
                         attributes: &declaration.attributes,
-                        binder: type_.binder.as_str(),
+                        binder: type_.binder.to_str(),
                         type_: format::format_expression(
                             &type_.type_annotation,
                             url_prefix,
@@ -378,7 +378,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                 hir::BareDeclaration::Module(module) => {
                     subsections.modules.0.push(subsections::Module {
                         attributes: &declaration.attributes,
-                        binder: module.binder.as_str(),
+                        binder: module.binder.to_str(),
                     });
                 }
                 // @Task re-exports, only public//(public topmost) for --doc-priv-decls??) ones!
@@ -400,7 +400,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
             &subsections,
             url_prefix,
             default(),
-            BTreeSet::from([&self.session.root_component().name]),
+            vec![self.session.root_component().name],
         ));
 
         // main content
@@ -444,7 +444,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
             &subsections,
             url_prefix,
             default(),
-            BTreeSet::from([&self.session.root_component().name]),
+            vec![self.session.root_component().name],
         ));
 
         // main content
@@ -490,7 +490,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
             &default(),
             url_prefix,
             default(),
-            BTreeSet::from([&self.session.root_component().name]),
+            vec![self.session.root_component().name],
         ));
 
         // main content
@@ -516,7 +516,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                 for component in package.components.keys() {
                     list.add_child(Element::new("li").child(Element::anchor(
                         format!("{url_prefix}{component}/index.html"),
-                        component.as_str(),
+                        component.to_str(),
                     )));
                 }
 
@@ -533,7 +533,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
             content: render_page(
                 head(
                     // @Temporary hack
-                    &Word::new_unchecked("__".into()),
+                    Word::new_unchecked(Atom::underscore),
                     url_prefix,
                     format!("Package {name}").into(),
                 ),
@@ -546,9 +546,9 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
         let index = module.binder.local_declaration_index(self.session).unwrap();
         let component_name = self.session.component().name();
 
-        let mut path_segments = self.session.component().local_index_to_path_segments(index);
-        path_segments.push_front(component_name.as_str());
-        let page_depth = path_segments.len();
+        let mut segments = self.session.component().local_index_to_path_segments(index);
+        segments.push_front(component_name.into_inner());
+        let page_depth = segments.len();
         let url_prefix = format!("./{}", "../".repeat(page_depth));
 
         let mut body = Element::new("body").child(ledge(
@@ -563,8 +563,13 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
         container.add_child(sidebar(
             &subsections,
             &url_prefix,
-            self.session.component().dependencies().keys().collect(),
-            BTreeSet::from([&self.session.root_component().name]),
+            self.session
+                .component()
+                .dependencies()
+                .keys()
+                .copied()
+                .collect(),
+            vec![self.session.root_component().name],
         ));
 
         // main content
@@ -582,12 +587,12 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
 
                 heading.add_child(" ");
 
-                for (position, &path_segment) in path_segments.iter().enumerate() {
+                for (position, path_segment) in segments.iter().enumerate() {
                     let is_last_segment = position + 1 == page_depth;
 
                     heading.add_child(Element::anchor(
                         format!("{}index.html", "../".repeat(page_depth - 1 - position)),
-                        path_segment,
+                        path_segment.to_str(),
                     ));
 
                     if !is_last_segment {
@@ -620,12 +625,12 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
             .component()
             .local_index_with_root_to_extern_path(index, component_name.to_string());
 
-        let mut path = self.path.join(component_name.as_str());
-        path.extend(path_segments.into_iter().skip(1));
-        path.push("index.html");
-
         Page {
-            path,
+            path: segments
+                .into_iter()
+                .map(Atom::to_str)
+                .chain(Some("index.html"))
+                .collect(),
             content: render_page(head(component_name, &url_prefix, title.into()), body),
         }
     }
@@ -634,7 +639,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
 fn ledge<'a>(
     url_prefix: &'a str,
     package: Option<&'a Package>,
-    component: Option<&'a Word>,
+    component: Option<Word>,
 ) -> Element<'a> {
     let mut context = Element::div("name");
 
@@ -643,7 +648,7 @@ fn ledge<'a>(
         context.add_child(
             Element::new("a")
                 .attribute("href", format!("{url_prefix}index.html"))
-                .child(Element::span("package").child(package.name.as_str()))
+                .child(Element::span("package").child(package.name.to_str()))
                 .child(" ")
                 .child(&package.version.0),
         );
@@ -658,7 +663,7 @@ fn ledge<'a>(
         context.add_child(
             Element::anchor(
                 format!("{url_prefix}{component}/index.html"),
-                component.as_str(),
+                component.to_str(),
             )
             .class("component"),
         );
@@ -700,7 +705,7 @@ fn render_page(head: Element<'_>, body: Element<'_>) -> String {
 }
 
 // @Task remove `component` param
-fn head<'a>(component: &Word, url_prefix: &str, title: Node<'a>) -> Element<'a> {
+fn head<'a>(component: Word, url_prefix: &str, title: Node<'a>) -> Element<'a> {
     Element::new("head")
         .child(VoidElement::new("meta").attribute("charset", "utf-8"))
         .child(
@@ -739,8 +744,8 @@ fn head<'a>(component: &Word, url_prefix: &str, title: Node<'a>) -> Element<'a> 
 fn sidebar<'a>(
     subsections: &subsections::Subsections<'a>,
     url_prefix: &str,
-    dependencies: BTreeSet<&'a Word>,
-    targets: BTreeSet<&'a Word>,
+    dependencies: Vec<Word>,
+    root_components: Vec<Word>,
 ) -> Element<'a> {
     let mut sidebar = Element::div("sidebar");
 
@@ -755,10 +760,10 @@ fn sidebar<'a>(
 
         let mut list = Element::new("ul");
         for dependency in dependencies {
-            // @Bug this is erroneous for components that share the same name
+            // @Bug this is incorrect for components that share the same name
             let anchor = Element::anchor(
                 format!("{url_prefix}{dependency}/index.html"),
-                Node::from(dependency.as_str()),
+                Node::from(dependency.to_str()),
             );
 
             list.add_child(Element::new("li").child(anchor));
@@ -770,15 +775,15 @@ fn sidebar<'a>(
     {
         sidebar.add_child(
             Element::div("title")
-                .child("Targets")
-                .attribute("title", "Target Components"),
+                .child("Roots")
+                .attribute("title", "Root Components"),
         );
 
         let mut list = Element::new("ul");
-        for component in targets {
+        for component in root_components {
             let anchor = Element::anchor(
                 format!("{url_prefix}{component}/index.html"),
-                Node::from(component.as_str()),
+                Node::from(component.to_str()),
             );
 
             list.add_child(Element::new("li").child(anchor));

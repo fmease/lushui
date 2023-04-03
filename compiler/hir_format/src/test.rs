@@ -49,7 +49,7 @@ impl ComponentExt for Component {
     ) -> Identifier {
         let identifier = ast::Identifier::new_unchecked(name.into(), default());
         let entity = Entity {
-            source: identifier.clone(),
+            source: identifier,
             parent: Some(parent),
             exposure: Exposure::Unrestricted,
             attributes: default(),
@@ -65,13 +65,13 @@ fn pi_type_application_argument() {
     let mut component = Component::mock();
     let array = component
         .add("Array", EntityKind::untyped_data_type())
-        .into_item();
+        .to_item();
     let int = component
         .add("Int", EntityKind::untyped_data_type())
-        .into_item();
+        .to_item();
     let type_ = component
         .add("Type", EntityKind::untyped_data_type())
-        .into_item();
+        .to_item();
 
     let mut context = Context::mock();
     let session = Session::new(component, &mut context);
@@ -114,19 +114,19 @@ fn pi_type_named_parameter() {
         &Expression::bare(
             hir::PiType {
                 explicitness: Explicit,
-                binder: Some(alpha.clone()),
+                binder: Some(alpha),
                 domain: Expression::bare(
                     hir::Application {
-                        callee: array.into_item(),
-                        argument: int.into_item(),
+                        callee: array.to_item(),
+                        argument: int.to_item(),
                         explicitness: Explicit,
                     }
                     .into(),
                 ),
                 codomain: Expression::bare(
                     hir::Application {
-                        callee: container.into_item(),
-                        argument: alpha.into_item(),
+                        callee: container.to_item(),
+                        argument: alpha.to_item(),
                         explicitness: Explicit,
                     }
                     .into(),
@@ -143,7 +143,7 @@ fn pi_type_implicit_parameter() {
     let mut component = Component::mock();
     let type_ = component
         .add("Type", EntityKind::untyped_data_type())
-        .into_item();
+        .to_item();
 
     let mut context = Context::mock();
     let session = Session::new(component, &mut context);
@@ -169,7 +169,7 @@ fn pi_type_higher_order_argument() {
     let mut component = Component::mock();
     let int = component
         .add("Int", EntityKind::untyped_data_type())
-        .into_item();
+        .to_item();
 
     let mut context = Context::mock();
     let session = Session::new(component, &mut context);
@@ -203,13 +203,13 @@ fn pi_type_two_curried_arguments() {
     let mut component = Component::mock();
     let int = component
         .add("Int", EntityKind::untyped_data_type())
-        .into_item();
+        .to_item();
     let text = component
         .add("Text", EntityKind::untyped_data_type())
-        .into_item();
+        .to_item();
     let type_ = component
         .add("Type", EntityKind::untyped_data_type())
-        .into_item();
+        .to_item();
 
     let mut context = Context::mock();
     let session = Session::new(component, &mut context);
@@ -243,7 +243,7 @@ fn pi_type_lambda_domain() {
     let mut component = Component::mock();
     let type_ = component
         .add("Type", EntityKind::untyped_data_type())
-        .into_item();
+        .to_item();
     let x = Identifier::parameter("x");
 
     let mut context = Context::mock();
@@ -257,10 +257,10 @@ fn pi_type_lambda_domain() {
                 binder: None,
                 domain: Expression::bare(
                     hir::Lambda {
-                        binder: x.clone(),
+                        binder: x,
                         domain: None,
                         codomain: None,
-                        body: x.into_item(),
+                        body: x.to_item(),
                         explicitness: Explicit,
                     }
                     .into(),
@@ -279,7 +279,7 @@ fn application_three_curried_arguments() {
     let beta = component.add("beta", EntityKind::UntypedFunction);
     let type_ = component
         .add("Type", EntityKind::untyped_data_type())
-        .into_item();
+        .to_item();
 
     let mut context = Context::mock();
     let session = Session::new(component, &mut context);
@@ -292,15 +292,15 @@ fn application_three_curried_arguments() {
                     hir::Application {
                         callee: Expression::bare(
                             hir::Application {
-                                callee: Identifier::parameter("alpha").into_item(),
-                                argument: beta.into_item(),
+                                callee: Identifier::parameter("alpha").to_item(),
+                                argument: beta.to_item(),
                                 explicitness: Explicit,
                             }
                             .into(),
                         ),
                         argument: Expression::bare(
                             hir::Application {
-                                callee: Identifier::parameter("gamma").into_item(),
+                                callee: Identifier::parameter("gamma").to_item(),
                                 argument: type_,
                                 explicitness: Explicit,
                             }
@@ -334,14 +334,14 @@ fn application_lambda_last_argument() {
         r"topmost.take (\it => it)",
         &Expression::bare(
             hir::Application {
-                callee: take.into_item(),
+                callee: take.to_item(),
                 argument: Expression::bare(
                     hir::Lambda {
-                        binder: it.clone(),
+                        binder: it,
                         domain: None,
                         codomain: None,
                         // technically not correct
-                        body: it.into_item(),
+                        body: it.to_item(),
                         explicitness: Explicit,
                     }
                     .into(),
@@ -370,14 +370,14 @@ fn application_lambda_argument() {
             hir::Application {
                 callee: Expression::bare(
                     hir::Application {
-                        callee: take.into_item(),
+                        callee: take.to_item(),
                         argument: Expression::bare(
                             hir::Lambda {
-                                binder: it.clone(),
+                                binder: it,
                                 domain: None,
                                 codomain: None,
                                 // technically not correct
-                                body: it.into_item(),
+                                body: it.to_item(),
                                 explicitness: Explicit,
                             }
                             .into(),
@@ -401,7 +401,7 @@ fn application_implicit_argument() {
     let identity = component.add("identity", EntityKind::UntypedFunction);
     let type_ = component
         .add("Type", EntityKind::untyped_data_type())
-        .into_item();
+        .to_item();
 
     let mut context = Context::mock();
     let session = Session::new(component, &mut context);
@@ -410,7 +410,7 @@ fn application_implicit_argument() {
         r"topmost.identity 'topmost.Type",
         &Expression::bare(
             hir::Application {
-                callee: identity.into_item(),
+                callee: identity.to_item(),
                 argument: type_,
                 explicitness: Implicit,
             }
@@ -433,11 +433,11 @@ fn application_complex_implicit_argument() {
         r"topmost.identity '(prepare topmost.Text)",
         &Expression::bare(
             hir::Application {
-                callee: identity.into_item(),
+                callee: identity.to_item(),
                 argument: Expression::bare(
                     hir::Application {
-                        callee: Identifier::parameter("prepare").into_item(),
-                        argument: text.into_item(),
+                        callee: Identifier::parameter("prepare").to_item(),
+                        argument: text.to_item(),
                         explicitness: Explicit,
                     }
                     .into(),
@@ -466,7 +466,7 @@ fn application_intrinsic_application_callee() {
                     }
                     .into(),
                 ),
-                argument: Identifier::parameter("omicron").into_item(),
+                argument: Identifier::parameter("omicron").to_item(),
                 explicitness: Explicit,
             }
             .into(),
@@ -489,7 +489,7 @@ fn lambda_body_type_annotation() {
             hir::Lambda {
                 binder: Identifier::parameter("input"),
                 domain: None,
-                codomain: Some(output.into_item()),
+                codomain: Some(output.to_item()),
                 body: Expression::bare(Number::Nat(0u8.into()).into()),
                 explicitness: Explicit,
             }
@@ -506,7 +506,7 @@ fn lambda_parameter_type_annotation_body_type_annotation() {
     let output = component.add("Output", EntityKind::untyped_data_type());
     let type_ = component
         .add("Type", EntityKind::untyped_data_type())
-        .into_item();
+        .to_item();
 
     let mut context = Context::mock();
     let session = Session::new(component, &mut context);
@@ -516,8 +516,8 @@ fn lambda_parameter_type_annotation_body_type_annotation() {
         &Expression::bare(
             hir::Lambda {
                 binder: Identifier::parameter("input"),
-                domain: Some(input.into_item()),
-                codomain: Some(output.into_item()),
+                domain: Some(input.to_item()),
+                codomain: Some(output.to_item()),
                 body: type_,
                 explicitness: Explicit,
             }
@@ -532,7 +532,7 @@ fn lambda_implicit_parameter() {
     let mut component = Component::mock();
     let type_ = component
         .add("Type", EntityKind::untyped_data_type())
-        .into_item();
+        .to_item();
 
     let mut context = Context::mock();
     let session = Session::new(component, &mut context);
@@ -569,10 +569,10 @@ fn lambda_implicit_unannotated_parameter() {
                 codomain: None,
                 body: Expression::bare(
                     hir::Lambda {
-                        binder: a.clone(),
+                        binder: a,
                         domain: None,
                         codomain: None,
-                        body: a.into_item(),
+                        body: a.to_item(),
                         explicitness: Explicit,
                     }
                     .into(),
@@ -591,7 +591,7 @@ fn lambda_pi_type_body() {
     let mut component = Component::mock();
     let type_ = component
         .add("Type", EntityKind::untyped_data_type())
-        .into_item();
+        .to_item();
     let x = Identifier::parameter("x");
 
     let mut context = Context::mock();
@@ -601,14 +601,14 @@ fn lambda_pi_type_body() {
         r"\x => x -> topmost.Type",
         &Expression::bare(
             hir::Lambda {
-                binder: x.clone(),
+                binder: x,
                 domain: None,
                 codomain: None,
                 body: Expression::bare(
                     hir::PiType {
                         explicitness: Explicit,
                         binder: None,
-                        domain: x.into_item(),
+                        domain: x.to_item(),
                         codomain: type_,
                     }
                     .into(),
@@ -654,7 +654,7 @@ fn intrinsic_application_two_arguments() {
         "add (add 1 3000) 0",
         &Expression::bare(
             hir::IntrinsicApplication {
-                callee: add.clone(),
+                callee: add,
                 arguments: vec![
                     Expression::bare(
                         hir::IntrinsicApplication {
@@ -686,7 +686,7 @@ fn attributes() {
             hir::Application {
                 callee: Expression::bare(
                     hir::Application {
-                        callee: Identifier::parameter("==").into_item(),
+                        callee: Identifier::parameter("==").to_item(),
                         argument: Expression::new(
                             Attributes(vec![
                                 Attribute::new(default(), BareAttribute::Static),
@@ -703,7 +703,7 @@ fn attributes() {
                     Attributes(vec![Attribute::new(default(), BareAttribute::Static)]),
                     default(),
                     hir::Application {
-                        callee: Identifier::parameter("increment").into_item(),
+                        callee: Identifier::parameter("increment").to_item(),
                         argument: Expression::bare(Number::Nat(1u8.into()).into()),
                         explicitness: Explicit,
                     }
@@ -735,11 +735,7 @@ fn path() {
     let mut context = Context::mock();
     let session = Session::new(component, &mut context);
 
-    assert_format(
-        "topmost.overarching.middle.sink",
-        &sink.into_item(),
-        &session,
-    );
+    assert_format("topmost.overarching.middle.sink", &sink.to_item(), &session);
 }
 
 #[test]
@@ -767,7 +763,7 @@ fn path_identifier_symbol_symbol_identifier_segments() {
 
     assert_format(
         "topmost.overarching.&/.~## . ^^^ .sink",
-        &sink.into_item(),
+        &sink.to_item(),
         &session,
     );
 }

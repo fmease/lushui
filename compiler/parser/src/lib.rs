@@ -35,7 +35,7 @@ use std::default::default;
 #[allow(clippy::wildcard_imports)]
 use synonym::*;
 use token::BareToken::{self, *};
-use utilities::{smallvec, SmallVec};
+use utilities::{smallvec, Atom, SmallVec};
 
 mod base;
 #[cfg(test)]
@@ -172,7 +172,7 @@ impl Parser<'_> {
         let span = self.span();
         match self.token() {
             Word(binder) => {
-                let binder = ast::Identifier::new_unchecked(binder.clone(), span);
+                let binder = ast::Identifier::new_unchecked(binder, span);
                 self.advance();
                 self.finish_parse_function_declaration(binder, attributes)
             }
@@ -283,7 +283,7 @@ impl Parser<'_> {
                 Some(constructors)
             }
             name @ Terminator!() => {
-                if name == &LineBreak {
+                if name == LineBreak {
                     self.advance();
                 }
                 None
@@ -329,7 +329,7 @@ impl Parser<'_> {
     ) -> Result<Declaration> {
         // @Task abstract over this (used below as well), good idea?
         if let name @ Terminator!() = self.token() {
-            if name == &LineBreak {
+            if name == LineBreak {
                 self.advance();
             }
 
@@ -346,7 +346,7 @@ impl Parser<'_> {
             // Out-of-line module declaration.
             // @Task abstract over this (used above as well), good idea?
             name @ Terminator!() => {
-                if name == &LineBreak {
+                if name == LineBreak {
                     self.advance();
                 }
 
@@ -448,19 +448,20 @@ impl Parser<'_> {
         let mut path = self.parse_path_head()?;
 
         while self.consume(Dot) {
+            let mut span = self.span();
             match self.token() {
                 Identifier!(segment) => {
-                    let segment = ast::Identifier::new_unchecked(segment.clone(), self.span());
                     self.advance();
-                    path.segments.push(segment);
+
+                    path.segments
+                        .push(ast::Identifier::new_unchecked(segment, span));
                 }
                 OpeningRoundBracket => {
-                    let mut span = self.span();
                     self.advance();
 
                     let mut bindings = Vec::new();
 
-                    while self.token() != &ClosingRoundBracket {
+                    while self.token() != ClosingRoundBracket {
                         let mut span = self.span();
                         if self.consume(OpeningRoundBracket) {
                             let target = self.parse_path()?;
@@ -503,7 +504,7 @@ impl Parser<'_> {
         };
 
         Ok(ast::UsePathTree::new(
-            path.span().merge(&binder),
+            path.span().merge(binder),
             ast::BareUsePathTree::Single {
                 target: path,
                 binder,
@@ -610,8 +611,8 @@ impl Parser<'_> {
                     domain.span,
                     ast::BareParameter {
                         explicitness: Explicit,
-                        // @Task use an pre-interned underscore!
-                        binder: Identifier::new_unchecked("_".into(), domain.span.start()),
+                        // @Temporary hack until we properly support discards
+                        binder: Identifier::new_unchecked(Atom::underscore, domain.span.start()),
                         type_: Some(domain),
                     },
                 )],
@@ -677,7 +678,6 @@ impl Parser<'_> {
         let mut span = self.span();
         let mut expression = match self.token() {
             NumberLiteral(literal) => {
-                let literal = Spanned::new(span, literal.clone());
                 self.advance();
 
                 Expression::new(
@@ -685,13 +685,12 @@ impl Parser<'_> {
                     span,
                     ast::NumberLiteral {
                         path: None,
-                        literal,
+                        literal: Spanned::new(span, literal),
                     }
                     .into(),
                 )
             }
             TextLiteral(literal) => {
-                let literal = Spanned::new(span, literal.clone());
                 self.advance();
 
                 Expression::new(
@@ -699,7 +698,7 @@ impl Parser<'_> {
                     span,
                     ast::TextLiteral {
                         path: None,
-                        literal,
+                        literal: Spanned::new(span, literal),
                     }
                     .into(),
                 )
@@ -708,7 +707,7 @@ impl Parser<'_> {
                 self.advance();
                 let tag = self.parse_word()?;
 
-                Expression::new(default(), span.merge(&tag), ast::TypedHole { tag }.into())
+                Expression::new(default(), span.merge(tag), ast::TypedHole { tag }.into())
             }
             ForUpper => {
                 self.advance();
@@ -752,7 +751,7 @@ impl Parser<'_> {
             _ => {
                 self.expected("expression");
                 return self.error_with(|this, it| {
-                    if this.token() == &ThinArrowRight {
+                    if this.token() == ThinArrowRight {
                         it.help(
                             "consider adding round brackets around the potential \
                              function type to disambiguate the expression",
@@ -771,7 +770,7 @@ impl Parser<'_> {
 
             expression = Expression::new(
                 attributes.take().unwrap_or_default(),
-                expression.span.merge(&field),
+                expression.span.merge(field),
                 ast::Projection {
                     basis: expression,
                     field,
@@ -814,10 +813,9 @@ impl Parser<'_> {
     /// ```
     fn parse_path_head(&mut self) -> Result<ast::Path> {
         let path = match self.token() {
-            Identifier!(head) => Identifier::new_unchecked(head.clone(), self.span()).into(),
+            Identifier!(head) => Identifier::new_unchecked(head, self.span()).into(),
             PathHanger!() => self
                 .current()
-                .clone()
                 .map(|token| ast::BareHanger::try_from(token).unwrap())
                 .into(),
             _ => {
@@ -1008,7 +1006,7 @@ impl Parser<'_> {
         if self.consume(Indentation) {
             // @Task use parse_block function for this (but don't trash the span!)
 
-            while self.token() != &Dedentation {
+            while self.token() != Dedentation {
                 let pattern = self.parse_pattern()?;
                 self.parse_wide_arrow()?;
                 let body = self.parse_expression()?;
@@ -1046,7 +1044,7 @@ impl Parser<'_> {
 
         self.expect(Indentation)?;
 
-        while self.token() != &Dedentation {
+        while self.token() != Dedentation {
             // @Note necessary I guess in cases where we have #Line-Break ##Comment+ #Line-Break
             if self.consume(LineBreak) {
                 continue;
@@ -1130,7 +1128,7 @@ impl Parser<'_> {
 
             let parameter = match self.token() {
                 Word(binder) => {
-                    let binder = ast::Identifier::new_unchecked(binder.clone(), self.span());
+                    let binder = ast::Identifier::new_unchecked(binder, self.span());
                     self.advance();
 
                     ast::Parameter::new(
@@ -1210,7 +1208,6 @@ impl Parser<'_> {
         let mut span = self.span();
         let mut pattern = match self.token() {
             NumberLiteral(literal) => {
-                let literal = Spanned::new(span, literal.clone());
                 self.advance();
 
                 Pattern::new(
@@ -1218,13 +1215,12 @@ impl Parser<'_> {
                     span,
                     ast::NumberLiteral {
                         path: None,
-                        literal,
+                        literal: Spanned::new(span, literal),
                     }
                     .into(),
                 )
             }
             TextLiteral(literal) => {
-                let literal = Spanned::new(span, literal.clone());
                 self.advance();
 
                 Pattern::new(
@@ -1232,7 +1228,7 @@ impl Parser<'_> {
                     span,
                     ast::TextLiteral {
                         path: None,
-                        literal,
+                        literal: Spanned::new(span, literal),
                     }
                     .into(),
                 )
@@ -1240,14 +1236,14 @@ impl Parser<'_> {
             Backslash => {
                 self.advance();
                 let binder = self.parse_word()?;
-                Pattern::new(default(), span.merge(&binder), binder.into())
+                Pattern::new(default(), span.merge(binder), binder.into())
             }
             OpeningSquareBracket => {
                 self.advance();
 
                 let mut elements = Vec::new();
 
-                while self.token() != &ClosingSquareBracket {
+                while self.token() != ClosingSquareBracket {
                     elements.push(self.parse_lower_pattern()?);
                 }
 
@@ -1305,7 +1301,7 @@ impl Parser<'_> {
     {
         let mut elements = Vec::new();
 
-        while self.token() != &ClosingSquareBracket {
+        while self.token() != ClosingSquareBracket {
             elements.push(T::parse_lower(self)?);
         }
 
@@ -1349,12 +1345,10 @@ impl Parser<'_> {
             //
             // Parse an optional argument.
             //
-            let (binder, argument) = if self.token() == &OpeningRoundBracket
-                && let &Spanned!(binder_span, Word(ref binder)) = self.look_ahead(1)
+            let (binder, argument) = if self.token() == OpeningRoundBracket
+                && let Spanned!(binder_span, Word(binder)) = self.look_ahead(1)
                 && self.look_ahead(2).bare == Equals
             {
-                let binder = binder.clone();
-
                 self.advance(); // "("
                 self.advance(); // #Word
                 self.advance(); // "="
@@ -1427,12 +1421,11 @@ impl Parser<'_> {
             let span = self.span();
             match self.token() {
                 Identifier!(segment) => {
-                    let segment = ast::Identifier::new_unchecked(segment.clone(), span);
                     self.advance();
-                    path.segments.push(segment);
+                    path.segments
+                        .push(ast::Identifier::new_unchecked(segment, span));
                 }
                 NumberLiteral(literal) => {
-                    let literal = Spanned::new(span, literal.clone());
                     self.advance();
 
                     return Ok(ast::Item::new(
@@ -1440,13 +1433,12 @@ impl Parser<'_> {
                         path.span().merge(span),
                         ast::NumberLiteral {
                             path: Some(path),
-                            literal,
+                            literal: Spanned::new(span, literal),
                         }
                         .into(),
                     ));
                 }
                 TextLiteral(literal) => {
-                    let literal = Spanned::new(span, literal.clone());
                     self.advance();
 
                     return Ok(ast::Item::new(
@@ -1454,7 +1446,7 @@ impl Parser<'_> {
                         path.span().merge(span),
                         ast::TextLiteral {
                             path: Some(path),
-                            literal,
+                            literal: Spanned::new(span, literal),
                         }
                         .into(),
                     ));
@@ -1544,7 +1536,7 @@ impl Parser<'_> {
 
         let binder = match self.token() {
             Word(binder) => {
-                let binder = ast::Identifier::new_unchecked(binder.clone(), self.span());
+                let binder = ast::Identifier::new_unchecked(binder, self.span());
 
                 span.merging(&binder);
                 self.advance();
@@ -1555,7 +1547,7 @@ impl Parser<'_> {
                 self.advance();
                 let binder = self.parse_word()?;
 
-                while self.token() != &ClosingRoundBracket {
+                while self.token() != ClosingRoundBracket {
                     arguments.push(self.parse_attribute_argument()?);
                 }
 
@@ -1598,14 +1590,12 @@ impl Parser<'_> {
             }
             NumberLiteral(literal) => {
                 span = self.span();
-                let literal = literal.clone();
                 self.advance();
 
                 ast::BareAttributeArgument::NumberLiteral(literal)
             }
             TextLiteral(literal) => {
                 span = self.span();
-                let literal = literal.clone();
                 self.advance();
 
                 ast::BareAttributeArgument::TextLiteral(literal)
@@ -1639,10 +1629,9 @@ impl Parser<'_> {
     /// Identifier ::= #Word | #Symbol
     /// ```
     fn parse_identifier(&mut self) -> Result<Identifier> {
-        if let Identifier!(identifier) = self.token() {
-            let identifier = ast::Identifier::new_unchecked(identifier.clone(), self.span());
+        if let Spanned!(span, Identifier!(identifier)) = self.current() {
             self.advance();
-            Ok(identifier)
+            Ok(ast::Identifier::new_unchecked(identifier, span))
         } else {
             self.expected(IDENTIFIER);
             self.error()
@@ -1650,10 +1639,9 @@ impl Parser<'_> {
     }
 
     fn parse_word(&mut self) -> Result<Identifier> {
-        if let Word(word) = self.token() {
-            let word = ast::Identifier::new_unchecked(word.clone(), self.span());
+        if let Spanned!(span, Word(word)) = self.current() {
             self.advance();
-            Ok(word)
+            Ok(ast::Identifier::new_unchecked(word, span))
         } else {
             self.expected(WORD);
             self.error()
@@ -1684,7 +1672,7 @@ impl Parser<'_> {
                 .look_behind(1)
                 .map_or(true, |token| matches!(token.bare, Terminator!()))
         {
-            Ok(if token == &LineBreak {
+            Ok(if token == LineBreak {
                 let span = self.span();
                 self.advance();
 
@@ -1708,7 +1696,7 @@ impl Parser<'_> {
     ///
     /// [implicitness]: ast::Explicitness
     fn parse_optional_implicitness(&mut self) -> Option<Span> {
-        if self.token() == &Apostrophe {
+        if self.token() == Apostrophe {
             let span = self.span();
             self.advance();
             Some(span)
@@ -1739,7 +1727,7 @@ trait Parse: Sized {
 
     fn parse(parser: &mut Parser<'_>) -> Result<ast::Item<Self>>;
     fn parse_lower(parser: &mut Parser<'_>) -> Result<ast::Item<Self>>;
-    fn is_lower_prefix(token: &BareToken) -> bool;
+    fn is_lower_prefix(token: BareToken) -> bool;
 }
 
 impl Parse for ast::BareExpression {
@@ -1752,7 +1740,7 @@ impl Parse for ast::BareExpression {
         parser.parse_lower_expression()
     }
 
-    fn is_lower_prefix(token: &BareToken) -> bool {
+    fn is_lower_prefix(token: BareToken) -> bool {
         matches!(token, LowerExpressionPrefix!())
     }
 }
@@ -1767,7 +1755,7 @@ impl Parse for ast::BarePattern {
         parser.parse_lower_pattern()
     }
 
-    fn is_lower_prefix(token: &BareToken) -> bool {
+    fn is_lower_prefix(token: BareToken) -> bool {
         matches!(token, LowerPatternPrefix!())
     }
 }

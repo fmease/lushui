@@ -15,8 +15,7 @@ use std::{
     path::{Path, PathBuf},
     process::Command,
 };
-
-const PROGRAM_ENTRY_NAME: &str = "main";
+use utilities::PROGRAM_ENTRY;
 
 pub fn compile_and_link(
     options: Options,
@@ -42,13 +41,20 @@ fn compile(
     _component_root: &hir::Declaration,
     session: &Session<'_>,
 ) -> PathBuf {
+    let program_entry_name = PROGRAM_ENTRY.to_str();
+
     let isa = cranelift_native::builder()
         .unwrap()
         .finish(Flags::new(settings::builder()))
         .unwrap();
 
     let mut module = ObjectModule::new(
-        ObjectBuilder::new(isa, "main", cranelift_module::default_libcall_names()).unwrap(),
+        ObjectBuilder::new(
+            isa,
+            program_entry_name,
+            cranelift_module::default_libcall_names(),
+        )
+        .unwrap(),
     );
     let mut context = module.make_context();
 
@@ -81,13 +87,13 @@ fn compile(
     // println!("{}", context.func.display());
 
     let function_id = module
-        .declare_function(PROGRAM_ENTRY_NAME, Linkage::Export, &context.func.signature)
+        .declare_function(program_entry_name, Linkage::Export, &context.func.signature)
         .unwrap();
     module.define_function(function_id, &mut context).unwrap();
 
     let product = module.finish();
 
-    let name = session.component().name().as_str();
+    let name = session.component().name().to_str();
 
     let path = match session.root_package() {
         // @Task ensure that the build folder exists
@@ -108,7 +114,7 @@ fn compile(
 // @Task support linkers other than clang
 //       (e.g. "`cc`", `gcc` (requires us to manually link to `libc` I think))
 fn link(path: &Path, session: &Session<'_>) -> Result {
-    let name = session.component().name().as_str();
+    let name = session.component().name().to_str();
 
     // @Task error handling!
     let output = Command::new("clang")

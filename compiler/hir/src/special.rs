@@ -3,7 +3,7 @@ use diagnostics::{error::Result, Diagnostic, ErrorCode, Substitution};
 use num_traits::{CheckedDiv, CheckedSub};
 use span::{Span, Spanning};
 use std::fmt;
-use utilities::HashMap;
+use utilities::{Atom, HashMap};
 
 /// A special binding.
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]
@@ -14,49 +14,49 @@ pub enum Binding {
 }
 
 impl Binding {
-    pub fn parse(namespace: Option<&str>, name: &str) -> Option<Self> {
+    pub fn parse(namespace: Option<Atom>, name: Atom) -> Option<Self> {
         Some(match (namespace, name) {
-            (None, "Type") => Type::Type.into(),
-            (None, "Unit") => Type::Unit.into(),
-            (None, "Bool") => Type::Bool.into(),
-            (None, "Text") => Type::Text.into(),
-            (None, "Option") => Type::Option.into(),
-            (None, "List") => SequentialType::List.into(),
-            (None, "Vector") => SequentialType::Vector.into(),
-            (None, "Tuple") => SequentialType::Tuple.into(),
-            (None, "Nat") => NumericType::Nat.into(),
-            (None, "Nat32") => NumericType::Nat32.into(),
-            (None, "Nat64") => NumericType::Nat64.into(),
-            (None, "Int") => NumericType::Int.into(),
-            (None, "Int32") => NumericType::Int32.into(),
-            (None, "Int64") => NumericType::Int64.into(),
-            (None, "IO") => Type::IO.into(),
-            (Some("Unit"), "unit") => Constructor::UnitUnit.into(),
-            (Some("Bool"), "false") => Constructor::BoolFalse.into(),
-            (Some("Bool"), "true") => Constructor::BoolTrue.into(),
-            (Some("Option"), "none") => Constructor::OptionNone.into(),
-            (Some("Option"), "some") => Constructor::OptionSome.into(),
-            (Some("List"), "empty") => Constructor::ListEmpty.into(),
-            (Some("List"), "prepend") => Constructor::ListPrepend.into(),
-            (Some("Vector"), "empty") => Constructor::VectorEmpty.into(),
-            (Some("Vector"), "prepend") => Constructor::VectorPrepend.into(),
-            (Some("Tuple"), "empty") => Constructor::TupleEmpty.into(),
-            (Some("Tuple"), "prepend") => Constructor::TuplePrepend.into(),
-            (Some("nat"), "add") => Function::NatAdd.into(),
-            (Some("nat"), "subtract") => Function::NatSubtract.into(),
-            (Some("nat"), "unchecked-subtract") => Function::NatUncheckedSubtract.into(),
-            (Some("nat"), "multiply") => Function::NatMultiply.into(),
-            (Some("nat"), "divide") => Function::NatDivide.into(),
-            (Some("nat"), "equal") => Function::NatEqual.into(),
-            (Some("nat"), "less") => Function::NatLess.into(),
-            (Some("nat"), "less-equal") => Function::NatLessEqual.into(),
-            (Some("nat"), "greater") => Function::NatGreater.into(),
-            (Some("nat"), "greater-equal") => Function::NatGreaterEqual.into(),
-            (Some("nat"), "display") => Function::NatDisplay.into(),
-            (Some("text"), "concat") => Function::TextConcat.into(),
-            (Some("nat32"), "add") => Function::Nat32Add.into(),
-            (Some("nat32"), "successor") => Function::Nat32Successor.into(),
-            (Some("io"), "print") => Function::IoPrint.into(),
+            (None, Atom::Type) => Type::Type.into(),
+            (None, Atom::Unit) => Type::Unit.into(),
+            (None, Atom::Bool) => Type::Bool.into(),
+            (None, Atom::Text) => Type::Text.into(),
+            (None, Atom::Option) => Type::Option.into(),
+            (None, Atom::List) => SequentialType::List.into(),
+            (None, Atom::Vector) => SequentialType::Vector.into(),
+            (None, Atom::Tuple) => SequentialType::Tuple.into(),
+            (None, Atom::Nat) => NumericType::Nat.into(),
+            (None, Atom::Nat32) => NumericType::Nat32.into(),
+            (None, Atom::Nat64) => NumericType::Nat64.into(),
+            (None, Atom::Int) => NumericType::Int.into(),
+            (None, Atom::Int32) => NumericType::Int32.into(),
+            (None, Atom::Int64) => NumericType::Int64.into(),
+            (None, Atom::IO) => Type::IO.into(),
+            (Some(Atom::Unit), Atom::unit) => Constructor::UnitUnit.into(),
+            (Some(Atom::Bool), Atom::false_) => Constructor::BoolFalse.into(),
+            (Some(Atom::Bool), Atom::true_) => Constructor::BoolTrue.into(),
+            (Some(Atom::Option), Atom::none) => Constructor::OptionNone.into(),
+            (Some(Atom::Option), Atom::some) => Constructor::OptionSome.into(),
+            (Some(Atom::List), Atom::empty) => Constructor::ListEmpty.into(),
+            (Some(Atom::List), Atom::prepend) => Constructor::ListPrepend.into(),
+            (Some(Atom::Vector), Atom::empty) => Constructor::VectorEmpty.into(),
+            (Some(Atom::Vector), Atom::prepend) => Constructor::VectorPrepend.into(),
+            (Some(Atom::Tuple), Atom::empty) => Constructor::TupleEmpty.into(),
+            (Some(Atom::Tuple), Atom::prepend) => Constructor::TuplePrepend.into(),
+            (Some(Atom::nat), Atom::add) => Function::NatAdd.into(),
+            (Some(Atom::nat), Atom::subtract) => Function::NatSubtract.into(),
+            (Some(Atom::nat), Atom::unchecked_subtract) => Function::NatUncheckedSubtract.into(),
+            (Some(Atom::nat), Atom::multiply) => Function::NatMultiply.into(),
+            (Some(Atom::nat), Atom::divide) => Function::NatDivide.into(),
+            (Some(Atom::nat), Atom::equal) => Function::NatEqual.into(),
+            (Some(Atom::nat), Atom::less) => Function::NatLess.into(),
+            (Some(Atom::nat), Atom::less_equal) => Function::NatLessEqual.into(),
+            (Some(Atom::nat), Atom::greater) => Function::NatGreater.into(),
+            (Some(Atom::nat), Atom::greater_equal) => Function::NatGreaterEqual.into(),
+            (Some(Atom::nat), Atom::display) => Function::NatDisplay.into(),
+            (Some(Atom::text), Atom::concat) => Function::TextConcat.into(),
+            (Some(Atom::nat32), Atom::add) => Function::Nat32Add.into(),
+            (Some(Atom::nat32), Atom::successor) => Function::Nat32Successor.into(),
+            (Some(Atom::io), Atom::print) => Function::IoPrint.into(),
             _ => return None,
         })
     }
@@ -494,7 +494,7 @@ impl Bindings {
         let special = special.into();
 
         self.get(special)
-            .map(|identifier| identifier.clone().into_item())
+            .map(Identifier::to_item)
             .ok_or_else(|| missing_binding_error(special, user))
     }
 
@@ -507,7 +507,7 @@ impl Bindings {
         attribute: Span,
     ) -> Result<Binding, Diagnostic> {
         let special = style
-            .as_name(&binder)
+            .as_name(binder)
             .and_then(|(namespace, name)| Binding::parse(namespace, name));
         let Some(special) = special.filter(|special| special.kind() == kind) else {
             return Err(Diagnostic::error()
@@ -517,7 +517,7 @@ impl Bindings {
                 })
                 .message(format!(
                     "‘{}’ is not {} {kind} binding",
-                    style.as_path(&binder),
+                    style.as_path(binder),
                     kind.article()
                 ))
                 .unlabeled_span(match style {
@@ -578,16 +578,16 @@ impl Bindings {
         self.from.insert(special, binder);
     }
 
-    pub fn get<K: Key>(&self, key: K) -> Option<<K as Key>::Output<'_>> {
+    pub fn get<K: Key>(&self, key: K) -> Option<<K as Key>::Output> {
         key.index(self)
     }
 
-    pub fn is(&self, binder: &Identifier, special: impl Into<Binding>) -> bool {
+    pub fn is(&self, binder: Identifier, special: impl Into<Binding>) -> bool {
         self.get(special).map_or(false, |special| special == binder)
     }
 }
 
-pub enum DefinitionStyle<'a, T = &'a str> {
+pub enum DefinitionStyle<'a, T = Atom> {
     /// The name of the special binding is implied by the binder & the namespace of the declaration (e.g. in `@known`).
     Implicit { namespace: Option<T> },
     /// The name of the special binding is given explicitly (e.g. in `@(intrinsic qualified.name)`).
@@ -595,7 +595,7 @@ pub enum DefinitionStyle<'a, T = &'a str> {
 }
 
 impl<'a> DefinitionStyle<'a> {
-    fn as_path(&self, binder: &Identifier) -> String {
+    fn as_path(&self, binder: Identifier) -> String {
         match self {
             Self::Implicit { namespace } => namespace.map_or(binder.to_string(), |namespace| {
                 format!("{namespace}.{binder}")
@@ -604,17 +604,17 @@ impl<'a> DefinitionStyle<'a> {
         }
     }
 
-    fn as_name(&'a self, binder: &'a Identifier) -> Option<(Option<&'a str>, &'a str)> {
+    fn as_name(&'a self, binder: Identifier) -> Option<(Option<Atom>, Atom)> {
         match self {
-            &Self::Implicit { namespace } => Some((namespace, binder.as_str())),
+            &Self::Implicit { namespace } => Some((namespace, binder.bare())),
             Self::Explicit { name } => {
                 if name.hanger.is_some() {
                     return None;
                 }
 
                 Some(match &*name.segments {
-                    [namespace, name] => (Some(namespace.as_str()), name.as_str()),
-                    [name] => (None, name.as_str()),
+                    [namespace, name] => (Some(namespace.bare()), name.bare()),
+                    [name] => (None, name.bare()),
                     _ => return None,
                 })
             }
@@ -623,23 +623,23 @@ impl<'a> DefinitionStyle<'a> {
 }
 
 pub trait Key: Sized {
-    type Output<'a>;
+    type Output;
 
-    fn index(self, bindings: &Bindings) -> Option<Self::Output<'_>>;
+    fn index(self, bindings: &Bindings) -> Option<Self::Output>;
 }
 
 impl<B: Into<Binding>> Key for B {
-    type Output<'a> = &'a Identifier;
+    type Output = Identifier;
 
-    fn index(self, bindings: &Bindings) -> Option<Self::Output<'_>> {
-        bindings.from.get(&self.into())
+    fn index(self, bindings: &Bindings) -> Option<Self::Output> {
+        bindings.from.get(&self.into()).copied()
     }
 }
 
 impl Key for DeclarationIndex {
-    type Output<'a> = Binding;
+    type Output = Binding;
 
-    fn index(self, bindings: &Bindings) -> Option<Self::Output<'_>> {
+    fn index(self, bindings: &Bindings) -> Option<Self::Output> {
         bindings.to.get(&self).copied()
     }
 }

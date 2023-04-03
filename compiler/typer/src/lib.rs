@@ -78,12 +78,12 @@ impl<'sess, 'ctx> Typer<'sess, 'ctx> {
                     attributes: declaration.attributes.clone(),
                     bare: if declaration.attributes.has(AttributeName::Intrinsic) {
                         BareDefinition::IntrinsicFunction {
-                            binder: function.binder.clone(),
+                            binder: function.binder,
                             type_: function.type_annotation.clone(),
                         }
                     } else {
                         BareDefinition::Function {
-                            binder: function.binder.clone(),
+                            binder: function.binder,
                             type_: function.type_annotation.clone(),
                             value: Some(function.expression.clone().unwrap()),
                         }
@@ -95,7 +95,7 @@ impl<'sess, 'ctx> Typer<'sess, 'ctx> {
                 self.evaluate_definition(Definition {
                     attributes: declaration.attributes.clone(),
                     bare: BareDefinition::Data {
-                        binder: type_.binder.clone(),
+                        binder: type_.binder,
                         type_: type_.type_annotation.clone(),
                     },
                 })?;
@@ -107,7 +107,7 @@ impl<'sess, 'ctx> Typer<'sess, 'ctx> {
                         self.start_infer_types_in_declaration(
                             constructor,
                             Context {
-                                owning_data_type: Some(type_.binder.clone()),
+                                owning_data_type: Some(type_.binder),
                             },
                         )
                         .stain(health);
@@ -122,7 +122,7 @@ impl<'sess, 'ctx> Typer<'sess, 'ctx> {
                 self.evaluate_definition(Definition {
                     attributes: declaration.attributes.clone(),
                     bare: BareDefinition::Constructor {
-                        binder: constructor.binder.clone(),
+                        binder: constructor.binder,
                         type_: constructor.type_annotation.clone(),
                         owner_data_type,
                     },
@@ -252,10 +252,7 @@ impl<'sess, 'ctx> Typer<'sess, 'ctx> {
                     interpreter::Context::new(&FunctionScope::Module),
                 )?;
 
-                self.assert_constructor_is_instance_of_type(
-                    type_.clone(),
-                    data.clone().into_item(),
-                )?;
+                self.assert_constructor_is_instance_of_type(type_.clone(), data.to_item())?;
 
                 self.carry_out_definition(Definition {
                     attributes: definition.attributes,
@@ -440,12 +437,12 @@ expected type ‘{}’
 
         Ok(match expression.bare {
             // @Task explanation why we need to special-case Type here!
-            Binding(binding) if self.session.specials().is(&binding.0, Type::Type) => {
+            Binding(binding) if self.session.specials().is(binding.0, Type::Type) => {
                 self.session.require_special(Type::Type, None)?
             }
             Binding(binding) => self
                 .interpreter()
-                .look_up_type(&binding.0, scope)
+                .look_up_type(binding.0, scope)
                 .ok_or(OutOfOrderBinding)?,
             Number(number) => self
                 .session
@@ -492,7 +489,7 @@ expected type ‘{}’
                     expression.span,
                     hir::PiType {
                         explicitness: Explicitness::Explicit,
-                        binder: Some(lambda.binder.clone()),
+                        binder: Some(lambda.binder),
                         domain: parameter_type,
                         codomain: inferred_body_type,
                     }
@@ -553,7 +550,7 @@ expected type ‘{}’
                             OutOfOrderBinding => unreachable!(),
                         })?;
 
-                    match pi.binder.clone() {
+                    match pi.binder {
                         Some(_) => Expression::new(
                             default(),
                             default(),
@@ -659,7 +656,7 @@ expected type ‘_ -> _’
                         }
                         Binding(binding) => {
                             let constructor_type =
-                                self.interpreter().look_up_type(&binding.0, scope).unwrap();
+                                self.interpreter().look_up_type(binding.0, scope).unwrap();
 
                             self.it_is_actual(
                                 subject_type.clone(),
@@ -689,7 +686,7 @@ expected type ‘_ -> _’
                                 (Number(_) | Text(_), _argument) => todo!(),
                                 (Binding(binding), _argument) => {
                                     let _constructor_type =
-                                        self.interpreter().look_up_type(&binding.0, scope).unwrap();
+                                        self.interpreter().look_up_type(binding.0, scope).unwrap();
 
                                     todo!();
                                 }
@@ -701,7 +698,7 @@ expected type ‘_ -> _’
                                             "binder ‘{}’ used in callee position inside pattern",
                                             binder.0
                                         ))
-                                        .unlabeled_span(&binder.0)
+                                        .unlabeled_span(binder.0)
                                         .help("consider referring to a concrete binding")
                                         .report(self.session.reporter())
                                         .into());

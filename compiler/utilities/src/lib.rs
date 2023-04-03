@@ -4,22 +4,26 @@
     decl_macro,
     never_type_fallback,
     never_type,
-    anonymous_lifetime_in_impl_trait
+    lazy_cell,
+    string_leak,
+    macro_metavar_expr,
+    negative_impls
 )]
 
+pub use atom::Atom;
 use colored::Colorize;
 use difference::{Changeset, Difference};
 pub use num_bigint::{BigInt as Int, BigUint as Nat};
 pub use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 pub use smallvec::smallvec;
 use std::{cell::Cell, ffi::OsStr, fmt, path::Path};
-pub use string_cache::DefaultAtom as Atom;
 
+pub mod atom;
 pub mod cycle;
 pub mod path;
 
-// @Question should this reside somewhere else?
-pub const FILE_EXTENSION: &str = "lushui";
+pub const FILE_EXTENSION: &str = "lushui"; // @Question worth to be an Atom?
+pub const PROGRAM_ENTRY: Atom = Atom::main;
 
 pub type Str = std::borrow::Cow<'static, str>;
 

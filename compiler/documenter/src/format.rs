@@ -6,8 +6,8 @@ use hir::DeclarationIndex;
 use hir_format::{ComponentExt, Display, SessionExt};
 use joinery::JoinableIterator;
 use session::Session;
-use std::{fmt::Write, iter::once};
-use utilities::displayed;
+use std::fmt::Write;
+use utilities::{displayed, Atom};
 
 pub(super) fn format_expression(
     expression: &hir::Expression,
@@ -216,16 +216,16 @@ impl<'a> Formatter<'a> {
     fn module_url_fragment(&self, index: DeclarationIndex) -> String {
         let component = self.session.component_of(index);
 
+        let mut segments = component.local_index_to_path_segments(index.local_unchecked());
+        segments.push_front(component.name().into_inner());
+
         format!(
             "{}{}/index.html",
             self.url_prefix,
-            once(component.name().as_str().into())
-                .chain(
-                    component
-                        .local_index_to_path_segments(index.local_unchecked())
-                        .into_iter()
-                        .map(urlencoding::encode)
-                )
+            segments
+                .into_iter()
+                .map(Atom::to_str)
+                .map(urlencoding::encode)
                 .join_with("/")
         )
     }
@@ -233,7 +233,7 @@ impl<'a> Formatter<'a> {
     fn declaration_url_fragment(&self, index: DeclarationIndex) -> String {
         use hir::EntityKind::*;
 
-        let binder = self.session[index].source.as_str();
+        let binder = self.session[index].source.to_str();
 
         match self.session[index].kind {
             Use { .. } => "#".to_string(), // @Task

@@ -301,6 +301,7 @@ impl TokenExt for Token {
     }
 }
 
+// @Task retire TokenName!
 #[derive(Clone, Debug, Discriminant, PartialEq, Eq)]
 #[discriminant(name: TokenName)]
 pub enum BareToken {

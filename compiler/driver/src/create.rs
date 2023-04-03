@@ -4,7 +4,7 @@ use diagnostics::{error::Result, Diagnostic, Reporter};
 use session::package::ManifestPath;
 use std::{fs, io, path::PathBuf};
 use token::Word;
-use utilities::{FormatError, FILE_EXTENSION};
+use utilities::{Atom, FormatError, FILE_EXTENSION};
 
 const SOURCE_FOLDER_NAME: &str = "source";
 const LIBRARY_FILE_STEM: &str = "library";
@@ -15,7 +15,7 @@ pub(crate) fn create_package(
     options: &PackageCreationOptions,
     reporter: &Reporter,
 ) -> Result {
-    if let Err(error) = create(name.clone(), options) {
+    if let Err(error) = create(name, options) {
         return Err(Diagnostic::error()
             .message(format!("could not create package ‘{name}’"))
             .with(|it| match &error.path {
@@ -32,7 +32,7 @@ pub(crate) fn create_package(
 fn create(name: Word, options: &PackageCreationOptions) -> Result<(), Error> {
     let current_path = std::env::current_dir()?;
 
-    let package_path = current_path.join(name.as_str());
+    let package_path = current_path.join(name.to_str());
     fs::create_dir(&package_path).with_path(package_path.clone())?;
 
     let source_folder_path = package_path.join(SOURCE_FOLDER_NAME);
@@ -41,7 +41,7 @@ fn create(name: Word, options: &PackageCreationOptions) -> Result<(), Error> {
     {
         let path = package_path.join(ManifestPath::FILE_NAME);
         let package_manifest = io::BufWriter::new(fs::File::create(&path).with_path(path)?);
-        create_package_manifest(&name, options, package_manifest)?;
+        create_package_manifest(name, options, package_manifest)?;
     }
 
     {
@@ -74,14 +74,14 @@ pub(crate) struct PackageCreationOptions {
 }
 
 fn create_package_manifest(
-    name: &Word,
+    name: Word,
     options: &PackageCreationOptions,
     mut sink: impl io::Write,
 ) -> io::Result<()> {
     {
         write!(sink, "name: ")?;
 
-        if let "false" | "true" = name.as_str() {
+        if let Atom::false_ | Atom::true_ = name.into_inner() {
             write!(sink, r#""{name}""#)?;
         } else {
             write!(sink, "{name}")?;
@@ -113,7 +113,7 @@ fn create_package_manifest(
     }
 
     if options.executable {
-        let executable_name = if name.as_str() != "main" {
+        let executable_name = if name.into_inner() != Atom::main {
             "main"
         } else {
             "main_"

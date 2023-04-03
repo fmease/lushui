@@ -13,7 +13,6 @@ use inkwell::{
     types::{FunctionType, IntType},
     values::{BasicValueEnum, FunctionValue, GlobalValue, IntValue, UnnamedAddress},
 };
-use resolver::ProgramEntryExt;
 use session::{Session, OUTPUT_FOLDER_NAME};
 use std::{
     cell::RefCell,
@@ -22,9 +21,7 @@ use std::{
     path::{Path, PathBuf},
     process::{Command, Stdio},
 };
-use utilities::{FormatError, HashMap, Str};
-
-const PROGRAM_ENTRY_NAME: &str = "main";
+use utilities::{FormatError, HashMap, Str, PROGRAM_ENTRY};
 
 pub fn compile_and_link(
     options: Options,
@@ -93,7 +90,7 @@ fn compile<'ctx>(
 //       (e.g. "`cc`", `gcc` (requires the use of `llc`))
 fn link(module: inkwell::module::Module<'_>, session: &Session<'_>) -> Result<(), LinkingError> {
     let buffer = module.write_bitcode_to_memory();
-    let name = session.component().name().as_str();
+    let name = session.component().name().to_str();
 
     let output_file_path = match session.root_package() {
         // @Task ensure that the build folder exists
@@ -189,8 +186,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
                 let index = function.binder.index.declaration().unwrap();
 
                 // @Task somewhere store the info if we've already found the program entry or not
-                let is_program_entry = function.binder.as_str()
-                    == Session::PROGRAM_ENTRY_IDENTIFIER
+                let is_program_entry = function.binder.bare() == PROGRAM_ENTRY
                     && self.session.parent_of(index).unwrap() == self.session.component().root();
 
                 let classification = function.expression.as_ref().map(|expression| {
@@ -220,7 +216,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
                     // @Beacon @Task simplify
                     Some((Thunk, _)) => {
                         let name = if is_program_entry {
-                            PROGRAM_ENTRY_NAME.into()
+                            PROGRAM_ENTRY.to_str().into()
                         } else {
                             self.name(index)
                         };
@@ -437,7 +433,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
             }
             Number(number) => Some(self.compile_number(number).into()),
             Text(_) => todo!("compiling text"),
-            Binding(binding) if self.session.specials().is(&binding.0, Type::Type) => None,
+            Binding(binding) if self.session.specials().is(binding.0, Type::Type) => None,
             Binding(binding) => {
                 use hir::Index::*;
 
@@ -575,7 +571,7 @@ impl ExpressionExt for hir::Expression {
             },
             Application(_) | IntrinsicApplication(_) => Thunk,
             Number(_) | Text(_) => Constant,
-            Binding(binding) if session.specials().is(&binding.0, Type::Type) => Constant,
+            Binding(binding) if session.specials().is(binding.0, Type::Type) => Constant,
             // @Note we could make this more nuanced (prefering Constant if possible)
             Binding(_) => Thunk,
             Lambda(lambda) => Function(lambda),

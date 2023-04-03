@@ -1,10 +1,10 @@
 use super::{Binding, Item};
 use span::{Span, Spanning};
 use std::{default::default, fmt};
-use utilities::ComponentIndex;
+use utilities::{Atom, ComponentIndex};
 
 /// A name-resolved identifier.
-#[derive(Clone, Eq)]
+#[derive(Clone, Copy, Eq)]
 pub struct Identifier {
     /// Source at the use-site/call-site or def-site if definition.
     pub source: ast::Identifier,
@@ -19,6 +19,7 @@ impl Identifier {
         }
     }
 
+    // @Task make this test-only & maybe take an Atom
     pub fn parameter(name: &str) -> Self {
         Identifier::new(
             Index::DeBruijnParameter,
@@ -26,20 +27,24 @@ impl Identifier {
         )
     }
 
-    pub fn as_str(&self) -> &str {
-        self.source.as_str()
+    pub fn to_str(self) -> &'static str {
+        self.source.to_str()
     }
 
-    pub fn into_item<T: From<Binding>>(self) -> Item<T> {
+    pub fn bare(self) -> Atom {
+        self.source.bare()
+    }
+
+    pub fn to_item<T: From<Binding>>(self) -> Item<T> {
         Item::new(default(), self.span(), Binding(self).into())
     }
 
     // @Note bad name
-    pub fn as_innermost(&self) -> Self {
-        Self::new(DeBruijnIndex(0), self.source.clone())
+    pub fn to_innermost(self) -> Self {
+        Self::new(DeBruijnIndex(0), self.source)
     }
 
-    pub fn is_innermost(&self) -> bool {
+    pub fn is_innermost(self) -> bool {
         self.index == DeBruijnIndex(0).into()
     }
 
@@ -57,11 +62,11 @@ impl Identifier {
         }
     }
 
-    pub fn declaration_index(&self) -> Option<DeclarationIndex> {
+    pub fn declaration_index(self) -> Option<DeclarationIndex> {
         self.index.declaration()
     }
 
-    pub fn de_bruijn_index(&self) -> Option<DeBruijnIndex> {
+    pub fn de_bruijn_index(self) -> Option<DeBruijnIndex> {
         self.index.de_bruijn()
     }
 }

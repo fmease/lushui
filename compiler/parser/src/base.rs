@@ -134,9 +134,9 @@ impl<'a> Parser<'a> {
         self.contexts.clear();
     }
 
-    /// Obtain a reference to the current token.
-    pub(crate) fn current(&self) -> &Token {
-        &self.tokens[self.index]
+    /// Obtain the current token.
+    pub(crate) fn current(&self) -> Token {
+        self.tokens[self.index]
     }
 
     /// Obtain the span of the current token.
@@ -144,9 +144,9 @@ impl<'a> Parser<'a> {
         self.current().span
     }
 
-    /// Obtain a reference to the current (bare) token.
-    pub(crate) fn token(&self) -> &BareToken {
-        &self.current().bare
+    /// Obtain the current token without span.
+    pub(crate) fn token(&self) -> BareToken {
+        self.current().bare
     }
 
     /// Look ahead by the given amount of tokens.
@@ -154,12 +154,12 @@ impl<'a> Parser<'a> {
     /// # Panics
     ///
     /// Panics on out of bounds accesses.
-    pub(crate) fn look_ahead(&self, amount: usize) -> &Token {
-        &self.tokens[self.index + amount]
+    pub(crate) fn look_ahead(&self, amount: usize) -> Token {
+        self.tokens[self.index + amount]
     }
 
-    pub(crate) fn look_behind(&self, amount: usize) -> Option<&Token> {
-        Some(&self.tokens[self.index.checked_sub(amount)?])
+    pub(crate) fn look_behind(&self, amount: usize) -> Option<Token> {
+        Some(self.tokens[self.index.checked_sub(amount)?])
     }
 }
 

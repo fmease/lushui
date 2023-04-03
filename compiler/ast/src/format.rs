@@ -431,7 +431,13 @@ impl Format for super::NumberLiteral {
             .field(
                 "literal",
                 // @Task also print span of literal
-                &AdHoc(|f, _| write!(f, "{}", self.literal.bare.color(color_palette::INVALID))),
+                &AdHoc(|f, _| {
+                    write!(
+                        f,
+                        "{}",
+                        self.literal.bare.to_str().color(color_palette::INVALID)
+                    )
+                }),
             )
             .finish()
     }
@@ -454,7 +460,7 @@ impl Format for super::TextLiteral {
             .field(
                 "literal",
                 // @Task also print span of literal
-                &AdHoc(|f, _| format_text_literal(&self.literal.bare, f)),
+                &AdHoc(|f, _| format_text_literal(self.literal.bare.to_str(), f)),
             )
             .finish()
     }
@@ -665,7 +671,7 @@ impl Format for Identifier {
         FormatStruct::new(f, indentation)
             .name("Identifier")
             .finish()?;
-        write!(f, " {}", self.as_str().color(color_palette::VERBATIM))
+        write!(f, " {}", self.to_str().color(color_palette::VERBATIM))
     }
 }
 
@@ -674,7 +680,7 @@ impl fmt::Display for Identifier {
         write!(
             f,
             "{:width$}",
-            self.as_str(),
+            self.to_str(),
             width = f.width().unwrap_or_default()
         )
     }
@@ -724,14 +730,14 @@ impl Format for super::BareAttributeArgument {
                 FormatStruct::new(f, indentation)
                     .name("Number-Literal")
                     .finish()?;
-                write!(f, " {}", number.color(color_palette::VERBATIM))
+                write!(f, " {}", number.to_str().color(color_palette::VERBATIM))
             }
             Self::TextLiteral(text) => {
                 FormatStruct::new(f, indentation)
                     .name("Text-Literal")
                     .finish()?;
                 write!(f, " ")?;
-                format_text_literal(text, f)
+                format_text_literal(text.to_str(), f)
             }
             Self::Path(path) => path.format(f, indentation),
             Self::Named(named) => named.format(f, indentation),

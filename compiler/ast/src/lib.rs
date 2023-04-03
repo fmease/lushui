@@ -705,12 +705,12 @@ impl Path {
     }
 
     /// The path head if it is an identifier.
-    pub fn identifier_head(&self) -> Option<&Identifier> {
+    pub fn identifier_head(&self) -> Option<Identifier> {
         if self.hanger.is_some() {
             return None;
         }
 
-        Some(&self.segments[0])
+        Some(self.segments[0])
     }
 }
 
@@ -791,37 +791,34 @@ impl TryFrom<BareToken> for BareHanger {
 }
 
 /// Either a [word](Word) or a symbol.
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct Identifier(Spanned<Atom>);
 
 impl Identifier {
     /// Create a new identifier without checking if it is a valid word or symbol.
+    // @Task swap args
     pub const fn new_unchecked(atom: Atom, span: Span) -> Self {
         Self(Spanned::new(span, atom))
     }
 
-    pub fn as_atom(&self) -> &Atom {
-        &self.0.bare
-    }
-
-    pub fn into_atom(self) -> Atom {
+    pub fn bare(self) -> Atom {
         self.0.bare
     }
 
-    pub fn as_str(&self) -> &str {
-        self.as_atom()
+    pub fn to_str(self) -> &'static str {
+        self.0.bare.to_str()
     }
 
-    pub fn as_spanned_str(&self) -> Spanned<&str> {
-        self.0.as_ref().map(|atom| &**atom)
+    pub fn into_inner(self) -> Spanned<Atom> {
+        self.0
     }
 
-    pub fn is_symbol(&self) -> bool {
+    pub fn is_symbol(self) -> bool {
         // either all characters are symbols or none
-        token::is_symbol(self.as_atom().chars().next().unwrap())
+        token::is_symbol(self.to_str().chars().next().unwrap())
     }
 
-    pub fn is_word(&self) -> bool {
+    pub fn is_word(self) -> bool {
         // either all characters are letters or none
         !self.is_symbol()
     }
@@ -849,12 +846,7 @@ impl TryFrom<Identifier> for Spanned<Word> {
     fn try_from(identifier: Identifier) -> Result<Self, Self::Error> {
         identifier
             .is_word()
-            .then(|| {
-                Self::new(
-                    identifier.span(),
-                    Word::new_unchecked(identifier.into_atom()),
-                )
-            })
+            .then(|| Self::new(identifier.span(), Word::new_unchecked(identifier.bare())))
             .ok_or(())
     }
 }
@@ -867,7 +859,7 @@ impl Spanning for Identifier {
 
 impl PartialEq for Identifier {
     fn eq(&self, other: &Self) -> bool {
-        self.as_atom() == other.as_atom()
+        self.bare() == other.bare()
     }
 }
 
@@ -875,7 +867,7 @@ impl Eq for Identifier {}
 
 impl Hash for Identifier {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.as_atom().hash(state);
+        self.bare().hash(state);
     }
 }
 

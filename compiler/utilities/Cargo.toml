@@ -11,4 +11,3 @@ index_map = { path = "../../project/library/index_map" }
 num-bigint = "0.4.3"
 rustc-hash = "1.1.0"
 smallvec = { version = "1.10.0", features = ["const_generics"] }
-string_cache = { version = "0.8.7", default-features = false }

@@ -92,7 +92,7 @@ impl<'ctx> Session<'ctx> {
             binder,
             match style {
                 Implicit { namespace } => Implicit {
-                    namespace: namespace.map(|namespace| self.component[namespace].source.as_str()),
+                    namespace: namespace.map(|namespace| self.component[namespace].source.bare()),
                 },
                 Explicit { name } => Explicit { name },
             },
@@ -232,7 +232,7 @@ impl Context {
         handler: impl FnOnce(unit::BuildUnit, &mut Session<'_>) -> T,
     ) -> T {
         let component = Component::new(
-            unit.name.clone(),
+            unit.name,
             unit.index,
             None,
             std::mem::take(&mut unit.dependencies),

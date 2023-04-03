@@ -32,7 +32,7 @@ use utilities::debugged;
 /// Run the entry point of the given executable component.
 pub fn evaluate_main_function(session: &Session<'_>) -> Result<Expression> {
     Interpreter::new(session).evaluate_expression(
-        session.look_up_program_entry().unwrap().into_item(),
+        session.look_up_program_entry().unwrap().to_item(),
         Context::new(&FunctionScope::Module),
     )
 }
@@ -59,9 +59,9 @@ impl<'a> Interpreter<'a> {
 
         // @Bug we currently don't support zero-arity intrinsic functions
         Ok(match expression.clone().bare {
-            Binding(binding) if self.session.specials().is(&binding.0, Type::Type) => expression,
+            Binding(binding) if self.session.specials().is(binding.0, Type::Type) => expression,
             Binding(binding) => {
-                match self.look_up_value(&binding.0) {
+                match self.look_up_value(binding.0) {
                     // @Question is this normalization necessary? I mean, yes, we got a new scope,
                     // but the thing in the previous was already normalized (well, it should have been
                     // at least). I guess it is necessary because it can contain parameters which could not
@@ -127,13 +127,13 @@ impl<'a> Interpreter<'a> {
                             context,
                         )?
                     }
-                    Binding(binding) if self.is_intrinsic_function(&binding.0) => self
+                    Binding(binding) if self.is_intrinsic_function(binding.0) => self
                         .evaluate_expression(
                             Expression::new(
                                 expression.attributes,
                                 expression.span,
                                 hir::IntrinsicApplication {
-                                    callee: binding.0.clone(),
+                                    callee: binding.0,
                                     arguments: vec![argument],
                                 }
                                 .into(),
@@ -159,7 +159,7 @@ impl<'a> Interpreter<'a> {
                             expression.attributes,
                             expression.span,
                             hir::IntrinsicApplication {
-                                callee: application.callee.clone(),
+                                callee: application.callee,
                                 arguments: {
                                     let mut arguments = application.arguments.clone();
                                     arguments.push(argument);
@@ -192,7 +192,7 @@ impl<'a> Interpreter<'a> {
                         expression.span,
                         hir::PiType {
                             explicitness: pi.explicitness,
-                            binder: pi.binder.clone(),
+                            binder: pi.binder,
                             domain,
                             codomain,
                         }
@@ -227,7 +227,7 @@ impl<'a> Interpreter<'a> {
                         expression.attributes,
                         expression.span,
                         hir::Lambda {
-                            binder: lambda.binder.clone(),
+                            binder: lambda.binder,
                             domain: Some(parameter_type),
                             body,
                             codomain: body_type,
@@ -263,12 +263,12 @@ impl<'a> Interpreter<'a> {
                     Binding(scrutinee) => {
                         // @Temporary hack (bc we do not follow any principled implementation right now):
                         // a case analysis is indirectly neutral if the subject is a neutral binding
-                        if self.look_up_value(&scrutinee.0).is_neutral() {
+                        if self.look_up_value(scrutinee.0).is_neutral() {
                             return Ok(Expression::new(
                                 expression.attributes,
                                 expression.span,
                                 hir::CaseAnalysis {
-                                    scrutinee: scrutinee.0.clone().into_item(),
+                                    scrutinee: scrutinee.0.to_item(),
                                     cases: analysis.cases.clone(),
                                 }
                                 .into(),
@@ -342,13 +342,13 @@ impl<'a> Interpreter<'a> {
                     .into_iter()
                     .map(|argument| self.evaluate_expression(argument, context))
                     .collect::<Result<Vec<_>, _>>()?;
-                self.apply_intrinsic_function(application.callee.clone(), arguments.clone())?
+                self.apply_intrinsic_function(application.callee, arguments.clone())?
                     .unwrap_or_else(|| {
                         Expression::new(
                             expression.attributes,
                             expression.span,
                             hir::IntrinsicApplication {
-                                callee: application.callee.clone(),
+                                callee: application.callee,
                                 arguments,
                             }
                             .into(),
@@ -431,7 +431,7 @@ impl<'a> Interpreter<'a> {
             // @Question what about explicitness?
             (PiType(pi0), PiType(pi1)) => {
                 self.equals(&pi0.domain, &pi1.domain, scope)?
-                    && match (pi0.binder.clone(), pi1.binder.clone()) {
+                    && match (pi0.binder, pi1.binder) {
                         (Some(_), Some(_)) => self.equals(
                             &pi0.codomain,
                             &pi1.codomain,
@@ -505,7 +505,7 @@ impl<'a> Interpreter<'a> {
         })
     }
 
-    pub(crate) fn look_up_value(&self, binder: &Identifier) -> ValueView {
+    pub(crate) fn look_up_value(&self, binder: Identifier) -> ValueView {
         use hir::Index::*;
 
         match binder.index {
@@ -517,7 +517,7 @@ impl<'a> Interpreter<'a> {
 
     pub(crate) fn look_up_type(
         &self,
-        binder: &Identifier,
+        binder: Identifier,
         scope: &FunctionScope<'_>,
     ) -> Option<Expression> {
         use hir::Index::*;
@@ -529,7 +529,7 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    pub(crate) fn is_intrinsic_function(&self, binder: &Identifier) -> bool {
+    pub(crate) fn is_intrinsic_function(&self, binder: Identifier) -> bool {
         use hir::Index::*;
 
         match binder.index {
@@ -553,7 +553,7 @@ impl Substitute for Expression {
             (Binding(binding), Shift(amount)) => hir::Expression::new(
                 self.attributes,
                 self.span,
-                hir::Binding(binding.0.clone().shift(amount)).into(),
+                hir::Binding(binding.0.shift(amount)).into(),
             ),
             // @Beacon @Question @Bug
             (Binding(binding), Use(substitution, expression)) => {
@@ -563,7 +563,7 @@ impl Substitute for Expression {
                     hir::Expression::new(
                         expression.attributes,
                         expression.span,
-                        hir::Binding(binding.0.clone().unshift()).into(),
+                        hir::Binding(binding.0.unshift()).into(),
                     )
                     .substitute(*substitution)
                 }
@@ -623,10 +623,10 @@ impl Substitute for Expression {
                         expression: pi.codomain.clone(),
                         substitution: match &pi.binder {
                             Some(parameter) => {
-                                let binder = parameter.as_innermost();
+                                let binder = parameter.to_innermost();
 
                                 // @Question what about the attributes of the binder?
-                                Use(Box::new(Shift(1).compose(substitution)), binder.into_item())
+                                Use(Box::new(Shift(1).compose(substitution)), binder.to_item())
                             }
                             None => substitution,
                         },
@@ -639,7 +639,7 @@ impl Substitute for Expression {
                     self.span,
                     hir::PiType {
                         explicitness: pi.explicitness,
-                        binder: pi.binder.clone(),
+                        binder: pi.binder,
                         domain,
                         codomain,
                     }
@@ -666,11 +666,11 @@ impl Substitute for Expression {
                         hir::Substituted {
                             expression: type_,
                             substitution: {
-                                let binder = lambda.binder.as_innermost();
+                                let binder = lambda.binder.to_innermost();
                                 // @Question what about the attributes of the binder?
                                 Use(
                                     Box::new(Shift(1).compose(substitution.clone())),
-                                    binder.into_item(),
+                                    binder.to_item(),
                                 )
                             },
                         }
@@ -684,10 +684,10 @@ impl Substitute for Expression {
                     hir::Substituted {
                         expression: lambda.body.clone(),
                         substitution: {
-                            let binder = lambda.binder.as_innermost();
+                            let binder = lambda.binder.to_innermost();
 
                             // @Question what about the attributes of the binder?
-                            Use(Box::new(Shift(1).compose(substitution)), binder.into_item())
+                            Use(Box::new(Shift(1).compose(substitution)), binder.to_item())
                         },
                     }
                     .into(),
@@ -697,7 +697,7 @@ impl Substitute for Expression {
                     self.attributes,
                     self.span,
                     hir::Lambda {
-                        binder: lambda.binder.clone(),
+                        binder: lambda.binder,
                         domain: parameter_type_annotation,
                         codomain: body_type_annotation,
                         body,
@@ -742,7 +742,7 @@ impl Substitute for Expression {
                 self.attributes,
                 self.span,
                 hir::IntrinsicApplication {
-                    callee: application.callee.clone(),
+                    callee: application.callee,
                     arguments: application
                         .arguments
                         .iter()

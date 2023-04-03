@@ -607,7 +607,7 @@ lengthy-space-filler (case 0 of
             ast::Application {
                 explicitness: Explicit,
                 binder: None,
-                callee: identifier("lengthy-space-filler".into(), span(1, 21)).into(),
+                callee: identifier("lengthy-space-filler", span(1, 21)).into(),
                 argument: Expression::new(
                     Attributes::new(),
                     span(22, 45),
@@ -625,9 +625,9 @@ lengthy-space-filler (case 0 of
                             pattern: Pattern::new(
                                 Attributes::new(),
                                 span(37, 39),
-                                identifier("n".into(), span(38, 39)).into(),
+                                identifier("n", span(38, 39)).into(),
                             ),
-                            body: identifier("n".into(), span(43, 44)).into(),
+                            body: identifier("n", span(43, 44)).into(),
                         }],
                     }
                     .into(),
@@ -678,11 +678,11 @@ fn use_as_plain() {
                                 target: Path {
                                     hanger: None,
                                     segments: smallvec![
-                                        identifier("alpha".into(), span(5, 10)),
-                                        identifier("beta".into(), span(11, 15)),
+                                        identifier("alpha", span(5, 10)),
+                                        identifier("beta", span(11, 15)),
                                     ],
                                 },
-                                binder: Some(identifier("gamma".into(), span(19, 24))),
+                                binder: Some(identifier("gamma", span(19, 24))),
                             },
                         ),
                     }
@@ -712,12 +712,12 @@ fn use_as_double_brackets() {
                         bindings: UsePathTree::new(
                             span(5, 28),
                             BareUsePathTree::Multiple {
-                                path: identifier("alpha".into(), span(5, 10)).into(),
+                                path: identifier("alpha", span(5, 10)).into(),
                                 bindings: vec![UsePathTree::new(
                                     span(12, 27),
                                     BareUsePathTree::Single {
-                                        target: identifier("beta".into(), span(13, 17)).into(),
-                                        binder: Some(identifier("gamma".into(), span(21, 26))),
+                                        target: identifier("beta", span(13, 17)).into(),
+                                        binder: Some(identifier("gamma", span(21, 26))),
                                     },
                                 )],
                             },
@@ -754,14 +754,14 @@ main =
                     Attributes::new(),
                     span(1, 75),
                     ast::Function {
-                        binder: identifier("main".into(), span(1, 5)),
+                        binder: identifier("main", span(1, 5)),
                         parameters: Parameters::new(),
                         type_: None,
                         body: Some(Expression::new(
                             Attributes::new(),
                             span(12, 75),
                             ast::CaseAnalysis {
-                                scrutinee: identifier("x".into(), span(17, 18)).into(),
+                                scrutinee: identifier("x", span(17, 18)).into(),
                                 cases: vec![
                                     Case {
                                         pattern: Pattern::new(
@@ -783,7 +783,7 @@ main =
                                         pattern: Pattern::new(
                                             Attributes::new(),
                                             span(49, 53),
-                                            identifier("bar".into(), span(50, 53)).into(),
+                                            identifier("bar", span(50, 53)).into(),
                                         ),
                                         body: Expression::new(
                                             Attributes::new(),
@@ -830,21 +830,20 @@ main = case x of
                     Attributes::new(),
                     span(1, 59),
                     ast::Function {
-                        binder: identifier("main".into(), span(1, 5)),
+                        binder: identifier("main", span(1, 5)),
                         parameters: Parameters::new(),
                         type_: None,
                         body: Some(Expression::new(
                             Attributes::new(),
                             span(8, 59),
                             ast::CaseAnalysis {
-                                scrutinee: identifier("x".into(), span(13, 14)).into(),
+                                scrutinee: identifier("x", span(13, 14)).into(),
                                 cases: vec![
                                     Case {
                                         pattern: Pattern::new(
                                             Attributes::new(),
                                             span(22, 27),
-                                            Path::from(identifier("false".into(), span(22, 27)))
-                                                .into(),
+                                            Path::from(identifier("false", span(22, 27))).into(),
                                         ),
                                         body: Expression::new(
                                             Attributes::new(),
@@ -860,7 +859,7 @@ main = case x of
                                         pattern: Pattern::new(
                                             Attributes::new(),
                                             span(37, 41),
-                                            identifier("bar".into(), span(38, 41)).into(),
+                                            identifier("bar", span(38, 41)).into(),
                                         ),
                                         body: Expression::new(
                                             Attributes::new(),

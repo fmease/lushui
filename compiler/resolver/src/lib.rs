@@ -35,8 +35,8 @@ use std::{cmp::Ordering, default::default, fmt, mem, sync::Mutex};
 use token::Word;
 use unicode_width::UnicodeWidthStr;
 use utilities::{
-    cycle::find_cycles, displayed, obtain, pluralize, smallvec, AsAutoColoredChangeset,
-    Conjunction, HashMap, ListingExt, QuoteExt, SmallVec,
+    cycle::find_cycles, displayed, obtain, pluralize, smallvec, AsAutoColoredChangeset, Atom,
+    Conjunction, HashMap, ListingExt, QuoteExt, SmallVec, PROGRAM_ENTRY,
 };
 
 /// Resolve the names of a declaration.
@@ -168,14 +168,14 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
                 let module = module.unwrap();
 
                 let index = self.define(
-                    function.binder.clone(),
+                    function.binder,
                     exposure,
                     declaration.attributes.clone(),
                     EntityKind::UntypedFunction,
                     Some(module),
                 )?;
 
-                let binder = Identifier::new(index.global(self.session), function.binder.clone());
+                let binder = Identifier::new(index.global(self.session), function.binder);
 
                 if let Some(intrinsic) = declaration.attributes.get::<{ AttributeName::Intrinsic }>()
                 && let Err(error) = self.session.define_special(
@@ -198,20 +198,20 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
 
                 // @Task don't return early, see analoguous code for modules
                 let index = self.define(
-                    type_.binder.clone(),
+                    type_.binder,
                     exposure,
                     declaration.attributes.clone(),
                     EntityKind::untyped_data_type(),
                     Some(module),
                 )?;
 
-                let binder = Identifier::new(index.global(self.session), type_.binder.clone());
+                let binder = Identifier::new(index.global(self.session), type_.binder);
 
                 let known = declaration.attributes.get::<{ AttributeName::Known }>();
                 if let Some(known) = known
                 && let Err(error) = self.session.define_special(
                     special::Kind::Known,
-                    binder.clone(),
+                    binder,
                     match &known.bare.name {
                         Some(name) => special::DefinitionStyle::Explicit { name },
                         None => special::DefinitionStyle::Implicit { namespace: None },
@@ -274,15 +274,14 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
                 };
 
                 let index = self.define(
-                    constructor.binder.clone(),
+                    constructor.binder,
                     exposure,
                     declaration.attributes.clone(),
                     EntityKind::UntypedConstructor,
                     Some(namespace),
                 )?;
 
-                let binder =
-                    Identifier::new(index.global(self.session), constructor.binder.clone());
+                let binder = Identifier::new(index.global(self.session), constructor.binder);
 
                 // @Task support `@(known name)` on constructors
                 if let Some(known) = known
@@ -302,7 +301,7 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
                 // @Note you need to create a fake index for this (an index which points to
                 // a fake, nameless binding)
                 let index = self.define(
-                    submodule.binder.clone(),
+                    submodule.binder,
                     exposure,
                     // @Beacon @Bug this does not account for attributes found on the attribute header!
                     declaration.attributes.clone(),
@@ -327,7 +326,7 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
                 let module = module.unwrap();
 
                 let index = self.define(
-                    use_.binder.clone(),
+                    use_.binder,
                     exposure,
                     declaration.attributes.clone(),
                     EntityKind::UnresolvedUse,
@@ -429,7 +428,7 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
 
                 let binder = self
                     .as_ref()
-                    .reobtain_resolved_identifier::<target::Value>(&function.binder, module);
+                    .reobtain_resolved_identifier::<target::Value>(function.binder, module);
 
                 let type_annotation = self
                     .as_ref()
@@ -461,7 +460,7 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
                 // or maybe even a *LocalIdentifier?
                 let binder = self
                     .as_ref()
-                    .reobtain_resolved_identifier::<target::Value>(&type_.binder, module);
+                    .reobtain_resolved_identifier::<target::Value>(type_.binder, module);
 
                 let type_annotation = self
                     .as_ref()
@@ -502,7 +501,7 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
 
                 let binder = self
                     .as_ref()
-                    .reobtain_resolved_identifier::<target::Value>(&constructor.binder, namespace);
+                    .reobtain_resolved_identifier::<target::Value>(constructor.binder, namespace);
 
                 let type_annotation = self
                     .as_ref()
@@ -525,7 +524,7 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
                     // but it is module binding
                     Some(module) => self
                         .as_ref()
-                        .reobtain_resolved_identifier::<target::Module>(&submodule.binder, module)
+                        .reobtain_resolved_identifier::<target::Module>(submodule.binder, module)
                         .local(self.session)
                         .unwrap(),
                     None => self.session.component().root_local(),
@@ -559,7 +558,7 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
 
                 let binder = Identifier::new(
                     self.as_ref()
-                        .reobtain_resolved_identifier::<target::Any>(&use_.binder, module),
+                        .reobtain_resolved_identifier::<target::Any>(use_.binder, module),
                     use_.binder,
                 );
 
@@ -567,7 +566,7 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
                     declaration.attributes,
                     declaration.span,
                     hir::Use {
-                        binder: Some(binder.clone()),
+                        binder: Some(binder),
                         target: binder,
                     }
                     .into(),
@@ -702,8 +701,8 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
                             "re-export of the more private binding ‘{}’",
                             self.session.index_to_path(target_index)
                         ))
-                        .span(&entity.source, "re-exporting binding with greater exposure")
-                        .label(&target.source, "re-exported binding with lower exposure")
+                        .span(entity.source, "re-exporting binding with greater exposure")
+                        .label(target.source, "re-exported binding with lower exposure")
                         .note(format!(
                             "\
 expected the exposure of ‘{}’
@@ -748,7 +747,7 @@ impl<'a> Resolver<'a> {
         let expression = match expression.bare {
             PiType(pi) => {
                 let domain = self.resolve_expression(pi.domain.clone(), scope);
-                let codomain = match pi.binder.clone() {
+                let codomain = match pi.binder {
                     Some(parameter) => self.resolve_expression(
                         pi.codomain.clone(),
                         &scope.extend_with_parameter(parameter),
@@ -765,7 +764,6 @@ impl<'a> Resolver<'a> {
                         explicitness: pi.explicitness,
                         binder: pi
                             .binder
-                            .clone()
                             .map(|parameter| Identifier::new(Index::DeBruijnParameter, parameter)),
                     }
                     .into(),
@@ -805,21 +803,18 @@ impl<'a> Resolver<'a> {
                     .clone()
                     .map(|type_| self.resolve_expression(type_, scope));
                 let body_type_annotation = lambda.codomain.clone().map(|type_| {
-                    self.resolve_expression(
-                        type_,
-                        &scope.extend_with_parameter(lambda.parameter.clone()),
-                    )
+                    self.resolve_expression(type_, &scope.extend_with_parameter(lambda.parameter))
                 });
                 let body = self.resolve_expression(
                     lambda.body.clone(),
-                    &scope.extend_with_parameter(lambda.parameter.clone()),
+                    &scope.extend_with_parameter(lambda.parameter),
                 );
 
                 hir::Expression::new(
                     expression.attributes,
                     expression.span,
                     hir::Lambda {
-                        binder: Identifier::new(Index::DeBruijnParameter, lambda.parameter.clone()),
+                        binder: Identifier::new(Index::DeBruijnParameter, lambda.parameter),
                         domain: parameter_type_annotation.transpose()?,
                         codomain: body_type_annotation.transpose()?,
                         body: body?,
@@ -906,7 +901,7 @@ impl<'a> Resolver<'a> {
                 hir::Binding(self.resolve_path_inside_function(&path, scope)?).into(),
             ),
             Binder(binder) => {
-                binders.push((*binder).clone());
+                binders.push(*binder);
 
                 hir::Pattern::new(
                     pattern.attributes,
@@ -999,7 +994,7 @@ impl<'a> Resolver<'a> {
             None => NumericType::Nat,
         };
 
-        let Ok(resolved_number) = hir::Number::parse(&literal.bare, type_) else {
+        let Ok(resolved_number) = hir::Number::parse(literal.bare.to_str(), type_) else {
             return Err(Diagnostic::error()
                 .code(ErrorCode::E007)
                 .message(format!(
@@ -1043,7 +1038,7 @@ impl<'a> Resolver<'a> {
                 .get(type_.bare)
                 .filter(|&intrinsic| matches!(intrinsic, special::Binding::Type(Type::Text)))
                 .ok_or_else(|| {
-                    self.literal_used_for_unsupported_type(&text.bare.literal, "text", type_)
+                    self.literal_used_for_unsupported_type(text.bare.literal, "text", type_)
                         .report(self.session.reporter())
                 })?,
             // for now, we default to `Text` until we implement polymorphic text literals and their inference
@@ -1137,7 +1132,7 @@ impl<'a> Resolver<'a> {
             span,
             hir::Application {
                 // @Task don't throw away attributes & span
-                callee: hir::Item::new(default(), span, hir::Binding(empty.clone()).into()),
+                callee: hir::Item::new(default(), span, hir::Binding(empty).into()),
                 explicitness: Explicit,
                 argument: element_type.clone(),
             }
@@ -1150,11 +1145,7 @@ impl<'a> Resolver<'a> {
                 default(),
                 element.span,
                 hir::Application {
-                    callee: hir::Item::new(
-                        default(),
-                        element.span,
-                        hir::Binding(prepend.clone()).into(),
-                    ),
+                    callee: hir::Item::new(default(), element.span, hir::Binding(prepend).into()),
                     explicitness: Explicit,
                     argument: element_type.clone(),
                 }
@@ -1228,7 +1219,7 @@ impl<'a> Resolver<'a> {
             span,
             hir::Application {
                 // @Task don't throw away attributes & span
-                callee: hir::Item::new(default(), span, hir::Binding(empty.clone()).into()),
+                callee: hir::Item::new(default(), span, hir::Binding(empty).into()),
                 explicitness: Explicit,
                 argument: element_type.clone(),
             }
@@ -1248,7 +1239,7 @@ impl<'a> Resolver<'a> {
                             callee: hir::Item::new(
                                 default(),
                                 element.span,
-                                hir::Binding(prepend.clone()).into(),
+                                hir::Binding(prepend).into(),
                             ),
                             explicitness: Explicit,
                             // @Beacon @Question What happens if the user does not define the intrinsic type `Nat`?
@@ -1325,12 +1316,11 @@ impl<'a> Resolver<'a> {
         let type_ = self.session.specials().get(special::Type::Type).unwrap();
 
         // @Task check if all those attributes & spans make sense
-        let mut result =
-            hir::Item::new(default(), elements.span, hir::Binding(empty.clone()).into());
+        let mut result = hir::Item::new(default(), elements.span, hir::Binding(empty).into());
         let mut list = vec![hir::Item::new(
             default(),
             elements.span,
-            hir::Binding(type_.clone()).into(),
+            hir::Binding(type_).into(),
         )];
 
         for [element_type, element] in elements.bare.into_iter().array_chunks().rev() {
@@ -1346,7 +1336,7 @@ impl<'a> Resolver<'a> {
                             callee: hir::Item::new(
                                 default(),
                                 element.span,
-                                hir::Binding(prepend.clone()).into(),
+                                hir::Binding(prepend).into(),
                             ),
                             explicitness: Explicit,
                             argument: element_type.clone(),
@@ -1454,7 +1444,7 @@ impl<'a> Resolver<'a> {
                     };
 
                     // @Beacon @Task add test for error case
-                    let component: Spanned<Word> = component.clone().try_into().map_err(|_| {
+                    let component: Spanned<Word> = (*component).try_into().map_err(|_| {
                         // @Task DRY @Question is the common code justified?
                         Diagnostic::error()
                             .code(ErrorCode::E036)
@@ -1490,7 +1480,7 @@ impl<'a> Resolver<'a> {
                     let root = component.root();
 
                     return match &*path.segments {
-                        [identifier] => Ok(Target::output(root, identifier)),
+                        &[identifier] => Ok(Target::output(root, identifier)),
                         [_, identifiers @ ..] => self.resolve_path::<Target>(
                             // @Task use PathView once available
                             &ast::Path::with_segments(identifiers.to_owned().into()),
@@ -1520,11 +1510,11 @@ impl<'a> Resolver<'a> {
             };
         }
 
-        let index = self.resolve_identifier(&path.segments[0], context)?;
+        let index = self.resolve_identifier(path.segments[0], context)?;
         let entity = &self.session[index];
 
         match &*path.segments {
-            [identifier] => {
+            &[identifier] => {
                 Target::validate_identifier(identifier, entity)
                     .map_err(|error| error.report(self.session.reporter()))?;
                 Ok(Target::output(index, identifier))
@@ -1538,13 +1528,13 @@ impl<'a> Resolver<'a> {
                     )
                 } else if entity.is_error() {
                     // @Task add rationale why `last`
-                    Ok(Target::output(index, identifiers.last().unwrap()))
+                    Ok(Target::output(index, *identifiers.last().unwrap()))
                 } else {
                     let diagnostic = self.attempt_to_access_subbinder_of_non_namespace_error(
-                        identifier,
+                        *identifier,
                         &entity.kind,
                         context.namespace,
-                        identifiers.first().unwrap(),
+                        *identifiers.first().unwrap(),
                     );
                     Err(diagnostic.report(self.session.reporter()).into())
                 }
@@ -1569,7 +1559,7 @@ impl<'a> Resolver<'a> {
 
     fn resolve_identifier(
         &self,
-        identifier: &ast::Identifier,
+        identifier: ast::Identifier,
         context: PathResolutionContext,
     ) -> Result<DeclarationIndex, ResolutionError> {
         let index = self.session[context.namespace]
@@ -1578,9 +1568,9 @@ impl<'a> Resolver<'a> {
             .binders
             .iter()
             .copied()
-            .find(|&index| &self.session[index].source == identifier)
-            .ok_or_else(|| ResolutionError::UnresolvedBinding {
-                identifier: identifier.clone(),
+            .find(|&index| self.session[index].source == identifier)
+            .ok_or(ResolutionError::UnresolvedBinding {
+                identifier,
                 namespace: context.namespace,
                 usage: context.usage,
             })?;
@@ -1603,7 +1593,7 @@ impl<'a> Resolver<'a> {
 
             if let Some(reason) = &deprecated.bare.reason {
                 message += ": ";
-                message += reason;
+                message += reason.to_str();
             }
 
             Diagnostic::warning()
@@ -1621,7 +1611,7 @@ impl<'a> Resolver<'a> {
     fn handle_exposure(
         &self,
         index: DeclarationIndex,
-        identifier: &ast::Identifier,
+        identifier: ast::Identifier,
         origin_namespace: DeclarationIndex,
     ) -> Result<(), ResolutionError> {
         let entity = &self.session[index];
@@ -1745,7 +1735,7 @@ impl<'a> Resolver<'a> {
     // in Resolver::resolve_declaration
     fn reobtain_resolved_identifier<Target: ResolutionTarget>(
         &self,
-        identifier: &ast::Identifier,
+        identifier: ast::Identifier,
         namespace: LocalDeclarationIndex,
     ) -> Target::Output {
         let index = self.session[namespace]
@@ -1754,7 +1744,7 @@ impl<'a> Resolver<'a> {
             .binders
             .iter()
             .map(|index| index.local(self.session).unwrap())
-            .find(|&index| &self.session[index].source == identifier)
+            .find(|&index| self.session[index].source == identifier)
             .unwrap();
         let index = self
             .collapse_use_chain(index.global(self.session), identifier.span())
@@ -1791,8 +1781,8 @@ impl<'a> Resolver<'a> {
         if let (false, Some(identifier)) = (matches!(scope, Module(_)), query.identifier_head()) {
             match scope {
                 FunctionParameter { parent, binder } => {
-                    if binder == identifier {
-                        Ok(Identifier::new(DeBruijnIndex(depth), identifier.clone()))
+                    if *binder == identifier {
+                        Ok(Identifier::new(DeBruijnIndex(depth), identifier))
                     } else {
                         self.resolve_path_inside_function_with_depth(
                             query,
@@ -1807,11 +1797,9 @@ impl<'a> Resolver<'a> {
                         .iter()
                         .rev()
                         .zip(depth..)
-                        .find(|(binder, _)| binder == &identifier)
+                        .find(|(&binder, _)| binder == identifier)
                     {
-                        Some((_, depth)) => {
-                            Ok(Identifier::new(DeBruijnIndex(depth), identifier.clone()))
-                        }
+                        Some((_, depth)) => Ok(Identifier::new(DeBruijnIndex(depth), identifier)),
                         None => self.resolve_path_inside_function_with_depth(
                             query,
                             parent,
@@ -1829,7 +1817,7 @@ impl<'a> Resolver<'a> {
             )
             .map_err(|error| {
                 self.report_resolution_error_searching_lookalikes(error, |identifier, _| {
-                    self.find_similarly_named(origin, identifier)
+                    self.find_similarly_named(origin, identifier.to_str())
                 })
             })
         }
@@ -1841,12 +1829,12 @@ impl<'a> Resolver<'a> {
     /// In the future, we might decide to find not one but several similar names
     /// but that would be computationally heavier.
     // @Beacon @Task don't suggest private bindings!
-    fn find_similarly_named_declaration<'s>(
-        &'s self,
+    fn find_similarly_named_declaration(
+        &self,
         identifier: &str,
-        predicate: impl Fn(&'s Entity) -> bool,
+        predicate: impl Fn(&Entity) -> bool,
         namespace: DeclarationIndex,
-    ) -> Option<&'s str> {
+    ) -> Option<Atom> {
         self.session[namespace]
             .namespace()
             .unwrap()
@@ -1854,8 +1842,8 @@ impl<'a> Resolver<'a> {
             .iter()
             .map(|&index| &self.session[index])
             .filter(|entity| !entity.is_error() && predicate(entity))
-            .map(|entity| entity.source.as_str())
-            .find(|some_identifier| is_similar(some_identifier, identifier))
+            .map(|entity| entity.source.bare())
+            .find(|some_identifier| is_similar(some_identifier.to_str(), identifier))
     }
 
     /// Find a similarly named binding in the scope.
@@ -1870,7 +1858,7 @@ impl<'a> Resolver<'a> {
         &'s self,
         scope: &'s FunctionScope<'_>,
         identifier: &str,
-    ) -> Option<&'s str> {
+    ) -> Option<Atom> {
         use FunctionScope::*;
 
         match scope {
@@ -1880,8 +1868,8 @@ impl<'a> Resolver<'a> {
                 module.global(self.session),
             ),
             FunctionParameter { parent, binder } => {
-                if is_similar(identifier, binder.as_str()) {
-                    Some(binder.as_str())
+                if is_similar(identifier, binder.to_str()) {
+                    Some(binder.bare())
                 } else {
                     self.find_similarly_named(parent, identifier)
                 }
@@ -1890,9 +1878,9 @@ impl<'a> Resolver<'a> {
                 if let Some(binder) = binders
                     .iter()
                     .rev()
-                    .find(|binder| is_similar(identifier, binder.as_str()))
+                    .find(|binder| is_similar(identifier, binder.to_str()))
                 {
-                    Some(binder.as_str())
+                    Some(binder.bare())
                 } else {
                     self.find_similarly_named(parent, identifier)
                 }
@@ -1902,14 +1890,14 @@ impl<'a> Resolver<'a> {
 
     fn report_resolution_error(&self, error: ResolutionError) -> ErasedReportedError {
         self.report_resolution_error_searching_lookalikes(error, |identifier, namespace| {
-            self.find_similarly_named_declaration(identifier, |_| true, namespace)
+            self.find_similarly_named_declaration(identifier.to_str(), |_| true, namespace)
         })
     }
 
-    fn report_resolution_error_searching_lookalikes<'s>(
+    fn report_resolution_error_searching_lookalikes(
         &self,
         error: ResolutionError,
-        lookalike_finder: impl FnOnce(&str, DeclarationIndex) -> Option<&'s str>,
+        lookalike_finder: impl FnOnce(Atom, DeclarationIndex) -> Option<Atom>,
     ) -> ErasedReportedError {
         match error {
             ResolutionError::Erased(error) => error,
@@ -1940,19 +1928,21 @@ impl<'a> Resolver<'a> {
                 Diagnostic::error()
                     .code(ErrorCode::E021)
                     .message(message)
-                    .unlabeled_span(&identifier)
-                    .with(
-                        |error| match lookalike_finder(identifier.as_str(), namespace) {
+                    .unlabeled_span(identifier)
+                    .with(|error| {
+                        let identifier = identifier.bare();
+
+                        match lookalike_finder(identifier, namespace) {
                             Some(lookalike) => error.help(format!(
                                 "a binding with a similar name exists in scope: {}",
                                 Lookalike {
-                                    actual: identifier.as_str(),
+                                    actual: identifier,
                                     lookalike,
                                 },
                             )),
                             None => error,
-                        },
-                    )
+                        }
+                    })
                     .report(self.session.reporter())
             }
             // @Beacon @Bug we cannot just assume this is circular exposure reach,
@@ -1973,21 +1963,21 @@ impl<'a> Resolver<'a> {
     // @Question parent: *Local*DeclarationIndex?
     fn attempt_to_access_subbinder_of_non_namespace_error(
         &self,
-        binder: &ast::Identifier,
+        binder: ast::Identifier,
         kind: &EntityKind,
         parent: DeclarationIndex,
-        subbinder: &ast::Identifier,
+        subbinder: ast::Identifier,
     ) -> Diagnostic {
         // @Question should we also include lookalike namespaces that don't contain the
         // subbinding (displaying them in a separate help message?)?
         let similarly_named_namespace = self.find_similarly_named_declaration(
-            binder.as_str(),
+            binder.to_str(),
             |entity| {
                 entity.namespace().map_or(false, |namespace| {
                     namespace
                         .binders
                         .iter()
-                        .any(|&index| &self.session[index].source == subbinder)
+                        .any(|&index| self.session[index].source == subbinder)
                 })
             },
             parent,
@@ -2009,7 +1999,7 @@ impl<'a> Resolver<'a> {
                 Some(lookalike) => it.help(format!(
                 "a namespace with a similar name exists in scope containing the binding:\n    {}",
                 Lookalike {
-                    actual: binder.as_str(),
+                    actual: binder.bare(),
                     lookalike
                 },
             )),
@@ -2031,8 +2021,6 @@ impl<'a> Resolver<'a> {
 }
 
 pub trait ProgramEntryExt {
-    const PROGRAM_ENTRY_IDENTIFIER: &'static str = "main";
-
     fn look_up_program_entry(&self) -> Option<Identifier>;
 }
 
@@ -2040,11 +2028,10 @@ impl ProgramEntryExt for Session<'_> {
     fn look_up_program_entry(&self) -> Option<Identifier> {
         let resolver = Resolver::new(self);
 
-        let identifier =
-            ast::Identifier::new_unchecked(Self::PROGRAM_ENTRY_IDENTIFIER.into(), default());
+        let binder = ast::Identifier::new_unchecked(PROGRAM_ENTRY, default());
         let index = resolver
             .resolve_identifier(
-                &identifier,
+                binder,
                 PathResolutionContext::new(self.component().root())
                     .ignore_exposure()
                     .allow_deprecated(),
@@ -2056,7 +2043,7 @@ impl ProgramEntryExt for Session<'_> {
             return None;
         }
 
-        Some(Identifier::new(index, entity.source.clone()))
+        Some(Identifier::new(index, entity.source))
     }
 }
 
@@ -2273,16 +2260,17 @@ fn is_similar(identifier: &str, other_identifier: &str) -> bool {
     strsim::levenshtein(other_identifier, identifier) <= std::cmp::max(identifier.len(), 3) / 3
 }
 
-struct Lookalike<'a> {
-    actual: &'a str,
-    lookalike: &'a str,
+struct Lookalike {
+    actual: Atom,
+    lookalike: Atom,
 }
 
-impl fmt::Display for Lookalike<'_> {
+impl fmt::Display for Lookalike {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use difference::{Changeset, Difference};
 
-        let changeset = Changeset::new(self.actual, self.lookalike, "");
+        let actual = self.actual.to_str();
+        let changeset = Changeset::new(actual, self.lookalike.to_str(), "");
         let mut purely_additive = true;
 
         write!(f, "‘")?;
@@ -2299,7 +2287,7 @@ impl fmt::Display for Lookalike<'_> {
 
         write!(f, "’")?;
 
-        if !(purely_additive || self.actual.width() == 1 && changeset.distance == 2) {
+        if !(purely_additive || actual.width() == 1 && changeset.distance == 2) {
             write!(f, " ({})", changeset.auto_colored())?;
         }
 
@@ -2354,15 +2342,14 @@ impl From<ErasedReportedError> for DefinitionError {
 trait ResolutionTarget {
     type Output;
 
-    fn output(index: DeclarationIndex, identifier: &ast::Identifier) -> Self::Output;
+    fn output(index: DeclarationIndex, identifier: ast::Identifier) -> Self::Output;
 
     fn output_bare_path_hanger(
         hanger: &ast::Hanger,
         index: DeclarationIndex,
     ) -> Result<Self::Output, Diagnostic>;
 
-    fn validate_identifier(identifier: &ast::Identifier, entity: &Entity)
-        -> Result<(), Diagnostic>;
+    fn validate_identifier(identifier: ast::Identifier, entity: &Entity) -> Result<(), Diagnostic>;
 }
 
 mod target {
@@ -2374,7 +2361,7 @@ mod target {
     impl ResolutionTarget for Any {
         type Output = DeclarationIndex;
 
-        fn output(index: DeclarationIndex, _: &ast::Identifier) -> Self::Output {
+        fn output(index: DeclarationIndex, _: ast::Identifier) -> Self::Output {
             index
         }
 
@@ -2385,7 +2372,7 @@ mod target {
             Ok(index)
         }
 
-        fn validate_identifier(_: &ast::Identifier, _: &Entity) -> Result<(), Diagnostic> {
+        fn validate_identifier(_: ast::Identifier, _: &Entity) -> Result<(), Diagnostic> {
             Ok(())
         }
     }
@@ -2396,8 +2383,8 @@ mod target {
     impl ResolutionTarget for Value {
         type Output = Identifier;
 
-        fn output(index: DeclarationIndex, identifier: &ast::Identifier) -> Self::Output {
-            Identifier::new(index, identifier.clone())
+        fn output(index: DeclarationIndex, identifier: ast::Identifier) -> Self::Output {
+            Identifier::new(index, identifier)
         }
 
         fn output_bare_path_hanger(
@@ -2408,11 +2395,11 @@ mod target {
         }
 
         fn validate_identifier(
-            identifier: &ast::Identifier,
+            identifier: ast::Identifier,
             entity: &Entity,
         ) -> Result<(), Diagnostic> {
             if entity.is_module() {
-                return Err(module_used_as_a_value_error(identifier.as_spanned_str()));
+                return Err(module_used_as_a_value_error(identifier.into_inner()));
             }
 
             Ok(())
@@ -2424,7 +2411,7 @@ mod target {
     impl ResolutionTarget for Module {
         type Output = DeclarationIndex;
 
-        fn output(index: DeclarationIndex, _: &ast::Identifier) -> Self::Output {
+        fn output(index: DeclarationIndex, _: ast::Identifier) -> Self::Output {
             index
         }
 
@@ -2436,7 +2423,7 @@ mod target {
         }
 
         fn validate_identifier(
-            identifier: &ast::Identifier,
+            identifier: ast::Identifier,
             entity: &Entity,
         ) -> Result<(), Diagnostic> {
             // @Task print absolute path!

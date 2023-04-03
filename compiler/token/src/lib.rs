@@ -12,7 +12,7 @@ mod word;
 
 pub type Token = Spanned<BareToken>;
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum BareToken {
     //
     // Comment-Like Tokens
@@ -86,7 +86,7 @@ pub enum BareToken {
 
 impl BareToken {
     // @Task move to lexer
-    pub const fn introduces_indented_section(&self) -> bool {
+    pub const fn introduces_indented_section(self) -> bool {
         matches!(self, Do | Of)
     }
 }

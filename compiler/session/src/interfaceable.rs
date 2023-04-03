@@ -16,7 +16,7 @@ impl InterfaceableBindingExt for interfaceable::Type {
         use special::Type::*;
 
         macro is_special($binding:ident, $name:ident) {
-            session.specials().is(&$binding.0, $name)
+            session.specials().is($binding.0, $name)
         }
 
         Some(match &expression.bare {
@@ -77,7 +77,7 @@ impl InterfaceableBindingExt for interfaceable::Value {
         use special::Constructor::*;
 
         macro is_special($binding:ident, $name:ident) {
-            session.specials().is(&$binding.0, $name)
+            session.specials().is($binding.0, $name)
         }
 
         Some(match &expression.bare {
@@ -175,7 +175,6 @@ impl InterfaceableBindingExt for interfaceable::Value {
     }
 }
 
-#[allow(dead_code)] // @Temporary
 fn application(callee: Expression, argument: Expression) -> Expression {
     Expression::bare(
         hir::Application {

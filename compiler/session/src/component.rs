@@ -45,7 +45,7 @@ impl Component {
         const NAME: &str = "test";
         let name = Word::new_unchecked(NAME.into());
 
-        let mut component = Self::new(name.clone(), ComponentIndex(0), None, HashMap::default());
+        let mut component = Self::new(name, ComponentIndex(0), None, HashMap::default());
         component.bindings.insert(Entity {
             source: Spanned::bare(name).into(),
             parent: None,
@@ -57,8 +57,8 @@ impl Component {
         component
     }
 
-    pub fn name(&self) -> &Word {
-        &self.name
+    pub fn name(&self) -> Word {
+        self.name
     }
 
     pub fn index(&self) -> ComponentIndex {
@@ -82,7 +82,7 @@ impl Component {
 
     pub fn outline(&self) -> ComponentOutline {
         ComponentOutline {
-            name: self.name.clone(),
+            name: self.name,
             index: self.index,
         }
     }

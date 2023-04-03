@@ -139,7 +139,7 @@ impl<'a> Lowerer<'a> {
             Some(type_) => type_,
             None => missing_mandatory_type_annotation_error(
                 function.binder.span().fit_end(&function.parameters).end(),
-                TypeAnnotationTarget::Declaration(&function.binder),
+                TypeAnnotationTarget::Declaration(function.binder),
             )
             .handle(&mut *self),
         };
@@ -168,7 +168,7 @@ impl<'a> Lowerer<'a> {
                             default(),
                             default(),
                             lowered_ast::Lambda {
-                                parameter: parameter.bare.binder.clone(),
+                                parameter: parameter.bare.binder,
                                 domain: Some(parameter_type.clone()),
                                 explicitness: parameter.bare.explicitness,
                                 codomain: type_.next(),
@@ -197,7 +197,7 @@ impl<'a> Lowerer<'a> {
             Some(type_) => type_,
             None => missing_mandatory_type_annotation_error(
                 data_type.binder.span().fit_end(&data_type.parameters).end(),
-                TypeAnnotationTarget::Declaration(&data_type.binder),
+                TypeAnnotationTarget::Declaration(data_type.binder),
             )
             .handle(&mut *self),
         };
@@ -230,7 +230,7 @@ impl<'a> Lowerer<'a> {
                     .span()
                     .fit_end(&constructor.parameters)
                     .end(),
-                TypeAnnotationTarget::Declaration(&constructor.binder),
+                TypeAnnotationTarget::Declaration(constructor.binder),
             )
             .handle(&mut *self),
         };
@@ -287,11 +287,11 @@ impl<'a> Lowerer<'a> {
                         _ = inline_modules.take_last();
 
                         path.extend(inline_modules);
-                        path.push(location.bare);
+                        path.push(location.bare.to_str());
                     }
                     None => {
                         path.extend(&context.inline_modules);
-                        path.push(module.binder.as_str());
+                        path.push(module.binder.to_str());
                     }
                 };
 
@@ -317,14 +317,14 @@ impl<'a> Lowerer<'a> {
                     }
                 };
 
-                let declaration =
-                    match syntax::parse_module_file(file, module.binder.clone(), self.session) {
-                        Ok(declaration) => declaration,
-                        Err(error) => {
-                            self.health.taint(error);
-                            return PossiblyErroneous::error(error);
-                        }
-                    };
+                let declaration = match syntax::parse_module_file(file, module.binder, self.session)
+                {
+                    Ok(declaration) => declaration,
+                    Err(error) => {
+                        self.health.taint(error);
+                        return PossiblyErroneous::error(error);
+                    }
+                };
 
                 // at this point in time, they are still on the module header if at all
                 assert!(declaration.attributes.is_empty());
@@ -403,7 +403,7 @@ impl<'a> Lowerer<'a> {
         'discriminate: {
             match use_.bindings.bare {
                 ast::BareUsePathTree::Single { target, binder } => {
-                    let binder = binder.or_else(|| target.segments.last().cloned());
+                    let binder = binder.or_else(|| target.segments.last().copied());
                     let Some(binder) = binder else {
                                 // @Task improve the message for `use topmost.(self)`: hint that `self`
                                 // is effectively unnamed because `topmost` is unnamed
@@ -461,7 +461,7 @@ impl<'a> Lowerer<'a> {
                         }
                         .segments
                         .last()
-                        .cloned()
+                        .copied()
                     }) else {
                         // @Task improve the message for `use topmost.(self)`: hint that `self`
                         // is effectively unnamed because `topmost` is unnamed
@@ -530,12 +530,9 @@ impl<'a> Lowerer<'a> {
                         };
                         let domain = self.lower_expression(domain);
 
-                        // @Temporary this is a hack until we properly support discards and intern correctly
-                        let binder = if parameter.bare.binder.as_str() != "_" {
-                            Some(parameter.bare.binder)
-                        } else {
-                            None
-                        };
+                        // @Temporary hack until we properly support discards
+                        let binder = Some(parameter.bare.binder)
+                            .filter(|binder| binder.bare() != Atom::underscore);
 
                         codomain = lowered_ast::Expression::new(
                             default(),
@@ -1155,7 +1152,7 @@ impl BareAttributeExt for lowered_ast::BareAttribute {
                 content: if options.keep_documentation_comments {
                     session.shared_map().snippet(attribute.span)
                         .trim_start_matches(";;")
-                        .into()
+                        .to_owned().into()
                 } else {
                     default()
                 },
@@ -1196,17 +1193,15 @@ impl BareAttributeExt for lowered_ast::BareAttribute {
         let result = (|| {
             use AttributeName::*;
 
-            let name: AttributeName = binder
-                .as_str()
-                .parse()
-                .map_err(|_| AttributeParsingError::UndefinedAttribute(binder.clone()))?;
+            let name = AttributeName::parse(binder.bare())
+                .ok_or(AttributeParsingError::UndefinedAttribute(*binder))?;
 
             Ok(match name {
                 Abstract => Self::Abstract,
                 Allow | Deny | Forbid | Warn => {
                     let lint = lowered_ast::attribute::Lint::parse(
                         argument(arguments, attribute.span, session.reporter())?
-                            .path(Some("lint"), session.reporter())?
+                            .path(Some(Atom::lint), session.reporter())?
                             .clone(),
                         session.reporter(),
                     )?;
@@ -1221,25 +1216,26 @@ impl BareAttributeExt for lowered_ast::BareAttribute {
                 }
                 Deprecated => Self::Deprecated(lowered_ast::attribute::Deprecated {
                     reason: optional_argument(arguments)
-                        .map(|argument| argument.text_literal(Some("reason"), session.reporter()))
-                        .transpose()?
-                        .cloned(),
+                        .map(|argument| {
+                            argument.text_literal(Some(Atom::reason), session.reporter())
+                        })
+                        .transpose()?,
                     // @Task parse version
                     since: None,
                     // @Task parse version
                     removal: None,
                     replacement: optional_argument(arguments)
                         .map(|argument| {
-                            argument.text_literal(Some("replacement"), session.reporter())
+                            argument.text_literal(Some(Atom::replacement), session.reporter())
                         })
-                        .transpose()?
-                        .cloned(),
+                        .transpose()?,
                 }),
                 Doc => Self::Doc {
                     content: if options.keep_documentation_comments {
                         argument(arguments, attribute.span, session.reporter())?
                             .text_literal(None, session.reporter())?
-                            .clone()
+                            .to_str()
+                            .into()
                     } else {
                         *arguments = &arguments[1..];
                         default()
@@ -1247,7 +1243,7 @@ impl BareAttributeExt for lowered_ast::BareAttribute {
                 },
                 Intrinsic => {
                     let name = optional_argument(arguments)
-                        .map(|argument| argument.path(Some("name"), session.reporter()))
+                        .map(|argument| argument.path(Some(Atom::name), session.reporter()))
                         .transpose()?
                         .cloned();
 
@@ -1265,7 +1261,7 @@ impl BareAttributeExt for lowered_ast::BareAttribute {
                 Include => Self::Include,
                 Known => {
                     let name = optional_argument(arguments)
-                        .map(|argument| argument.path(Some("name"), session.reporter()))
+                        .map(|argument| argument.path(Some(Atom::name), session.reporter()))
                         .transpose()?
                         .cloned();
 
@@ -1273,15 +1269,14 @@ impl BareAttributeExt for lowered_ast::BareAttribute {
                 }
                 Location => {
                     let path = argument(arguments, attribute.span, session.reporter())?
-                        .text_literal(Some("path"), session.reporter())?
-                        .clone();
+                        .text_literal(Some(Atom::path), session.reporter())?;
 
                     Self::Location { path }
                 }
                 Moving => Self::Moving,
                 Public => {
                     let reach = optional_argument(arguments)
-                        .map(|argument| argument.path(Some("reach"), session.reporter()))
+                        .map(|argument| argument.path(Some(Atom::reach), session.reporter()))
                         .transpose()?
                         .cloned();
 
@@ -1290,7 +1285,8 @@ impl BareAttributeExt for lowered_ast::BareAttribute {
                 RecursionLimit => {
                     let depth = argument(arguments, attribute.span, session.reporter())?;
                     let depth = depth
-                        .number_literal(Some("depth"), session.reporter())?
+                        .number_literal(Some(Atom::depth), session.reporter())?
+                        .to_str()
                         .parse::<u32>()
                         .map_err(|_| {
                             AttributeParsingError::Erased(
@@ -1343,7 +1339,7 @@ impl BareAttributeExt for lowered_ast::BareAttribute {
                 AttributeParsingError::UndefinedAttribute(binder) => Diagnostic::error()
                     .code(ErrorCode::E011)
                     .message(format!("the attribute ‘{binder}’ is not defined"))
-                    .unlabeled_span(&binder)
+                    .unlabeled_span(binder)
                     .report(session.reporter()),
                 AttributeParsingError::Erased(error) => error,
             })
@@ -1365,47 +1361,46 @@ enum AttributeParsingError {
 trait AttributeArgumentExt {
     fn number_literal(
         &self,
-        name: Option<&'static str>,
+        name: Option<Atom>,
         reporter: &Reporter,
-    ) -> Result<&Atom, AttributeParsingError>;
+    ) -> Result<Atom, AttributeParsingError>;
 
     fn text_literal(
         &self,
-        name: Option<&'static str>,
+        name: Option<Atom>,
         reporter: &Reporter,
-    ) -> Result<&Atom, AttributeParsingError>;
+    ) -> Result<Atom, AttributeParsingError>;
 
-    fn path(
-        &self,
-        name: Option<&'static str>,
-        reporter: &Reporter,
-    ) -> Result<&Path, AttributeParsingError>;
+    fn path(&self, name: Option<Atom>, reporter: &Reporter)
+        -> Result<&Path, AttributeParsingError>;
 }
 
 impl AttributeArgumentExt for ast::AttributeArgument {
     fn number_literal(
         &self,
-        name: Option<&'static str>,
+        name: Option<Atom>,
         reporter: &Reporter,
-    ) -> Result<&Atom, AttributeParsingError> {
+    ) -> Result<Atom, AttributeParsingError> {
         use ast::BareAttributeArgument::*;
 
         match &self.bare {
-            NumberLiteral(literal) => Ok(literal),
-            Named(named) => named.handle(
-                name,
-                |argument| match &argument.bare {
-                    NumberLiteral(literal) => Ok(literal),
-                    bare => Err(AttributeParsingError::Erased(
-                        invalid_attribute_argument_type_error(
-                            Spanned::new(argument.span, bare.name()),
-                            "number literal",
-                        )
-                        .report(reporter),
-                    )),
-                },
-                reporter,
-            ),
+            &NumberLiteral(literal) => Ok(literal),
+            Named(named) => named
+                .handle(
+                    name,
+                    |argument| match &argument.bare {
+                        NumberLiteral(literal) => Ok(literal),
+                        bare => Err(AttributeParsingError::Erased(
+                            invalid_attribute_argument_type_error(
+                                Spanned::new(argument.span, bare.name()),
+                                "number literal",
+                            )
+                            .report(reporter),
+                        )),
+                    },
+                    reporter,
+                )
+                .copied(),
             bare => Err(AttributeParsingError::Erased(
                 invalid_attribute_argument_type_error(
                     Spanned::new(self.span, bare.name()),
@@ -1418,27 +1413,29 @@ impl AttributeArgumentExt for ast::AttributeArgument {
 
     fn text_literal(
         &self,
-        name: Option<&'static str>,
+        name: Option<Atom>,
         reporter: &Reporter,
-    ) -> Result<&Atom, AttributeParsingError> {
+    ) -> Result<Atom, AttributeParsingError> {
         use ast::BareAttributeArgument::*;
 
         match &self.bare {
-            TextLiteral(literal) => Ok(literal),
-            Named(named) => named.handle(
-                name,
-                |argument| match &argument.bare {
-                    TextLiteral(literal) => Ok(literal),
-                    bare => Err(AttributeParsingError::Erased(
-                        invalid_attribute_argument_type_error(
-                            Spanned::new(argument.span, bare.name()),
-                            "text literal",
-                        )
-                        .report(reporter),
-                    )),
-                },
-                reporter,
-            ),
+            &TextLiteral(literal) => Ok(literal),
+            Named(named) => named
+                .handle(
+                    name,
+                    |argument| match &argument.bare {
+                        TextLiteral(literal) => Ok(literal),
+                        bare => Err(AttributeParsingError::Erased(
+                            invalid_attribute_argument_type_error(
+                                Spanned::new(argument.span, bare.name()),
+                                "text literal",
+                            )
+                            .report(reporter),
+                        )),
+                    },
+                    reporter,
+                )
+                .copied(),
             bare => Err(AttributeParsingError::Erased(
                 invalid_attribute_argument_type_error(
                     Spanned::new(self.span, bare.name()),
@@ -1451,7 +1448,7 @@ impl AttributeArgumentExt for ast::AttributeArgument {
 
     fn path(
         &self,
-        name: Option<&'static str>,
+        name: Option<Atom>,
         reporter: &Reporter,
     ) -> Result<&Path, AttributeParsingError> {
         use ast::BareAttributeArgument::*;
@@ -1488,7 +1485,7 @@ impl AttributeArgumentExt for ast::AttributeArgument {
 trait NamedAttributeArgumentExt {
     fn handle<T>(
         &self,
-        name: Option<&'static str>,
+        name: Option<Atom>,
         handle: impl FnOnce(&ast::AttributeArgument) -> Result<&T, AttributeParsingError>,
         reporter: &Reporter,
     ) -> Result<&T, AttributeParsingError>;
@@ -1497,17 +1494,17 @@ trait NamedAttributeArgumentExt {
 impl NamedAttributeArgumentExt for ast::NamedAttributeArgument {
     fn handle<T>(
         &self,
-        name: Option<&'static str>,
+        name: Option<Atom>,
         handle: impl FnOnce(&ast::AttributeArgument) -> Result<&T, AttributeParsingError>,
         reporter: &Reporter,
     ) -> Result<&T, AttributeParsingError> {
         match name {
             Some(name) => {
-                if self.binder.as_str() == name {
+                if self.binder.bare() == name {
                     handle(&self.value)
                 } else {
                     Err(AttributeParsingError::Erased(
-                        unexpected_named_attribute_argument_error(&self.binder, name)
+                        unexpected_named_attribute_argument_error(self.binder, name)
                             .report(reporter),
                     ))
                 }
@@ -1559,8 +1556,8 @@ fn incorrectly_positioned_path_hanger_error(hanger: ast::Hanger) -> Diagnostic {
 
 // @Temporary signature
 fn unexpected_named_attribute_argument_error(
-    actual: &ast::Identifier,
-    expected: &'static str,
+    actual: ast::Identifier,
+    expected: Atom,
 ) -> Diagnostic {
     Diagnostic::error()
         .code(ErrorCode::E028)
@@ -1615,7 +1612,7 @@ fn missing_mandatory_type_annotation_error(
 /// Exclusively used for error reporting.
 enum TypeAnnotationTarget<'a> {
     Parameter(&'a Parameter),
-    Declaration(&'a ast::Identifier),
+    Declaration(ast::Identifier),
 }
 
 impl TypeAnnotationTarget<'_> {

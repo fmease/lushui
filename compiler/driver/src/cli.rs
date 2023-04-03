@@ -322,7 +322,7 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
             mode: match command {
                 subcommand::INITIALIZE => PackageCreationMode::Initialize,
                 subcommand::NEW => PackageCreationMode::New {
-                    package_name: matches.get_one(argument::NAME).cloned().unwrap(),
+                    package_name: matches.get_one(argument::NAME).copied().unwrap(),
                 },
                 _ => unreachable!(),
             },
@@ -486,11 +486,11 @@ impl DeserializeExt for ComponentFilter {
         let mut filter = Self::default();
 
         if let Some(components) = matches.get_many(option::COMPONENT) {
-            filter.names.extend(components.into_iter().cloned());
+            filter.names.extend(components);
         }
 
         if let Some(types) = matches.get_many::<ComponentType>(option::COMPONENT_TYPE) {
-            filter.types.extend(types.into_iter().copied());
+            filter.types.extend(types);
         }
 
         filter

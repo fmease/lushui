@@ -4,7 +4,7 @@ error: the library component ‘loops’ is circular
 10 │         dependencies: { loops: {} },
    │                         ═════
 
-error: the library components ‘cycle1component0’, ‘cycle1component1’ and ‘cycle1component2’ are circular
+error: the library components ‘cycle1component1’, ‘cycle1component2’ and ‘cycle1component0’ are circular
    ┌─ ${TEST_FOLDER}/packages/circular-components-in-same-package/package.metadata:17:25
    │
 17 │         dependencies: { cycle1component1: {} },

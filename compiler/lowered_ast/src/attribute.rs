@@ -1,7 +1,7 @@
-use derivation::{Discriminant, Elements, FromStr, Str};
+use derivation::{Discriminant, Elements, Str};
 use span::{Span, Spanned, Spanning};
 use std::fmt;
-use utilities::{condition, obtain, Atom};
+use utilities::{condition, obtain, Atom, Str};
 
 /// Something attributes can be ascribed to.
 ///
@@ -287,10 +287,11 @@ impl Attributes {
 
 pub type Attribute = Spanned<BareAttribute>;
 
+// @Task try to get rid of AttributeName
 #[derive(Clone, PartialEq, Eq, Hash, Discriminant)]
 #[discriminant(
     name:
-        #[derive(Elements, Str, FromStr)]
+        #[derive(Elements, Str)]
         #[format(dash_case)]
         #[str(to_str)]
         AttributeName
@@ -338,7 +339,7 @@ pub enum BareAttribute {
     /// ```text
     /// doc <0:content:Text-Literal>
     /// ```
-    Doc { content: Atom },
+    Doc { content: Str },
     /// Forbid a [lint](Lint).
     ///
     /// # Form
@@ -561,6 +562,33 @@ impl fmt::Display for BareAttribute {
 }
 
 impl AttributeName {
+    pub fn parse(name: Atom) -> Option<Self> {
+        Some(match name {
+            Atom::abstract_ => Self::Abstract,
+            Atom::allow => Self::Allow,
+            Atom::deny => Self::Deny,
+            Atom::deprecated => Self::Deprecated,
+            Atom::doc => Self::Doc,
+            Atom::forbid => Self::Forbid,
+            Atom::if_ => Self::If,
+            Atom::ignore => Self::Ignore,
+            Atom::include => Self::Include,
+            Atom::intrinsic => Self::Intrinsic,
+            Atom::known => Self::Known,
+            Atom::location => Self::Location,
+            Atom::moving => Self::Moving,
+            Atom::public => Self::Public,
+            Atom::recursion_limit => Self::RecursionLimit,
+            Atom::static_ => Self::Static,
+            Atom::statistics => Self::Statistics,
+            Atom::test => Self::Test,
+            Atom::unsafe_ => Self::Unsafe,
+            Atom::unstable => Self::Unstable,
+            Atom::warn => Self::Warn,
+            _ => return None,
+        })
+    }
+
     pub const fn is_implemented(self) -> bool {
         matches!(
             self,
@@ -650,7 +678,7 @@ data_queries! {
     Doc: str = BareAttribute::Doc { content } => content,
     Intrinsic: Special = BareAttribute::Intrinsic(special) => special,
     Known: Special = BareAttribute::Known(special) => special,
-    Location: str = BareAttribute::Location { path } => path,
+    Location: Atom = BareAttribute::Location { path } => path,
     Public: Public = BareAttribute::Public(reach) => reach,
 }
 

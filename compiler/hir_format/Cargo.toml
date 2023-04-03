@@ -12,8 +12,8 @@ hir = { path = "../hir" }
 joinery = "3.1.0"
 session = { path = "../session" }
 token = { path = "../token" }
+utilities = { path = "../utilities" }
 
 [dev-dependencies]
 session = { path = "../session", features = ["test"] }
 span = { path = "../span" }
-utilities = { path = "../utilities" }

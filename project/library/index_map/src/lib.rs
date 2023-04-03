@@ -19,10 +19,10 @@ impl<I, T> IndexMap<I, T> {
 
     #[must_use]
     pub fn with_capacity(capacity: usize) -> Self {
-        Self::from_vec(Vec::with_capacity(capacity))
+        Self::bare(Vec::with_capacity(capacity))
     }
 
-    fn from_vec(values: Vec<T>) -> Self {
+    pub fn bare(values: Vec<T>) -> Self {
         Self {
             values,
             _marker: PhantomData,
@@ -116,7 +116,7 @@ impl<I: Index, T> IndexMap<I, T> {
 
 impl<I, T> Default for IndexMap<I, T> {
     fn default() -> Self {
-        Self::from_vec(Vec::new())
+        Self::bare(Vec::new())
     }
 }
 

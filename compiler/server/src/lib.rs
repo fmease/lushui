@@ -35,7 +35,7 @@ use tower_lsp::{
     Client,
 };
 use utilities::path::CanonicalPath;
-use utilities::{ComponentIndex, FormatError, HashMap};
+use utilities::{ComponentIndex, FormatError, HashMap, PROGRAM_ENTRY};
 
 mod diagnostics;
 mod span;
@@ -334,9 +334,8 @@ fn build_unit(unit: BuildUnit, session: &mut Session<'_>) -> Result<hir::Declara
         return Err(Diagnostic::error()
             .code(ErrorCode::E050)
             .message(format!(
-                "the component ‘{}’ does not contain a ‘{}’ function in its root module",
+                "the component ‘{}’ does not contain a ‘{PROGRAM_ENTRY}’ function in its root module",
                 unit.name,
-                Session::PROGRAM_ENTRY_IDENTIFIER,
             ))
             .unlabeled_span(&session.shared_map()[file])
             .report(session.reporter()));
@@ -346,12 +345,12 @@ fn build_unit(unit: BuildUnit, session: &mut Session<'_>) -> Result<hir::Declara
 }
 
 trait FindBinding {
-    fn find_binding(&self, byte_index: ByteIndex) -> Option<&hir::Identifier>;
+    fn find_binding(&self, byte_index: ByteIndex) -> Option<hir::Identifier>;
 }
 
 #[allow(clippy::match_same_arms)] // @Temporary
 impl FindBinding for hir::Declaration {
-    fn find_binding(&self, byte_index: ByteIndex) -> Option<&hir::Identifier> {
+    fn find_binding(&self, byte_index: ByteIndex) -> Option<hir::Identifier> {
         use hir::BareDeclaration::*;
 
         // @Question do we need this check?
@@ -394,8 +393,8 @@ impl FindBinding for hir::Declaration {
                 // @Question I wonder if that actually works ^^
                 // @Note I assume this won't work if we click on path segments that aren't the last segment
                 if use_.target.span().contains(byte_index) {
-                    Some(&use_.target)
-                } else if let Some(binder) = &use_.binder && binder.span().contains(byte_index) {
+                    Some(use_.target)
+                } else if let Some(binder) = use_.binder && binder.span().contains(byte_index) {
                     Some(binder)
                 } else {
                     None
@@ -410,7 +409,7 @@ impl FindBinding for hir::Declaration {
 impl FindBinding for hir::Expression {
     // @Task don't use contains but a function that returns an Ordering!! so we can
     // know if we should jump to the next thingy
-    fn find_binding(&self, byte_index: ByteIndex) -> Option<&hir::Identifier> {
+    fn find_binding(&self, byte_index: ByteIndex) -> Option<hir::Identifier> {
         use hir::BareExpression::*;
 
         // @Question do we need this check?
@@ -441,7 +440,7 @@ impl FindBinding for hir::Expression {
             Text(_) => None,   // @Task
             Binding(binding) => {
                 if binding.0.span().contains(byte_index) {
-                    Some(&binding.0)
+                    Some(binding.0)
                 } else {
                     None
                 }

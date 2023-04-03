@@ -156,7 +156,7 @@ impl BuildQueue {
             self[manifest_path].components.extend(
                 component_worklist
                     .keys()
-                    .map(|name| (name.bare.clone(), Unresolved)),
+                    .map(|name| (name.bare, Unresolved)),
             );
 
             while !component_worklist.is_empty() {
@@ -166,7 +166,7 @@ impl BuildQueue {
                 for (name, (component, _)) in component_worklist {
                     use error::DependencyResolutionError::*;
                     let dependencies = match self.resolve_dependencies(
-                        &name.bare,
+                        name.bare,
                         manifest_path,
                         component.bare.dependencies.as_ref(),
                     ) {
@@ -205,7 +205,7 @@ impl BuildQueue {
 
                     let component = self.components.insert_with(|index| {
                         BuildUnit {
-                            name: name.bare.clone(),
+                            name: name.bare,
                             index,
                             // @Beacon @Temporary new_unchecked @Bug its use is incorrect! @Task canonicalize (I guess?)
                             path: component.bare.path.as_ref().map(|relative_path| {
@@ -229,11 +229,11 @@ impl BuildQueue {
                     // the same name but with a differing type, add a note that only library components are being looked
                     // at during dependency resolution (clarifying that one cannot depend on non-library components)
 
-                    for cycle in find_cycles_by_key::<&Word, Spanned<&Word>>(
+                    for cycle in find_cycles_by_key::<Word, Spanned<Word>>(
                         &unresolved_components
                             .iter()
                             .map(|(dependent, (_, dependency))| {
-                                (&dependent.bare, dependency.as_ref().unwrap().as_ref())
+                                (dependent.bare, dependency.unwrap())
                             })
                             .collect(),
                         |name| &name.bare,
@@ -290,7 +290,7 @@ impl BuildQueue {
             let library = self
                 .resolve_dependency_by_manifest(
                     Ok(core_manifest_path),
-                    Spanned::bare(&core_package_name),
+                    Spanned::bare(core_package_name),
                     None,
                     Box::new(|| {
                         Diagnostic::error()
@@ -311,7 +311,7 @@ impl BuildQueue {
 
         self.components.insert_with(|index| {
             BuildUnit {
-                name: name.clone(),
+                name,
                 index,
                 // @Task don't use bare
                 path: Spanned::bare(file_path),
@@ -325,7 +325,7 @@ impl BuildQueue {
 
     fn resolve_dependencies(
         &mut self,
-        dependent_component_name: &Word,
+        dependent_component_name: Word,
         dependent_path: ManifestPath,
         dependencies: Option<&Spanned<Record<Word, Spanned<DependencyDeclaration>>>>,
     ) -> Result<HashMap<Word, ComponentIndex>, error::DependencyResolutionError> {
@@ -336,7 +336,7 @@ impl BuildQueue {
         let mut resolved_dependencies = HashMap::default();
         let mut health = Health::Untainted;
 
-        for (dependency_exonym, dependency_declaration) in &dependencies.bare {
+        for (&dependency_exonym, dependency_declaration) in &dependencies.bare {
             match self.resolve_dependency(
                 dependent_component_name,
                 dependent_path,
@@ -344,7 +344,7 @@ impl BuildQueue {
                 dependency_declaration,
             ) {
                 Ok(dependency) => {
-                    resolved_dependencies.insert(dependency_exonym.bare.clone(), dependency);
+                    resolved_dependencies.insert(dependency_exonym.bare, dependency);
                 }
                 Err(error::DependencyResolutionError::ErasedNonFatal(error)) => {
                     health.taint(error);
@@ -359,14 +359,14 @@ impl BuildQueue {
 
     fn resolve_dependency(
         &mut self,
-        dependent_component_name: &Word,
+        dependent_component_name: Word,
         dependent_path: ManifestPath,
-        component_exonym: &WeaklySpanned<Word>,
+        component_exonym: WeaklySpanned<Word>,
         declaration: &Spanned<DependencyDeclaration>,
     ) -> Result<ComponentIndex, error::DependencyResolutionError> {
         let dependency = match self.resolve_dependency_declaration(
             declaration,
-            &component_exonym.bare,
+            component_exonym.bare,
             dependent_path,
         ) {
             Ok(dependency) => dependency,
@@ -394,8 +394,7 @@ impl BuildQueue {
         let component_endonym = declaration
             .bare
             .component
-            .as_ref()
-            .map_or(component_exonym.as_ref().strong(), Spanned::as_ref);
+            .unwrap_or_else(|| component_exonym.strong());
 
         // @Question do we want to a allow declarations of the form ‘<secondary-lib>: { … }’ w/o an explicit ‘component: <secondary-lib>’?
 
@@ -404,7 +403,7 @@ impl BuildQueue {
             Dependency::LocalComponent => {
                 let package = &self[dependent_path];
 
-                return match package.components.get(component_endonym.bare) {
+                return match package.components.get(&component_endonym.bare) {
                     Some(&Resolved(component))
                         if self[component].type_ == ComponentType::Library =>
                     {
@@ -414,17 +413,17 @@ impl BuildQueue {
                     Some(&Resolved(component)) => Err(error::non_library_dependency_error(
                         component_endonym,
                         self[component].type_,
-                        &package.name,
+                        package.name,
                     )
                     .report(&self.reporter)
                     .into()),
                     Some(Unresolved) => {
                         Err(error::DependencyResolutionError::UnresolvedLocalComponent(
-                            component_endonym.cloned(),
+                            component_endonym,
                         ))
                     }
                     None => Err(
-                        error::undefined_component_error(component_endonym, &package.name)
+                        error::undefined_component_error(component_endonym, package.name)
                             .report(&self.reporter)
                             .into(),
                     ),
@@ -443,14 +442,14 @@ impl BuildQueue {
             // @Beacon @Note this probably won't scale to our new order-independent component resolver (maybe)
             // if so, consider not throwing a cycle error (here / unconditionally)
             // @Beacon @Task handle component privacy here
-            return match package.components.get(component_endonym.bare) {
+            return match package.components.get(&component_endonym.bare) {
                 Some(&Resolved(component)) if self[component].type_ == ComponentType::Library => Ok(component),
                 // @Bug this does not fire when we want to since the it is apparently unresolved at this stage for some reason
                 // @Task test this, is this reachable?
                 Some(&Resolved(component)) => Err(error::non_library_dependency_error(
                     component_endonym,
                     self[component].type_,
-                    &package.name,
+                    package.name,
                 )
                 .report(&self.reporter)
                 .into()),
@@ -471,7 +470,7 @@ impl BuildQueue {
                     // Err(error::DependencyResolutionError::Cycle(Spanned::bare(dependent_component_name.clone())))
                 }
                 None => Err(
-                    error::undefined_component_error(component_endonym, &package.name)
+                    error::undefined_component_error(component_endonym, package.name)
                         .report(&self.reporter)
                         .into(),
                 )
@@ -481,7 +480,7 @@ impl BuildQueue {
         self.resolve_dependency_by_manifest(
             manifest_path,
             component_endonym,
-            declaration.bare.package.clone(),
+            declaration.bare.package,
             Box::new(|| {
                 Diagnostic::error()
                     .message(format!(
@@ -499,7 +498,7 @@ impl BuildQueue {
     fn resolve_dependency_by_manifest(
         &mut self,
         manifest_path: std::io::Result<ManifestPath>,
-        component_endonym: Spanned<&Word>,
+        component_endonym: Spanned<Word>,
         declared_package_name: Option<Spanned<Word>>,
         load_error: Box<dyn FnOnce() -> Diagnostic + '_>,
     ) -> Result<ComponentIndex, error::DependencyResolutionError> {
@@ -542,14 +541,14 @@ impl BuildQueue {
         // @Task assert version requirement (if any) is fulfilled
 
         let package = Package::from_manifest(manifest.profile, manifest_path);
-        let package_name = package.name.clone();
+        let package_name = package.name;
         self.packages.insert(manifest_path, package);
 
         // @Task handle component privacy
         let library = match manifest
             .components
             .as_ref()
-            .and_then(|components| components.bare.get(&component_endonym.cloned().weak()))
+            .and_then(|components| components.bare.get(&component_endonym.weak()))
         {
             Some(component) if component.bare.type_.bare == ComponentType::Library => {
                 &component.bare
@@ -558,14 +557,14 @@ impl BuildQueue {
                 return Err(error::non_library_dependency_error(
                     component_endonym,
                     component.bare.type_.bare,
-                    &package_name,
+                    package_name,
                 )
                 .report(&self.reporter)
                 .into())
             }
             None => {
                 return Err(
-                    error::undefined_component_error(component_endonym, &package_name)
+                    error::undefined_component_error(component_endonym, package_name)
                         .report(&self.reporter)
                         .into(),
                 )
@@ -580,23 +579,21 @@ impl BuildQueue {
         });
 
         // @Question should we prefill all components here too?
-        self[manifest_path]
-            .components
-            .insert(name.clone(), Unresolved);
+        self[manifest_path].components.insert(name, Unresolved);
 
         // Transitive dependencies from the perspective of the dependent package.
         let dependencies =
             self.resolve_dependencies(name, manifest_path, library.dependencies.as_ref())?;
 
         let library = self.components.insert_with(|index| BuildUnit {
-            name: name.clone(),
+            name,
             index,
             path: library_component_path,
             type_: library.type_.bare,
             dependencies,
         });
 
-        self.register_package_component(manifest_path, name.clone(), library);
+        self.register_package_component(manifest_path, name, library);
 
         Ok(library)
     }
@@ -614,7 +611,7 @@ impl BuildQueue {
     fn resolve_dependency_declaration(
         &self,
         Spanned!(span, declaration): &Spanned<DependencyDeclaration>,
-        exonym: &Word,
+        exonym: Word,
         manifest_path: ManifestPath,
     ) -> Result<Dependency> {
         // @Beacon @Task create a DependencyDeclaration' that's an enum not a struct with provider
@@ -683,8 +680,8 @@ impl BuildQueue {
                 let component = declaration
                     .component
                     .as_ref()
-                    .map_or(exonym, |name| &name.bare);
-                let path = session::package::distributed_packages_path().join(component.as_str());
+                    .map_or(exonym, |name| name.bare);
+                let path = session::package::distributed_packages_path().join(component.to_str());
                 Ok(Dependency::ForeignPackage(path))
             }
             DependencyProvider::Package => Ok(Dependency::LocalComponent),

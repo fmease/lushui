@@ -9,6 +9,7 @@ use session::{
 };
 use std::{collections::VecDeque, fmt};
 use token::INDENTATION;
+use utilities::Atom;
 
 #[cfg(test)]
 mod test;
@@ -221,7 +222,7 @@ fn write_lower_expression(
     match &expression.bare {
         Number(literal) => write!(f, "{literal}"),
         Text(literal) => write!(f, "{literal}"),
-        Binding(binding) => write!(f, "{}", session.binder_to_path(&binding.0)),
+        Binding(binding) => write!(f, "{}", session.binder_to_path(binding.0)),
         // @Beacon @Temporary @Task just write out the path
         Projection(_projection) => write!(f, "?(projection)"),
         IO(io) => {
@@ -257,7 +258,7 @@ impl Display for hir::Pattern {
         match &self.bare {
             Number(number) => write!(f, "{number}"),
             Text(text) => write!(f, "{text}"),
-            Binding(binding) => write!(f, "{}", session.binder_to_path(&binding.0)),
+            Binding(binding) => write!(f, "{}", session.binder_to_path(binding.0)),
             Binder(binder) => write!(f, "\\{}", binder.0),
             Application(application) => {
                 write!(f, "(")?;
@@ -399,7 +400,7 @@ pub trait SessionExt {
     /// * `topmost.gamma.<?//`
     /// * `extern.core`
     /// * `extern.core.nat.Nat`
-    fn binder_to_path(&self, binder: &hir::Identifier) -> String;
+    fn binder_to_path(&self, binder: hir::Identifier) -> String;
 
     /// The textual representation of the path of the given binding relative to the root of the current component.
     ///
@@ -421,7 +422,7 @@ pub trait SessionExt {
 }
 
 impl SessionExt for Session<'_> {
-    fn binder_to_path(&self, binder: &hir::Identifier) -> String {
+    fn binder_to_path(&self, binder: hir::Identifier) -> String {
         use hir::Index::*;
 
         match binder.index {
@@ -467,7 +468,7 @@ pub trait ComponentExt {
     ) -> String;
 
     // @Task add documentation
-    fn local_index_to_path_segments(&self, index: hir::LocalDeclarationIndex) -> VecDeque<&str>;
+    fn local_index_to_path_segments(&self, index: hir::LocalDeclarationIndex) -> VecDeque<Atom>;
 }
 
 impl ComponentExt for Component {
@@ -510,7 +511,7 @@ impl ComponentExt for Component {
                 parent_path.push(' ');
             }
 
-            parent_path += entity.source.as_str();
+            parent_path += entity.source.to_str();
             parent_path
         } else {
             root
@@ -520,11 +521,11 @@ impl ComponentExt for Component {
     fn local_index_to_path_segments(
         &self,
         mut index: hir::LocalDeclarationIndex,
-    ) -> VecDeque<&str> {
+    ) -> VecDeque<Atom> {
         let mut segments = VecDeque::new();
 
         while let Some(parent) = self[index].parent {
-            segments.push_front(self[index].source.as_str());
+            segments.push_front(self[index].source.bare());
             index = parent;
         }
 

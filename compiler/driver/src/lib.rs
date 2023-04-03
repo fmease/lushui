@@ -30,7 +30,7 @@ use std::{
         Arc, RwLock,
     },
 };
-use utilities::{displayed, ComponentIndex, FormatError};
+use utilities::{displayed, ComponentIndex, FormatError, PROGRAM_ENTRY};
 
 mod cli;
 mod create;
@@ -377,9 +377,8 @@ fn build_unit(
         return Err(Diagnostic::error()
             .code(ErrorCode::E050)
             .message(format!(
-                "the component ‘{}’ does not contain a ‘{}’ function in its root module",
-                unit.name,
-                Session::PROGRAM_ENTRY_IDENTIFIER,
+                "the component ‘{}’ does not contain a ‘{PROGRAM_ENTRY}’ function in its root module",
+                unit.name
             ))
             .unlabeled_span(&session.shared_map()[file])
             .report(session.reporter()));

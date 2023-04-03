@@ -9,7 +9,6 @@ publish = false
 diagnostics = { path = "../diagnostics" }
 hir = { path = "../hir" }
 hir_format = { path = "../hir_format" }
-resolver = { path = "../resolver" }
 session = { path = "../session" }
 utilities = { path = "../utilities" }
 

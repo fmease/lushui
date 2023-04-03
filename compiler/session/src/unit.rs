@@ -22,7 +22,7 @@ impl BuildUnit {
     // @Temporary
     pub fn outline(&self) -> ComponentOutline {
         ComponentOutline {
-            name: self.name.clone(),
+            name: self.name,
             index: self.index,
         }
     }
