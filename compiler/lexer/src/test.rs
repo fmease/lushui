@@ -3,9 +3,13 @@
 // @Task smh create a Vec<Section> of the form [TopLevel, Indented, Continued]
 // @Task add a lot of tests of the interaction between line breaks, indentation and *comments*!
 
-use crate::{BareError, BareToken::*, Error, Outcome, Token};
+use crate::{
+    token::{IndentationError, Spaces},
+    BareError,
+    BareToken::*,
+    Error, Outcome, Token,
+};
 use span::span;
-use token::{IndentationError, Spaces};
 use utilities::difference;
 
 fn lex(source: &'static str) -> Outcome {

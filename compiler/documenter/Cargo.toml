@@ -13,12 +13,12 @@ hir = { path = "../hir" }
 hir_format = { path = "../hir_format" }
 html-escape = "0.2.13"
 joinery = "3.1.0"
+lexer = { path = "../lexer" }
 minifier = "0.2.2"
 resolver = { path = "../resolver" }
 session = { path = "../session" }
 span = { path = "../span" }
 syntax = { path = "../syntax" }
-token = { path = "../token" }
 unicode-segmentation = "1.10.1"
 urlencoding = "2.1.2"
 utilities = { path = "../utilities" }

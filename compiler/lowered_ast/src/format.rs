@@ -1,8 +1,8 @@
 //! The definition of the textual representation of the [lowered AST](super).
 
 use colored::{Color, Colorize};
+use lexer::token::INDENTATION;
 use std::fmt;
-use token::INDENTATION;
 
 const KEYWORD_COLOR: Color = Color::Cyan;
 const SYMBOL_COLOR: Color = Color::BrightMagenta;

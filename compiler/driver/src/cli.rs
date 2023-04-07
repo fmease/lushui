@@ -6,11 +6,10 @@ use clap::{
 use colored::Colorize;
 use derivation::{Elements, FromStr, Str};
 use diagnostics::error::Result;
-use lexer::word::WordExt;
+use lexer::word::Word;
 use package::ComponentFilter;
 use session::unit::ComponentType;
 use std::{cmp::max, default::default, ffi::OsStr, path::PathBuf};
-use token::Word;
 
 // @Task update the color scheme of the `-Zhelp` output from clap-3-style to clap-4-style
 //       i.e. from upper-case section titles and the use of yellow & green to

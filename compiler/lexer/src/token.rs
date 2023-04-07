@@ -1,14 +1,10 @@
 //! The tokens emitted by the lexer.
-#![feature(decl_macro, stmt_expr_attributes, int_roundings)]
 
 use derivation::Str;
 use span::Spanned;
 use std::{cmp::Ordering, fmt};
 use utilities::{quoted, Atom};
-pub use word::Word;
 use BareToken::*;
-
-mod word;
 
 pub type Token = Spanned<BareToken>;
 
@@ -85,8 +81,7 @@ pub enum BareToken {
 }
 
 impl BareToken {
-    // @Task move to lexer
-    pub const fn introduces_indented_section(self) -> bool {
+    pub(crate) const fn introduces_indented_section(self) -> bool {
         matches!(self, Do | Of)
     }
 }
@@ -156,16 +151,6 @@ impl fmt::Display for BareToken {
             Self::Word(_) => "word",
         })
     }
-}
-
-// @Task move to lexer
-pub const fn is_symbol(character: char) -> bool {
-    #[rustfmt::skip]
-    matches!(
-        character,
-        '.' | ':' | '+' | '-' | '~' | '=' | '<' | '>' | '*' | '^' |
-        '!' | '?' | '|' | '/' | '\\' | '&' | '#' | '%' | '$' | '@'
-    )
 }
 
 #[derive(PartialEq, Eq, Debug)]

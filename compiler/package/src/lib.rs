@@ -7,7 +7,7 @@ use diagnostics::{
     Diagnostic, ErrorCode, Reporter,
 };
 use index_map::IndexMap;
-use lexer::word::WordExt;
+use lexer::word::Word;
 use manifest::{DependencyDeclaration, DependencyProvider, PackageManifest, PackageProfile};
 use metadata::Record;
 use session::{
@@ -22,7 +22,6 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
-use token::Word;
 use utilities::{
     cycle::find_cycles_by_key, path::CanonicalPathBuf, pluralize, ComponentIndex, Conjunction,
     FormatError, HashMap, ListingExt, QuoteExt, FILE_EXTENSION,

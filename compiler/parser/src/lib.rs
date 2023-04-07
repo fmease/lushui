@@ -28,13 +28,12 @@
 use ast::{Attributes, Declaration, Explicitness::Explicit, Expression, Identifier, Pattern};
 use base::{LexerErrorExt, Parser, SkipLineBreaks};
 use diagnostics::{error::Result, Diagnostic, ErrorCode, Reporter};
-use lexer::word::WordExt;
 use span::{SourceFileIndex, SourceMap, Span, Spanned, Spanning};
 use std::default::default;
 // It's a small *inline* module allowing us unify the docs of its items.
+use lexer::token::BareToken::{self, *};
 #[allow(clippy::wildcard_imports)]
 use synonym::*;
-use token::BareToken::{self, *};
 use utilities::{smallvec, Atom, SmallVec};
 
 mod base;
@@ -58,7 +57,7 @@ pub fn parse_root_module_file(
         .to_str()
         .unwrap();
 
-    let binder = token::Word::parse(name.to_owned()).map_err(|_| {
+    let binder = lexer::word::Word::parse(name.to_owned()).map_err(|_| {
         Diagnostic::error()
             .code(ErrorCode::E036)
             .message(format!(
@@ -612,7 +611,7 @@ impl Parser<'_> {
                     ast::BareParameter {
                         explicitness: Explicit,
                         // @Temporary hack until we properly support discards
-                        binder: Identifier::new_unchecked(Atom::underscore, domain.span.start()),
+                        binder: Identifier::new_unchecked(Atom::__, domain.span.start()),
                         type_: Some(domain),
                     },
                 )],
@@ -1769,7 +1768,7 @@ mod synonym {
     //!
     //! Contrary to methods or arrays, they preserve `match` exhaustiveness & overlap checks at use sites.
 
-    use token::BareToken::*;
+    use lexer::token::BareToken::*;
 
     /// An [identifier]
     ///

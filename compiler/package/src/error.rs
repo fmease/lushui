@@ -1,7 +1,7 @@
 use diagnostics::{reporter::ErasedReportedError, Diagnostic};
+use lexer::word::Word;
 use session::unit::ComponentType;
 use span::Spanned;
-use token::Word;
 
 pub(crate) enum DependencyResolutionError {
     ErasedNonFatal(ErasedReportedError),

@@ -13,6 +13,7 @@ use diagnostics::error::Result;
 use hir::{Attribute, AttributeName, Attributes, BareAttribute};
 use hir_format::ComponentExt;
 use joinery::JoinableIterator;
+use lexer::word::Word;
 use node::{Attributable, Document, Element, Node, VoidElement};
 use session::{
     component::{DeclarationIndexExt, IdentifierExt},
@@ -26,7 +27,6 @@ use std::{
     path::{Path, PathBuf},
 };
 use text_processor::TextProcessor;
-use token::Word;
 use utilities::Atom;
 
 mod fonts;
@@ -533,7 +533,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
             content: render_page(
                 head(
                     // @Temporary hack
-                    Word::new_unchecked(Atom::underscore),
+                    Word::new_unchecked(Atom::__),
                     url_prefix,
                     format!("Package {name}").into(),
                 ),

@@ -42,8 +42,8 @@ dependencies = [
  "diagnostics",
  "index_map",
  "joinery",
+ "lexer",
  "span",
- "token",
  "utilities",
 ]
 
@@ -448,12 +448,12 @@ dependencies = [
  "hir_format",
  "html-escape",
  "joinery",
+ "lexer",
  "minifier",
  "resolver",
  "session",
  "span",
  "syntax",
- "token",
  "unicode-segmentation",
  "urlencoding",
  "utilities",
@@ -484,7 +484,6 @@ dependencies = [
  "session",
  "span",
  "syntax",
- "token",
  "tokio",
  "typer",
  "utilities",
@@ -655,7 +654,6 @@ dependencies = [
  "pathdiff",
  "span",
  "terminal_size",
- "token",
  "unicode-width",
  "utilities",
  "walkdir",
@@ -713,9 +711,9 @@ dependencies = [
  "colored",
  "hir",
  "joinery",
+ "lexer",
  "session",
  "span",
- "token",
  "utilities",
 ]
 
@@ -846,8 +844,8 @@ checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 name = "lexer"
 version = "0.0.0"
 dependencies = [
+ "derivation",
  "span",
- "token",
  "utilities",
 ]
 
@@ -904,8 +902,8 @@ dependencies = [
  "colored",
  "derivation",
  "diagnostics",
+ "lexer",
  "span",
- "token",
  "utilities",
 ]
 
@@ -1057,7 +1055,6 @@ dependencies = [
  "metadata",
  "session",
  "span",
- "token",
  "utilities",
 ]
 
@@ -1095,7 +1092,6 @@ dependencies = [
  "index_map",
  "lexer",
  "span",
- "token",
  "utilities",
 ]
 
@@ -1233,11 +1229,11 @@ dependencies = [
  "difference",
  "hir",
  "hir_format",
+ "lexer",
  "lowered_ast",
  "session",
  "span",
  "strsim",
- "token",
  "unicode-width",
  "utilities",
 ]
@@ -1360,8 +1356,8 @@ dependencies = [
  "hir",
  "index_map",
  "internment",
+ "lexer",
  "span",
- "token",
  "utilities",
 ]
 
@@ -1469,15 +1465,6 @@ name = "tinyvec_macros"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cda74da7e1a664f795bb1f8a87ec406fb89a02522cf6e50620d016add6dbbf5c"
-
-[[package]]
-name = "token"
-version = "0.0.0"
-dependencies = [
- "derivation",
- "span",
- "utilities",
-]
 
 [[package]]
 name = "tokio"

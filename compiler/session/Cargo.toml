@@ -8,12 +8,12 @@ publish = false
 test = []
 
 [dependencies]
-derivation = { path = "../../project/library/derivation" }
-index_map = { path = "../../project/library/index_map" }
 ast = { path = "../ast" }
+derivation = { path = "../../project/library/derivation" }
 diagnostics = { path = "../diagnostics" }
 hir = { path = "../hir" }
+index_map = { path = "../../project/library/index_map" }
 internment = "0.7.0"
+lexer = { path = "../lexer" }
 span = { path = "../span" }
-token = { path = "../token" }
 utilities = { path = "../utilities" }

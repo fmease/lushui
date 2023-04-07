@@ -5,13 +5,12 @@ use diagnostics::{
     reporter::ErasedReportedError,
     Diagnostic, ErrorCode, Reporter,
 };
-use lexer::word::WordExt;
 use metadata::{convert, Record, RecordWalker, WithTextContentSpanExt};
 use session::{package::Version, unit::ComponentType};
 
+use lexer::word::Word;
 use span::{SourceFileIndex, SourceMap, Spanned, WeaklySpanned};
 use std::{fmt, path::PathBuf, str::FromStr};
-use token::Word;
 use utilities::{try_all, AndThenMapExt, Conjunction, HashMap, ListingExt, QuoteExt};
 
 pub(super) struct PackageManifest {

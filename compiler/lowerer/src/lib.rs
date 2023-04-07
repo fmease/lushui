@@ -531,8 +531,8 @@ impl<'a> Lowerer<'a> {
                         let domain = self.lower_expression(domain);
 
                         // @Temporary hack until we properly support discards
-                        let binder = Some(parameter.bare.binder)
-                            .filter(|binder| binder.bare() != Atom::underscore);
+                        let binder =
+                            Some(parameter.bare.binder).filter(|binder| binder.bare() != Atom::__);
 
                         codomain = lowered_ast::Expression::new(
                             default(),

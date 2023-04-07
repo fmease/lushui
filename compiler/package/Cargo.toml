@@ -13,5 +13,4 @@ lexer = { path = "../lexer" }
 metadata = { path = "../metadata" }
 session = { path = "../session" }
 span = { path = "../span" }
-token = { path = "../token" }
 utilities = { path = "../utilities" }

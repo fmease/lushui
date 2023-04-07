@@ -26,13 +26,13 @@ use hir::{
     ExposureReach, Identifier, Index, LocalDeclarationIndex, PartiallyResolvedPath,
 };
 use hir_format::{Display, SessionExt};
+use lexer::word::Word;
 use session::{
     component::{Component, DeclarationIndexExt, IdentifierExt, LocalDeclarationIndexExt},
     Session,
 };
 use span::{Span, Spanned, Spanning};
 use std::{cmp::Ordering, default::default, fmt, mem, sync::Mutex};
-use token::Word;
 use unicode_width::UnicodeWidthStr;
 use utilities::{
     cycle::find_cycles, displayed, obtain, pluralize, smallvec, AsAutoColoredChangeset, Atom,

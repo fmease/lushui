@@ -1,5 +1,11 @@
 //! The lexical analyzer (lexer).
-#![feature(default_free_fn, decl_macro, let_chains)]
+#![feature(
+    decl_macro,
+    default_free_fn,
+    int_roundings,
+    let_chains,
+    stmt_expr_attributes
+)]
 
 use span::{FileName, LocalByteIndex, LocalSpan, SourceFile, SourceMap, Span, Spanned};
 use std::{cmp::Ordering, default::default, iter::Peekable, mem, str::CharIndices, sync::Arc};
@@ -7,12 +13,13 @@ use token::{
     BareToken, Bracket, BracketKind, BracketOrientation, Indentation, IndentationError, Spaces,
     Token,
 };
-use utilities::{self, GetFromEndExt};
+use utilities::{self, Atom, GetFromEndExt};
 use BareToken::*;
 
 #[cfg(test)]
 mod test;
-// @Task move this out of this crate
+pub mod token;
+// @Task move this to crate `utilities` once word parsing is independent
 pub mod word;
 
 pub fn lex(file: &SourceFile, options: &Options) -> Outcome {
@@ -77,7 +84,7 @@ impl<'a> Lexer<'a> {
                         self.add(Semicolon);
                     }
                 }
-                character if is_identifier_segment_start(character) => self.lex_identifier(),
+                character if character.is_word_segment_start() => self.lex_word(),
                 '\n' => {
                     self.take();
                     self.advance();
@@ -89,7 +96,7 @@ impl<'a> Lexer<'a> {
                     self.advance();
                     self.lex_number_literal();
                 }
-                character if token::is_symbol(character) => {
+                character if character.is_symbol() => {
                     self.take();
                     self.advance();
                     self.lex_symbol();
@@ -235,20 +242,33 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn lex_identifier(&mut self) {
-        self.lex_first_identifier_segment();
+    fn lex_word(&mut self) {
+        self.lex_first_word_segment();
         while self.peek() == Some('-') {
             self.take();
             self.advance();
-            self.lex_identifier_segment();
+            self.lex_word_segment();
         }
 
-        match lex_keyword(self.source()) {
-            Some(keyword) => self.add(keyword),
-            None => {
-                self.add(Word(self.source().into()));
-            }
-        };
+        self.add(match self.source().into() {
+            Atom::__ => Underscore,
+            Atom::as_ => As,
+            Atom::case => Case,
+            Atom::data => Data,
+            Atom::do_ => Do,
+            Atom::extern_ => Extern,
+            Atom::for_ => ForLower,
+            Atom::For => ForUpper,
+            Atom::in_ => In,
+            Atom::let_ => Let,
+            Atom::module => Module,
+            Atom::of => Of,
+            Atom::self_ => Self_,
+            Atom::super_ => Super,
+            Atom::topmost => Topmost,
+            Atom::use_ => Use,
+            word => Word(word),
+        });
 
         const DOT: char = '.';
         if let Some((index, DOT)) = self.peek_with_index() {
@@ -260,18 +280,18 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn lex_first_identifier_segment(&mut self) {
+    fn lex_first_word_segment(&mut self) {
         if let Some(character) = self.peek() {
-            if is_identifier_segment_start(character) {
+            if character.is_word_segment_start() {
                 self.take();
                 self.advance();
-                self.take_while(is_identifier_segment_middle);
+                self.take_while(char::is_word_segment_middle);
             }
         }
     }
 
-    fn lex_identifier_segment(&mut self) {
-        self.take_while(is_identifier_segment_middle);
+    fn lex_word_segment(&mut self) {
+        self.take_while(char::is_word_segment_middle);
     }
 
     // @Task recover from tabs (treat them as 4 spaces) and emit a custom error
@@ -385,27 +405,35 @@ impl<'a> Lexer<'a> {
     }
 
     fn lex_symbol(&mut self) {
-        self.take_while(token::is_symbol);
+        self.take_while(char::is_symbol);
 
-        match lex_reserved_symbol(&self.file[self.local_span]) {
-            Some(symbol) => self.add(symbol),
-            None => {
-                self.add(Symbol(self.source().into()));
-            }
-        }
+        self.add(match self.source() {
+            "." => Dot,
+            ":" => Colon,
+            "=" => Equals,
+            "\\" => Backslash,
+            "?" => QuestionMark,
+            "@" => At,
+            "->" => ThinArrowRight,
+            "<-" => ThinArrowLeft,
+            "=>" => WideArrowRight,
+            "::" => DoubleColon,
+            "**" => DoubleAsterisk,
+            symbol => Symbol(symbol.into()),
+        });
     }
 
     fn lex_number_literal(&mut self) {
         let mut number = self.source().to_owned();
 
         while let Some(character) = self.peek() {
-            if !is_number_literal_middle(character) {
+            if !character.is_number_literal_middle() {
                 break;
             }
             self.take();
             self.advance();
 
-            if character != NUMERIC_SEPARATOR {
+            if character != char::NUMERIC_SEPARATOR {
                 number.push(character);
             }
         }
@@ -634,57 +662,38 @@ impl Brackets {
 
 type Stack<T> = Vec<T>;
 
-const fn is_identifier_segment_start(character: char) -> bool {
-    character.is_ascii_alphabetic() || character == '_'
+pub trait CharExt: Copy {
+    const NUMERIC_SEPARATOR: Self;
+
+    fn is_word_segment_start(self) -> bool;
+    fn is_word_segment_middle(self) -> bool;
+    fn is_number_literal_middle(self) -> bool;
+    fn is_symbol(self) -> bool;
 }
 
-const fn is_identifier_segment_middle(character: char) -> bool {
-    character.is_ascii_alphanumeric() || character == '_'
-}
+impl CharExt for char {
+    const NUMERIC_SEPARATOR: Self = '\'';
 
-const NUMERIC_SEPARATOR: char = '\'';
+    fn is_word_segment_start(self) -> bool {
+        self.is_ascii_alphabetic() || self == '_'
+    }
 
-const fn is_number_literal_middle(character: char) -> bool {
-    character.is_ascii_digit() || character == NUMERIC_SEPARATOR
-}
+    fn is_word_segment_middle(self) -> bool {
+        self.is_ascii_alphanumeric() || self == '_'
+    }
 
-fn lex_keyword(source: &str) -> Option<BareToken> {
-    Some(match source {
-        "_" => Underscore,
-        "as" => As,
-        "case" => Case,
-        "data" => Data,
-        "do" => Do,
-        "extern" => Extern,
-        "for" => ForLower,
-        "For" => ForUpper,
-        "in" => In,
-        "let" => Let,
-        "module" => Module,
-        "of" => Of,
-        "self" => Self_,
-        "super" => Super,
-        "topmost" => Topmost,
-        "use" => Use,
-        _ => return None,
-    })
-}
+    fn is_number_literal_middle(self) -> bool {
+        self.is_ascii_digit() || self == Self::NUMERIC_SEPARATOR
+    }
 
-fn lex_reserved_symbol(source: &str) -> Option<BareToken> {
-    Some(match source {
-        "." => Dot,
-        ":" => Colon,
-        "=" => Equals,
-        "\\" => Backslash,
-        "?" => QuestionMark,
-        "@" => At,
-        "->" => ThinArrowRight,
-        "<-" => ThinArrowLeft,
-        "=>" => WideArrowRight,
-        "::" => DoubleColon,
-        "**" => DoubleAsterisk,
-        _ => return None,
-    })
+    fn is_symbol(self) -> bool {
+        #[rustfmt::skip]
+        matches!(
+            self,
+            '.' | ':' | '+' | '-' | '~' | '=' | '<' | '>' | '*' | '^' |
+            '!' | '?' | '|' | '/' | '\\' | '&' | '#' | '%' | '$' | '@'
+        )
+    }
 }
 
 pub type Error = Spanned<BareError>;

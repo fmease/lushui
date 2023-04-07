@@ -1,9 +1,9 @@
 //! Package creation.
 
 use diagnostics::{error::Result, Diagnostic, Reporter};
+use lexer::word::Word;
 use session::package::ManifestPath;
 use std::{fs, io, path::PathBuf};
-use token::Word;
 use utilities::{Atom, FormatError, FILE_EXTENSION};
 
 const SOURCE_FOLDER_NAME: &str = "source";

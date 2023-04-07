@@ -2,9 +2,9 @@
 
 use crate::TestType;
 use derivation::{FromStr, Str};
+use lexer::token::BareToken;
 use span::{SourceFile, SourceMap, Span, Spanned};
 use std::{collections::HashMap, default::default, str::FromStr, time::Duration};
-use token::BareToken;
 use utilities::{pluralize, Str};
 
 #[cfg(test)]

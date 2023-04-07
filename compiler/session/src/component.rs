@@ -1,8 +1,8 @@
 use crate::{ComponentOutline, Session};
 use hir::{DeclarationIndex, Entity, LocalDeclarationIndex};
 use index_map::IndexMap;
+use lexer::word::Word;
 use std::{default::default, sync::Arc};
-use token::Word;
 use utilities::{ComponentIndex, HashMap};
 
 /// A sealed container of modules regarded as one unit.

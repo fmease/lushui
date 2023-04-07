@@ -32,7 +32,6 @@ server = { path = "../server", optional = true }
 session = { path = "../session" }
 span = { path = "../span" }
 syntax = { path = "../syntax" }
-token = { path = "../token" }
 typer = { path = "../typer" }
 utilities = { path = "../utilities" }
 

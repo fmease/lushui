@@ -3,12 +3,12 @@
 
 use colored::Colorize;
 use joinery::JoinableIterator;
+use lexer::{token::INDENTATION, CharExt};
 use session::{
     component::{Component, DeclarationIndexExt, LocalDeclarationIndexExt},
     Session,
 };
 use std::{collections::VecDeque, fmt};
-use token::INDENTATION;
 use utilities::Atom;
 
 #[cfg(test)]
@@ -499,7 +499,7 @@ impl ComponentExt for Component {
         if let Some(parent) = entity.parent {
             let mut parent_path = self.local_index_with_root_to_extern_path(parent, root);
 
-            let parent_is_symbol = token::is_symbol(parent_path.chars().next_back().unwrap());
+            let parent_is_symbol = parent_path.chars().next_back().unwrap().is_symbol();
 
             if parent_is_symbol {
                 parent_path.push(' ');

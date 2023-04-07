@@ -20,18 +20,18 @@ error: the library components ‘cycle1component1’, ‘cycle1component2’ and
 27 │         dependencies: { cycle1component0: {} },
    │                         ════════════════
 
-error: the library components ‘cycle2component1’ and ‘cycle2component0’ are circular
-   ┌─ ${TEST_FOLDER}/packages/circular-components-in-same-package/package.metadata:35:13
+error: the library components ‘cycle2component2’ and ‘cycle2component0’ are circular
+   ┌─ ${TEST_FOLDER}/packages/circular-components-in-same-package/package.metadata:36:13
    │
-35 │             cycle2component1: {},
+36 │             cycle2component2: {},
    │             ════════════════
    │
-   ├─ ${TEST_FOLDER}/packages/circular-components-in-same-package/package.metadata:43:25
+   ├─ ${TEST_FOLDER}/packages/circular-components-in-same-package/package.metadata:48:25
    │
-43 │         dependencies: { cycle2component0: {}, unrelated: {} },
+48 │         dependencies: { cycle2component0: {} },
    │                         ════════════════
 
-error: the library components ‘snake0’ and ‘snake1’ are circular
+error: the library components ‘snake1’ and ‘snake0’ are circular
    ┌─ ${TEST_FOLDER}/packages/circular-components-in-same-package/package.metadata:53:58
    │
 53 │     snake0: { type: library, path: "s0", dependencies: { snake1: {} } },

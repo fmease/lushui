@@ -10,8 +10,8 @@ ast = { path = "../ast" }
 colored = "2.0.0"
 hir = { path = "../hir" }
 joinery = "3.1.0"
+lexer = { path = "../lexer" }
 session = { path = "../session" }
-token = { path = "../token" }
 utilities = { path = "../utilities" }
 
 [dev-dependencies]

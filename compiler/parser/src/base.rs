@@ -1,7 +1,7 @@
 use diagnostics::{error::Result, Diagnostic, ErrorCode, Reporter};
+use lexer::token::{BareToken, IndentationError, Token, INDENTATION};
 use span::{SourceFileIndex, SourceMap, Span};
 use std::{fmt, mem};
-use token::{BareToken, IndentationError, Token, INDENTATION};
 use utilities::{Conjunction, ListingExt};
 
 /// The parser.

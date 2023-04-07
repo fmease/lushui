@@ -13,7 +13,6 @@ diagnostics = { path = "../../../compiler/diagnostics" }
 difference = "2.0.0"
 joinery = "3.1.0"
 lexer = { path = "../../../compiler/lexer" }
-token = { path = "../../../compiler/token" }
 metadata = { path = "../../../compiler/metadata" }
 pathdiff = "0.2.1"
 span = { path = "../../../compiler/span" }

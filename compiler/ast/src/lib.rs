@@ -5,9 +5,9 @@
 
 use diagnostics::{error::PossiblyErroneous, reporter::ErasedReportedError};
 pub use format::{Debug, Format};
+use lexer::{token::BareToken, word::Word, CharExt};
 use span::{SourceFileIndex, Span, Spanned, Spanning};
 use std::{fmt, hash::Hash};
-use token::{BareToken, Word};
 use utilities::{obtain, smallvec, Atom, SmallVec};
 
 mod format;
@@ -815,7 +815,7 @@ impl Identifier {
 
     pub fn is_symbol(self) -> bool {
         // either all characters are symbols or none
-        token::is_symbol(self.to_str().chars().next().unwrap())
+        self.to_str().chars().next().unwrap().is_symbol()
     }
 
     pub fn is_word(self) -> bool {

@@ -10,7 +10,6 @@ ast = { path = "../ast" }
 diagnostics = { path = "../diagnostics" }
 lexer = { path = "../lexer" }
 span = { path = "../span" }
-token = { path = "../token" }
 utilities = { path = "../utilities" }
 
 [dev-dependencies]

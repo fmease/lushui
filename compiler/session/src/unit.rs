@@ -2,9 +2,9 @@
 
 use crate::{ComponentOutline, Session};
 use derivation::{Elements, FromStr, Str};
+use lexer::word::Word;
 use span::Spanned;
 use std::fmt;
-use token::Word;
 use utilities::{path::CanonicalPathBuf, ComponentIndex, HashMap};
 
 // @Beacon @Beacon @Beacon @Task rename BuildUnit again to sth containing "Component"

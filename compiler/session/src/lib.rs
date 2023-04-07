@@ -6,6 +6,7 @@ use hir::{
     special::{self, Bindings},
     DeclarationIndex, Expression, LocalDeclarationIndex,
 };
+use lexer::word::Word;
 use package::{ManifestPath, Package};
 use span::{SourceMap, Span};
 use std::{
@@ -13,7 +14,6 @@ use std::{
     ops::{Index, IndexMut},
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
-use token::Word;
 use utilities::{ComponentIndex, HashMap};
 
 pub mod component;
