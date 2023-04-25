@@ -7,4 +7,4 @@ data X 'A '(B): For '(b: Bool) -> Type of
 binding = for 'A '(a: A) => a
 
 main: It =
-    callee 'this '(with that) '(tag = 0) '0 'self.me '[]
+    callee 'this '(with that) '(tag = 0) '0 'self.me '()

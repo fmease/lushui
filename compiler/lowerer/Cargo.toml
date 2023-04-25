@@ -8,8 +8,8 @@ publish = false
 [dependencies]
 ast = { path = "../ast" }
 diagnostics = { path = "../diagnostics" }
-lowered_ast = { path = "../lowered_ast" }
+lo_ast = { path = "../lo_ast" }
 session = { path = "../session" }
 span = { path = "../span" }
 syntax = { path = "../syntax" }
-utilities = { path = "../utilities" }
+utility = { path = "../utility" }

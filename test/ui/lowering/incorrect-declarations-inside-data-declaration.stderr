@@ -1,0 +1,59 @@
+error: a data declaration may not appear inside of a data declaration
+  ┌─ ${TEST_FOLDER}/lowering/incorrect-declarations-inside-data-declaration.lushui:1:6
+  │
+1 │ data Outer of
+  │      ───── the enclosing data declaration
+  │
+  ├─ ${TEST_FOLDER}/lowering/incorrect-declarations-inside-data-declaration.lushui:2:5
+  │
+2 │       data Inner of
+  │ ╔═════╝
+3 │ ║         module innermost of
+  │ ╚═══════════════════════════╝ misplaced declaration
+
+error: a module-header declaration may not appear inside of a data declaration
+  ┌─ ${TEST_FOLDER}/lowering/incorrect-declarations-inside-data-declaration.lushui:1:6
+  │
+1 │ data Outer of
+  │      ───── the enclosing data declaration
+  │
+  ├─ ${TEST_FOLDER}/lowering/incorrect-declarations-inside-data-declaration.lushui:5:5
+  │
+5 │     module
+  │     ══════ misplaced declaration
+
+error: a use-declaration may not appear inside of a record declaration
+  ┌─ ${TEST_FOLDER}/lowering/incorrect-declarations-inside-data-declaration.lushui:7:8
+  │
+7 │ record Record of
+  │        ────── the enclosing record declaration
+  │
+  ├─ ${TEST_FOLDER}/lowering/incorrect-declarations-inside-data-declaration.lushui:8:5
+  │
+8 │     use resource
+  │     ════════════ misplaced declaration
+
+error: a use-declaration may not appear inside of a trait declaration
+   ┌─ ${TEST_FOLDER}/lowering/incorrect-declarations-inside-data-declaration.lushui:10:7
+   │
+10 │ trait Trait of
+   │       ───── the enclosing trait declaration
+   │
+   ├─ ${TEST_FOLDER}/lowering/incorrect-declarations-inside-data-declaration.lushui:11:5
+   │
+11 │     use prelude
+   │     ═══════════ misplaced declaration
+
+error: a record declaration may not appear inside of a trait declaration
+   ┌─ ${TEST_FOLDER}/lowering/incorrect-declarations-inside-data-declaration.lushui:10:7
+   │
+10 │ trait Trait of
+   │       ───── the enclosing trait declaration
+   │
+   ├─ ${TEST_FOLDER}/lowering/incorrect-declarations-inside-data-declaration.lushui:13:5
+   │
+13 │     record Common of
+   │     ════════════════ misplaced declaration
+
+error: aborting due to 5 previous errors
+

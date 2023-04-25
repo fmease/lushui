@@ -1,23 +1,18 @@
 //! The lexical analyzer (lexer).
-#![feature(
-    decl_macro,
-    default_free_fn,
-    int_roundings,
-    let_chains,
-    stmt_expr_attributes
-)]
+#![feature(decl_macro, int_roundings, let_chains, stmt_expr_attributes)]
 
 use span::{FileName, LocalByteIndex, LocalSpan, SourceFile, SourceMap, Span, Spanned};
-use std::{cmp::Ordering, default::default, iter::Peekable, mem, str::CharIndices, sync::Arc};
+use std::{cmp::Ordering, iter::Peekable, mem, str::CharIndices, sync::Arc};
 use token::{
     BareToken, Bracket, BracketKind, BracketOrientation, Indentation, IndentationError, Spaces,
     Token,
 };
-use utilities::{self, Atom, GetFromEndExt};
+use utility::{self as _, default, Atom, GetFromEndExt};
 use BareToken::*;
 
 #[cfg(test)]
 mod test;
+
 pub mod token;
 // @Task move this to crate `utilities` once word parsing is independent
 pub mod word;
@@ -108,6 +103,7 @@ impl<'a> Lexer<'a> {
                 ')' => self.add_closing_bracket(BracketKind::Round),
                 ']' => self.add_closing_bracket(BracketKind::Square),
                 '}' => self.add_closing_bracket(BracketKind::Curly),
+                ',' => self.consume(Comma),
                 '\'' => self.consume(Apostrophe),
                 character => {
                     self.take();
@@ -251,22 +247,25 @@ impl<'a> Lexer<'a> {
         }
 
         self.add(match self.source().into() {
-            Atom::__ => Underscore,
-            Atom::as_ => As,
-            Atom::case => Case,
-            Atom::data => Data,
-            Atom::do_ => Do,
-            Atom::extern_ => Extern,
-            Atom::for_ => ForLower,
-            Atom::For => ForUpper,
-            Atom::in_ => In,
-            Atom::let_ => Let,
-            Atom::module => Module,
-            Atom::of => Of,
-            Atom::self_ => Self_,
-            Atom::super_ => Super,
-            Atom::topmost => Topmost,
-            Atom::use_ => Use,
+            Atom::UNDERSCORE => Underscore,
+            Atom::AS => As,
+            Atom::CASE => Case,
+            Atom::DATA => Data,
+            Atom::DO => Do,
+            Atom::EXTERN => Extern,
+            Atom::FOR_LOWER => ForLower,
+            Atom::FOR_UPPER => ForUpper,
+            Atom::GIVEN => Given,
+            Atom::IN => In,
+            Atom::LET => Let,
+            Atom::MODULE => Module,
+            Atom::OF => Of,
+            Atom::RECORD => Record,
+            Atom::SELF => Self_,
+            Atom::SUPER => Super,
+            Atom::TOPMOST => Topmost,
+            Atom::TRAIT => Trait,
+            Atom::USE => Use,
             word => Word(word),
         });
 
@@ -301,9 +300,10 @@ impl<'a> Lexer<'a> {
             .last()
             .map_or(false, |token| token.bare.introduces_indented_section());
 
-        // squash consecutive line breaks into a single one
+        // Squash consecutive line breaks into a single one.
         self.take_while(|character| character == '\n');
-        // might be removed again under certain conditions later on
+        // Tentatively register the line break. If certain conditions are met
+        // later on (*), we will remove it again.
         self.add(LineBreak);
 
         self.local_span = self
@@ -313,7 +313,7 @@ impl<'a> Lexer<'a> {
         let mut spaces = Spaces(0);
         self.take_while_with(|character| character == ' ', || spaces.0 += 1);
 
-        // if the line is empty, ignore it (important for indented comments)
+        // If the line is empty ignore it. This is important for indented comments.
         if self.line_is_empty() {
             spaces = self.indentation;
         }
@@ -334,7 +334,8 @@ impl<'a> Lexer<'a> {
 
         if is_start_of_indented_section {
             if change == Ordering::Greater {
-                self.tokens.pop(); // remove the line break again
+                // (*) Remove the line break again.
+                self.tokens.pop();
                 self.add(BareToken::Indentation);
                 self.sections.enter(Section::Indented {
                     brackets: self.brackets.stack.len(),
@@ -342,8 +343,8 @@ impl<'a> Lexer<'a> {
             }
         } else {
             // Remove the line break again if the next line is indented or if we are in a section
-            // where line breaks ((virtual) semicolons) are not terminators (which include semicolons)
-            // or if we dedent by some amount and the section reached treats line breaks as terminators.
+            // where line breaks are not terminators or if we dedent by some amount and the section
+            // reached treats line breaks as terminators.
             if change == Ordering::Greater
                 || change == Ordering::Equal && !section.line_breaks_are_terminators()
                 || change == Ordering::Less
@@ -352,7 +353,8 @@ impl<'a> Lexer<'a> {
                         .get(indentation.0)
                         .line_breaks_are_terminators()
             {
-                self.tokens.pop(); // remove the line break again
+                // (*) Remove the line break again.
+                self.tokens.pop();
             }
 
             if change == Ordering::Greater {
@@ -361,8 +363,9 @@ impl<'a> Lexer<'a> {
         };
 
         if change == Ordering::Less {
-            // Remove syntactically legal but superfluous virtual semicolons before virtual
-            // closing curly brackets (which also act as terminators).
+            // Remove syntactically legal but superfluous line breaks that
+            // come before dedendentation (which also act as terminators).
+            // @Question is this still reachable???
             if self.sections.current_continued().0.is_indented()
                 && let Some(Spanned!(_, BareToken::LineBreak)) = self.tokens.last()
             {
@@ -411,13 +414,13 @@ impl<'a> Lexer<'a> {
             "." => Dot,
             ":" => Colon,
             "=" => Equals,
-            "\\" => Backslash,
             "?" => QuestionMark,
             "@" => At,
             "->" => ThinArrowRight,
             "<-" => ThinArrowLeft,
             "=>" => WideArrowRight,
             "::" => DoubleColon,
+            "::=" => DoubleColonEquals,
             "**" => DoubleAsterisk,
             symbol => Symbol(symbol.into()),
         });
@@ -567,8 +570,7 @@ enum Section {
     /// The top-level section.
     ///
     /// Basically the same as [Section::Indented] except that it does not call
-    /// for adding any virtual closing curly brackets since the indentation is
-    /// zero.
+    /// for adding any dendentation tokens since the indentation level is zero.
     #[default]
     Top,
     /// An indented section of code following the keyword `of` or `do`.

@@ -1,0 +1,3 @@
+main = case result of
+    some let result => adjust result
+    none => exception

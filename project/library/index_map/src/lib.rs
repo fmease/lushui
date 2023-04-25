@@ -6,6 +6,8 @@ use std::{
     marker::PhantomData,
 };
 
+pub use derive::Index;
+
 pub struct IndexMap<I, T> {
     values: Vec<T>,
     _marker: PhantomData<fn(&I)>,
@@ -209,8 +211,6 @@ fn map_entry<I: Index, T>((index, value): (usize, T)) -> (I, T) {
 pub type IntoIter<I: Index, T> = impl Iterator<Item = (I, T)>;
 pub type Iter<'a, I: Index, T: 'a> = impl Iterator<Item = (I, &'a T)>;
 pub type IterMut<'a, I: Index, T: 'a> = impl Iterator<Item = (I, &'a mut T)>;
-
-pub use derive::Index;
 
 pub trait Index {
     fn new(index: usize) -> Self;

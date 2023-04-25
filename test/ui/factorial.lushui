@@ -1,9 +1,9 @@
 ;;; TEST pass run
 
 use extern.core.(
-    bool.(self Bool false true)
-    duple.(Duple duple)
-    nat.(self Nat))
+    bool.(self, Bool, false, true),
+    nat.(self, Nat),
+    )
 
 main: Nat = factorial 20
 ;;; main: Nat = factorial 50 ;;; @Note takes several minutes after a rustc update (compared to a second)
@@ -13,4 +13,4 @@ factorial (n: Nat): Nat =
     case n of
         0 => 1
         1 => 1
-        \n => nat.multiply n (factorial (nat.-? n 1))
+        let n => nat.multiply n (factorial (nat.-? n 1))

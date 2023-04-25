@@ -1,5 +1,5 @@
 use crate::Display;
-use ast::Explicitness::*;
+use ast::ParameterKind::*;
 use hir::{
     Attribute, Attributes, BareAttribute, Entity, EntityKind, Exposure, Expression, Identifier,
     LocalDeclarationIndex, Number, Text,
@@ -9,8 +9,8 @@ use session::{
     Context, Session,
 };
 use span::Span;
-use std::default::default;
-use utilities::{difference, displayed};
+use utility::default;
+use utility::{difference, displayed};
 
 // @Beacon @Task do something smart if spaces differ (which cannot have color)
 // like replacing them with a different character like the Unicode space symbol
@@ -47,7 +47,7 @@ impl ComponentExt for Component {
         kind: EntityKind,
         parent: LocalDeclarationIndex,
     ) -> Identifier {
-        let identifier = ast::Identifier::new_unchecked(name.into(), default());
+        let identifier = ast::Identifier::new_unchecked(default(), name.into());
         let entity = Entity {
             source: identifier,
             parent: Some(parent),
@@ -58,6 +58,13 @@ impl ComponentExt for Component {
         let index = self.bindings.insert(entity);
         Identifier::new(index.global(self), identifier)
     }
+}
+
+fn parameter(name: &str) -> Identifier {
+    Identifier::new(
+        hir::Index::Parameter,
+        ast::Identifier::new_unchecked(default(), name.into()),
+    )
 }
 
 #[test]
@@ -80,13 +87,13 @@ fn pi_type_application_argument() {
         "topmost.Array topmost.Int -> topmost.Type",
         &Expression::bare(
             hir::PiType {
-                explicitness: Explicit,
+                kind: Explicit,
                 binder: None,
                 domain: Expression::bare(
                     hir::Application {
                         callee: array,
                         argument: int,
-                        explicitness: Explicit,
+                        kind: Explicit,
                     }
                     .into(),
                 ),
@@ -104,22 +111,22 @@ fn pi_type_named_parameter() {
     let array = component.add("Array", EntityKind::untyped_data_type());
     let int = component.add("Int", EntityKind::untyped_data_type());
     let container = component.add("Container", EntityKind::untyped_data_type());
-    let alpha = Identifier::parameter("alpha");
+    let alpha = parameter("alpha");
 
     let mut context = Context::mock();
     let session = Session::new(component, &mut context);
 
     assert_format(
-        "(alpha: topmost.Array topmost.Int) -> topmost.Container alpha",
+        "For (alpha: topmost.Array topmost.Int) -> topmost.Container alpha",
         &Expression::bare(
             hir::PiType {
-                explicitness: Explicit,
+                kind: Explicit,
                 binder: Some(alpha),
                 domain: Expression::bare(
                     hir::Application {
                         callee: array.to_item(),
                         argument: int.to_item(),
-                        explicitness: Explicit,
+                        kind: Explicit,
                     }
                     .into(),
                 ),
@@ -127,7 +134,7 @@ fn pi_type_named_parameter() {
                     hir::Application {
                         callee: container.to_item(),
                         argument: alpha.to_item(),
-                        explicitness: Explicit,
+                        kind: Explicit,
                     }
                     .into(),
                 ),
@@ -149,11 +156,11 @@ fn pi_type_implicit_parameter() {
     let session = Session::new(component, &mut context);
 
     assert_format(
-        "'(whatever: topmost.Type) -> topmost.Type",
+        "For '(whatever: topmost.Type) -> topmost.Type",
         &Expression::bare(
             hir::PiType {
-                explicitness: Implicit,
-                binder: Some(Identifier::parameter("whatever")),
+                kind: Implicit,
+                binder: Some(parameter("whatever")),
                 domain: type_.clone(),
                 codomain: type_,
             }
@@ -178,11 +185,11 @@ fn pi_type_higher_order_argument() {
         "(topmost.Int -> topmost.Int) -> topmost.Int",
         &Expression::bare(
             hir::PiType {
-                explicitness: Explicit,
+                kind: Explicit,
                 binder: None,
                 domain: Expression::bare(
                     hir::PiType {
-                        explicitness: Explicit,
+                        kind: Explicit,
                         binder: None,
                         domain: int.clone(),
                         codomain: int.clone(),
@@ -218,12 +225,12 @@ fn pi_type_two_curried_arguments() {
         "topmost.Int -> topmost.Text -> topmost.Type",
         &Expression::bare(
             hir::PiType {
-                explicitness: Explicit,
+                kind: Explicit,
                 binder: None,
                 domain: int,
                 codomain: Expression::bare(
                     hir::PiType {
-                        explicitness: Explicit,
+                        kind: Explicit,
                         binder: None,
                         domain: text,
                         codomain: type_,
@@ -244,24 +251,24 @@ fn pi_type_lambda_domain() {
     let type_ = component
         .add("Type", EntityKind::untyped_data_type())
         .to_item();
-    let x = Identifier::parameter("x");
+    let x = parameter("x");
 
     let mut context = Context::mock();
     let session = Session::new(component, &mut context);
 
     assert_format(
-        r"(\x => x) -> topmost.Type",
+        "(for x => x) -> topmost.Type",
         &Expression::bare(
             hir::PiType {
-                explicitness: Explicit,
+                kind: Explicit,
                 binder: None,
                 domain: Expression::bare(
                     hir::Lambda {
-                        binder: x,
+                        binder: Some(x),
                         domain: None,
                         codomain: None,
                         body: x.to_item(),
-                        explicitness: Explicit,
+                        kind: Explicit,
                     }
                     .into(),
                 ),
@@ -292,26 +299,26 @@ fn application_three_curried_arguments() {
                     hir::Application {
                         callee: Expression::bare(
                             hir::Application {
-                                callee: Identifier::parameter("alpha").to_item(),
+                                callee: parameter("alpha").to_item(),
                                 argument: beta.to_item(),
-                                explicitness: Explicit,
+                                kind: Explicit,
                             }
                             .into(),
                         ),
                         argument: Expression::bare(
                             hir::Application {
-                                callee: Identifier::parameter("gamma").to_item(),
+                                callee: parameter("gamma").to_item(),
                                 argument: type_,
-                                explicitness: Explicit,
+                                kind: Explicit,
                             }
                             .into(),
                         ),
-                        explicitness: Explicit,
+                        kind: Explicit,
                     }
                     .into(),
                 ),
                 argument: Expression::bare(Number::Nat(0u8.into()).into()),
-                explicitness: Explicit,
+                kind: Explicit,
             }
             .into(),
         ),
@@ -324,29 +331,29 @@ fn application_three_curried_arguments() {
 fn application_lambda_last_argument() {
     let mut component = Component::mock();
     let take = component.add("take", EntityKind::UntypedFunction);
-    let it = Identifier::parameter("it");
+    let it = parameter("it");
 
     let mut context = Context::mock();
     let session = Session::new(component, &mut context);
 
-    // we might want to format this special case as `topmost.take \it => it` in the future
+    // we might want to format this special case as `topmost.take for it => it` in the future
     assert_format(
-        r"topmost.take (\it => it)",
+        "topmost.take (for it => it)",
         &Expression::bare(
             hir::Application {
                 callee: take.to_item(),
                 argument: Expression::bare(
                     hir::Lambda {
-                        binder: it,
+                        binder: Some(it),
                         domain: None,
                         codomain: None,
                         // technically not correct
                         body: it.to_item(),
-                        explicitness: Explicit,
+                        kind: Explicit,
                     }
                     .into(),
                 ),
-                explicitness: Explicit,
+                kind: Explicit,
             }
             .into(),
         ),
@@ -359,13 +366,13 @@ fn application_lambda_last_argument() {
 fn application_lambda_argument() {
     let mut component = Component::mock();
     let take = component.add("take", EntityKind::UntypedFunction);
-    let it = Identifier::parameter("it");
+    let it = parameter("it");
 
     let mut context = Context::mock();
     let session = Session::new(component, &mut context);
 
     assert_format(
-        r#"topmost.take (\it => it) "who""#,
+        r#"topmost.take (for it => it) "who""#,
         &Expression::bare(
             hir::Application {
                 callee: Expression::bare(
@@ -373,21 +380,21 @@ fn application_lambda_argument() {
                         callee: take.to_item(),
                         argument: Expression::bare(
                             hir::Lambda {
-                                binder: it,
+                                binder: Some(it),
                                 domain: None,
                                 codomain: None,
                                 // technically not correct
                                 body: it.to_item(),
-                                explicitness: Explicit,
+                                kind: Explicit,
                             }
                             .into(),
                         ),
-                        explicitness: Explicit,
+                        kind: Explicit,
                     }
                     .into(),
                 ),
                 argument: Expression::bare(Text::Text("who".into()).into()),
-                explicitness: Explicit,
+                kind: Explicit,
             }
             .into(),
         ),
@@ -412,7 +419,7 @@ fn application_implicit_argument() {
             hir::Application {
                 callee: identity.to_item(),
                 argument: type_,
-                explicitness: Implicit,
+                kind: Implicit,
             }
             .into(),
         ),
@@ -436,13 +443,13 @@ fn application_complex_implicit_argument() {
                 callee: identity.to_item(),
                 argument: Expression::bare(
                     hir::Application {
-                        callee: Identifier::parameter("prepare").to_item(),
+                        callee: parameter("prepare").to_item(),
                         argument: text.to_item(),
-                        explicitness: Explicit,
+                        kind: Explicit,
                     }
                     .into(),
                 ),
-                explicitness: Implicit,
+                kind: Implicit,
             }
             .into(),
         ),
@@ -461,13 +468,13 @@ fn application_intrinsic_application_callee() {
             hir::Application {
                 callee: Expression::bare(
                     hir::IntrinsicApplication {
-                        callee: Identifier::parameter("eta"),
+                        callee: parameter("eta"),
                         arguments: vec![Expression::bare(Number::Nat(10u8.into()).into())],
                     }
                     .into(),
                 ),
-                argument: Identifier::parameter("omicron").to_item(),
-                explicitness: Explicit,
+                argument: parameter("omicron").to_item(),
+                kind: Explicit,
             }
             .into(),
         ),
@@ -484,14 +491,14 @@ fn lambda_body_type_annotation() {
     let session = Session::new(component, &mut context);
 
     assert_format(
-        r"\input: topmost.Output => 0",
+        "for input: topmost.Output => 0",
         &Expression::bare(
             hir::Lambda {
-                binder: Identifier::parameter("input"),
+                binder: Some(parameter("input")),
                 domain: None,
                 codomain: Some(output.to_item()),
                 body: Expression::bare(Number::Nat(0u8.into()).into()),
-                explicitness: Explicit,
+                kind: Explicit,
             }
             .into(),
         ),
@@ -512,14 +519,14 @@ fn lambda_parameter_type_annotation_body_type_annotation() {
     let session = Session::new(component, &mut context);
 
     assert_format(
-        r"\(input: topmost.Input): topmost.Output => topmost.Type",
+        "for (input: topmost.Input): topmost.Output => topmost.Type",
         &Expression::bare(
             hir::Lambda {
-                binder: Identifier::parameter("input"),
+                binder: Some(parameter("input")),
                 domain: Some(input.to_item()),
                 codomain: Some(output.to_item()),
                 body: type_,
-                explicitness: Explicit,
+                kind: Explicit,
             }
             .into(),
         ),
@@ -538,14 +545,14 @@ fn lambda_implicit_parameter() {
     let session = Session::new(component, &mut context);
 
     assert_format(
-        r"\'(Input: topmost.Type) => topmost.Type",
+        "for '(Input: topmost.Type) => topmost.Type",
         &Expression::bare(
             hir::Lambda {
-                binder: Identifier::parameter("Input"),
+                binder: Some(parameter("Input")),
                 domain: Some(type_.clone()),
                 codomain: None,
                 body: type_,
-                explicitness: Implicit,
+                kind: Implicit,
             }
             .into(),
         ),
@@ -555,29 +562,29 @@ fn lambda_implicit_parameter() {
 
 #[test]
 fn lambda_implicit_unannotated_parameter() {
-    let a = Identifier::parameter("a");
+    let a = parameter("a");
 
     let mut context = Context::mock();
     let session = Session::new(Component::mock(), &mut context);
 
     assert_format(
-        r"\'A => \a => a",
+        "for 'A => for a => a",
         &Expression::bare(
             hir::Lambda {
-                binder: Identifier::parameter("A"),
+                binder: Some(parameter("A")),
                 domain: None,
                 codomain: None,
                 body: Expression::bare(
                     hir::Lambda {
-                        binder: a,
+                        binder: Some(a),
                         domain: None,
                         codomain: None,
                         body: a.to_item(),
-                        explicitness: Explicit,
+                        kind: Explicit,
                     }
                     .into(),
                 ),
-                explicitness: Implicit,
+                kind: Implicit,
             }
             .into(),
         ),
@@ -592,28 +599,28 @@ fn lambda_pi_type_body() {
     let type_ = component
         .add("Type", EntityKind::untyped_data_type())
         .to_item();
-    let x = Identifier::parameter("x");
+    let x = parameter("x");
 
     let mut context = Context::mock();
     let session = Session::new(component, &mut context);
 
     assert_format(
-        r"\x => x -> topmost.Type",
+        r"for x => x -> topmost.Type",
         &Expression::bare(
             hir::Lambda {
-                binder: x,
+                binder: Some(x),
                 domain: None,
                 codomain: None,
                 body: Expression::bare(
                     hir::PiType {
-                        explicitness: Explicit,
+                        kind: Explicit,
                         binder: None,
                         domain: x.to_item(),
                         codomain: type_,
                     }
                     .into(),
                 ),
-                explicitness: Explicit,
+                kind: Explicit,
             }
             .into(),
         ),
@@ -686,7 +693,7 @@ fn attributes() {
             hir::Application {
                 callee: Expression::bare(
                     hir::Application {
-                        callee: Identifier::parameter("==").to_item(),
+                        callee: parameter("==").to_item(),
                         argument: Expression::new(
                             Attributes(vec![
                                 Attribute::new(default(), BareAttribute::Static),
@@ -695,7 +702,7 @@ fn attributes() {
                             Span::default(),
                             Number::Nat(3u8.into()).into(),
                         ),
-                        explicitness: Explicit,
+                        kind: Explicit,
                     }
                     .into(),
                 ),
@@ -703,13 +710,13 @@ fn attributes() {
                     Attributes(vec![Attribute::new(default(), BareAttribute::Static)]),
                     default(),
                     hir::Application {
-                        callee: Identifier::parameter("increment").to_item(),
+                        callee: parameter("increment").to_item(),
                         argument: Expression::bare(Number::Nat(1u8.into()).into()),
-                        explicitness: Explicit,
+                        kind: Explicit,
                     }
                     .into(),
                 ),
-                explicitness: Explicit,
+                kind: Explicit,
             }
             .into(),
         ),

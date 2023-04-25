@@ -1,15 +1,20 @@
-//! The lowered abstract syntax tree (lowered AST).
+//! The lowered abstract syntax tree (Lo-AST).
 #![feature(adt_const_params, decl_macro)]
 #![allow(incomplete_features)] // adt_const_params
 
-use ast::{Explicitness, Identifier, NumberLiteral, Path, SequenceLiteral, TextLiteral};
-pub use attribute::{Attribute, AttributeName, Attributes, BareAttribute};
+use ast::{
+    Identifier, LocalBinder, NumberLiteral, ParameterKind, Path, RecordLiteral, SequenceLiteral,
+    TextLiteral, Wildcard,
+};
 use diagnostics::{error::PossiblyErroneous, reporter::ErasedReportedError};
-pub use format::Display;
 use span::SourceFileIndex;
 
-pub mod attribute;
+pub use attribute::{Attribute, AttributeName, Attributes, BareAttribute};
+pub use format::Display;
+
 mod format;
+
+pub mod attribute;
 
 pub type Item<Bare> = span::item::Item<Bare, attribute::Attributes>;
 
@@ -33,7 +38,7 @@ impl PossiblyErroneous for BareDeclaration {
 pub struct Function {
     pub binder: Identifier,
     pub type_: Expression,
-    pub expression: Option<Expression>,
+    pub body: Option<Expression>,
 }
 
 impl From<Function> for BareDeclaration {
@@ -45,7 +50,7 @@ impl From<Function> for BareDeclaration {
 pub struct Data {
     pub binder: Identifier,
     pub type_: Expression,
-    pub constructors: Option<Vec<Declaration>>,
+    pub declarations: Option<Vec<Declaration>>,
 }
 
 impl From<Data> for BareDeclaration {
@@ -92,11 +97,24 @@ pub type Expression = Item<BareExpression>;
 
 #[derive(Clone)]
 pub enum BareExpression {
-    Path(Box<Path>),
+    /// The type of types.
+    ///
+    /// This construct doesn't have corresponding syntax in the surface language.
+    /// It's synthesized during lowering.
+    Type,
+    /// A hygienic local binding.
+    ///
+    /// This construct doesn't have corresponding syntax in the surface language.
+    /// It's synthesized during lowering.
+    LocalBinding(DeBruijnLevel),
+    Wildcard(Box<Wildcard>),
     NumberLiteral(Box<NumberLiteral>),
     TextLiteral(Box<TextLiteral>),
+    Path(Box<Path>),
     Application(Box<Application<Expression>>),
     SequenceLiteral(Box<SequenceLiteral<Expression>>),
+    RecordLiteral(Box<RecordLiteral<Expression>>),
+    Projection(Box<Projection>),
     PiType(Box<PiType>),
     Lambda(Box<Lambda>),
     CaseAnalysis(Box<CaseAnalysis>),
@@ -110,21 +128,45 @@ impl PossiblyErroneous for BareExpression {
     }
 }
 
+impl From<DeBruijnLevel> for BareExpression {
+    fn from(level: DeBruijnLevel) -> Self {
+        Self::LocalBinding(level)
+    }
+}
+
+impl From<Box<Wildcard>> for BareExpression {
+    fn from(wildcard: Box<Wildcard>) -> Self {
+        Self::Wildcard(wildcard)
+    }
+}
+
+impl From<Wildcard> for BareExpression {
+    fn from(wildcard: Wildcard) -> Self {
+        Box::new(wildcard).into()
+    }
+}
+
+impl From<Box<NumberLiteral>> for BareExpression {
+    fn from(number: Box<NumberLiteral>) -> Self {
+        Self::NumberLiteral(number)
+    }
+}
+
+impl From<Box<TextLiteral>> for BareExpression {
+    fn from(text: Box<TextLiteral>) -> Self {
+        Self::TextLiteral(text)
+    }
+}
+
+impl From<Box<Path>> for BareExpression {
+    fn from(path: Box<Path>) -> Self {
+        Self::Path(path)
+    }
+}
+
 impl From<Path> for BareExpression {
     fn from(path: Path) -> Self {
-        Self::Path(Box::new(path))
-    }
-}
-
-impl From<NumberLiteral> for BareExpression {
-    fn from(number: NumberLiteral) -> Self {
-        Self::NumberLiteral(Box::new(number))
-    }
-}
-
-impl From<TextLiteral> for BareExpression {
-    fn from(text: TextLiteral) -> Self {
-        Self::TextLiteral(Box::new(text))
+        Box::new(path).into()
     }
 }
 
@@ -140,9 +182,27 @@ impl From<SequenceLiteral<Expression>> for BareExpression {
     }
 }
 
+impl From<RecordLiteral<Expression>> for BareExpression {
+    fn from(record: RecordLiteral<Expression>) -> Self {
+        Self::RecordLiteral(Box::new(record))
+    }
+}
+
+#[derive(Clone)]
+pub struct Projection {
+    pub basis: Expression,
+    pub field: Identifier,
+}
+
+impl From<Projection> for BareExpression {
+    fn from(projection: Projection) -> Self {
+        Self::Projection(Box::new(projection))
+    }
+}
+
 #[derive(Clone)]
 pub struct PiType {
-    pub explicitness: Explicitness,
+    pub kind: ParameterKind,
     pub binder: Option<Identifier>,
     pub domain: Expression,
     pub codomain: Expression,
@@ -156,9 +216,9 @@ impl From<PiType> for BareExpression {
 
 #[derive(Clone)]
 pub struct Lambda {
-    pub parameter: Identifier,
+    pub kind: ParameterKind,
+    pub binder: Option<Identifier>,
     pub domain: Option<Expression>,
-    pub explicitness: Explicitness,
     pub codomain: Option<Expression>,
     pub body: Expression,
 }
@@ -191,10 +251,11 @@ pub type Pattern = Item<BarePattern>;
 
 #[derive(Clone)]
 pub enum BarePattern {
+    Wildcard(Box<Wildcard>),
     NumberLiteral(Box<NumberLiteral>),
     TextLiteral(Box<TextLiteral>),
     Path(Box<Path>),
-    Binder(Box<Identifier>),
+    LetBinding(LocalBinder),
     Application(Box<Application<Pattern>>),
     SequenceLiteral(Box<SequenceLiteral<Pattern>>),
     Error(ErasedReportedError),
@@ -206,27 +267,51 @@ impl PossiblyErroneous for BarePattern {
     }
 }
 
+impl From<Box<Wildcard>> for BarePattern {
+    fn from(wildcard: Box<Wildcard>) -> Self {
+        Self::Wildcard(wildcard)
+    }
+}
+
+impl From<Box<NumberLiteral>> for BarePattern {
+    fn from(number: Box<NumberLiteral>) -> Self {
+        Self::NumberLiteral(number)
+    }
+}
+
 impl From<NumberLiteral> for BarePattern {
     fn from(number: NumberLiteral) -> Self {
-        Self::NumberLiteral(Box::new(number))
+        Box::new(number).into()
+    }
+}
+
+impl From<Box<TextLiteral>> for BarePattern {
+    fn from(text: Box<TextLiteral>) -> Self {
+        Self::TextLiteral(text)
     }
 }
 
 impl From<TextLiteral> for BarePattern {
     fn from(text: TextLiteral) -> Self {
-        Self::TextLiteral(Box::new(text))
+        Box::new(text).into()
+    }
+}
+
+impl From<Box<Path>> for BarePattern {
+    fn from(path: Box<Path>) -> Self {
+        Self::Path(path)
     }
 }
 
 impl From<Path> for BarePattern {
     fn from(path: Path) -> Self {
-        Self::Path(Box::new(path))
+        Box::new(path).into()
     }
 }
 
-impl From<Identifier> for BarePattern {
-    fn from(identifier: Identifier) -> Self {
-        Self::Binder(Box::new(identifier))
+impl From<LocalBinder> for BarePattern {
+    fn from(binder: LocalBinder) -> Self {
+        Self::LetBinding(binder)
     }
 }
 
@@ -244,7 +329,10 @@ impl From<SequenceLiteral<Pattern>> for BarePattern {
 
 #[derive(Clone)]
 pub struct Application<T> {
+    pub kind: ParameterKind,
     pub callee: T,
-    pub explicitness: Explicitness,
     pub argument: T,
 }
+
+#[derive(Clone, Copy)]
+pub struct DeBruijnLevel(pub usize);

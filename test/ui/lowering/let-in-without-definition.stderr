@@ -1,8 +1,8 @@
-error[E015]: the declaration ‘foo’ does not have a type annotation
+error[E015]: the function ‘foo’ does not have a type annotation
   ┌─ ${TEST_FOLDER}/lowering/let-in-without-definition.lushui:1:4
   │
 1 │ foo = let x f in 0
-  │   ⟫⟪ missing mandatory type annotation
+  │   ⟫⟪ missing required type annotation
   │
  help: annotate the declaration with a type
   ┌─ ${TEST_FOLDER}/lowering/let-in-without-definition.lushui:1:4

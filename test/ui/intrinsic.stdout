@@ -1,1 +1,1 @@
-extern.core.duple.Duple.duple extern.core.nat.Nat extern.core.nat.Nat 9 338389220489284294
+extern.core.tuple.Tuple.prepend extern.core.nat.Nat (extern.core.list.List.prepend extern.core.type.Type extern.core.nat.Nat (extern.core.list.List.empty extern.core.type.Type)) 9 (extern.core.tuple.Tuple.prepend extern.core.nat.Nat (extern.core.list.List.empty extern.core.type.Type) 338389220489284294 extern.core.tuple.Tuple.empty)

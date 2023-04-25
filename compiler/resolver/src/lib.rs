@@ -1,19 +1,19 @@
 //! The name resolver.
 //!
-//! It traverses the [lowered AST](lowered_ast) and registers/defines bindings
+//! It traverses the [Lo-AST](lo_ast) and registers/defines bindings
 //! defined both at module-level using declarations and at function
 //! and pattern level as parameters. Furthermore, it resolves all paths inside
 //! expressions and patterns to [(resolved) identifiers](Identifier) which
 //! contain a [declaration index](DeclarationIndex) or a [de Bruijn index](DeBruijnIndex)
 //! respectively.
-#![feature(default_free_fn, let_chains, iter_array_chunks)]
+#![feature(let_chains, iter_array_chunks)]
 
 // @Task improve docs above!
 // @Task get rid of "register" terminology
 // @Task transform all Result-returning functions into ()-returning ones modifying self.health
 //       and use the new Handler API and get rid of the Stain API
 
-use ast::Explicitness::Explicit;
+use ast::ParameterKind::Explicit;
 use colored::Colorize;
 use diagnostics::{
     error::{Handler, Health, Outcome, PossiblyErroneous, Result, Stain},
@@ -27,16 +27,17 @@ use hir::{
 };
 use hir_format::{Display, SessionExt};
 use lexer::word::Word;
+use lo_ast::DeBruijnLevel;
 use session::{
     component::{Component, DeclarationIndexExt, IdentifierExt, LocalDeclarationIndexExt},
     Session,
 };
 use span::{Span, Spanned, Spanning};
-use std::{cmp::Ordering, default::default, fmt, mem, sync::Mutex};
+use std::{cmp::Ordering, fmt, mem, sync::Mutex};
 use unicode_width::UnicodeWidthStr;
-use utilities::{
-    cycle::find_cycles, displayed, obtain, pluralize, smallvec, AsAutoColoredChangeset, Atom,
-    Conjunction, HashMap, ListingExt, QuoteExt, SmallVec, PROGRAM_ENTRY,
+use utility::{
+    cycle::find_cycles, default, displayed, obtain, pluralize, smallvec, AsAutoColoredChangeset,
+    Atom, Conjunction, HashMap, ListingExt, OwnedOrBorrowed::*, QuoteExt, SmallVec, PROGRAM_ENTRY,
 };
 
 /// Resolve the names of a declaration.
@@ -51,20 +52,14 @@ use utilities::{
 // and that `resolve` should only be called once per Component (bc it would fail anyways the 2nd
 // time (to re-define root (I think)))
 pub fn resolve_declarations(
-    root_module: lowered_ast::Declaration,
+    root_module: lo_ast::Declaration,
     session: &mut Session<'_>,
 ) -> Result<hir::Declaration> {
     let mut resolver = ResolverMut::new(session);
 
     if let Err(error) = resolver.start_resolve_declaration(&root_module, None, default()) {
         for (binder, naming_conflicts) in mem::take(&mut resolver.naming_conflicts) {
-            Diagnostic::error()
-                .code(ErrorCode::E020)
-                .message(format!(
-                    "‘{}’ is defined multiple times in this scope",
-                    resolver.session[binder].source,
-                ))
-                .spans(naming_conflicts, "conflicting definition")
+            error::confliction_definitions(resolver.session[binder].source, &naming_conflicts)
                 .report(resolver.session.reporter());
         }
 
@@ -78,7 +73,9 @@ pub fn resolve_declarations(
     resolver.resolve_use_bindings();
     resolver.resolve_exposure_reaches();
 
-    let declaration = resolver.finish_resolve_declaration(root_module, None, default());
+    let declaration = resolver
+        .finish_resolve_declaration(root_module, None, default())
+        .unwrap();
 
     Outcome::new(declaration, resolver.health).into()
 }
@@ -140,11 +137,11 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
     /// For more on this, see [`Resolver::reobtain_resolved_identifier`].
     fn start_resolve_declaration(
         &mut self,
-        declaration: &lowered_ast::Declaration,
+        declaration: &lo_ast::Declaration,
         module: Option<LocalDeclarationIndex>,
         context: Context,
     ) -> Result<(), DefinitionError> {
-        use lowered_ast::BareDeclaration::*;
+        use lo_ast::BareDeclaration::*;
 
         let exposure = match declaration.attributes.get::<{ AttributeName::Public }>() {
             Some(public) => match &public.bare.reach {
@@ -189,7 +186,7 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
                     },
                     intrinsic.span,
                 ) {
-                    let _: ErasedReportedError = error.handle(&mut *self);
+                    error.handle(&mut *self);
                 }
             }
             Data(type_) => {
@@ -218,7 +215,7 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
                     },
                     known.span,
                 ) {
-                    let _: ErasedReportedError = error.handle(&mut *self);
+                    error.handle(&mut *self);
                 }
 
                 if let Some(intrinsic) = declaration.attributes.get::<{ AttributeName::Intrinsic }>()
@@ -231,12 +228,12 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
                     },
                     intrinsic.span,
                 ) {
-                    let _: ErasedReportedError = error.handle(&mut *self);
+                    error.handle(&mut *self);
                 }
 
                 let health = &mut Health::Untainted;
 
-                if let Some(constructors) = &type_.constructors {
+                if let Some(constructors) = &type_.declarations {
                     for constructor in constructors {
                         let transparency = match declaration.attributes.has(AttributeName::Abstract)
                         {
@@ -265,7 +262,14 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
             Constructor(constructor) => {
                 // there is always a root module
                 let module = module.unwrap();
-                let Context::DataDeclaration { index: namespace, transparency, known } = context else { unreachable!() };
+                let Context::DataDeclaration {
+                    index: namespace,
+                    transparency,
+                    known,
+                } = context
+                else {
+                    unreachable!()
+                };
 
                 let exposure = match transparency.unwrap() {
                     Transparency::Transparent => self.session[namespace].exposure.clone(),
@@ -293,7 +297,7 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
                     },
                     known,
                 ) {
-                    let _: ErasedReportedError = error.handle(&mut *self);
+                    error.handle(&mut *self);
                 }
             }
             Module(submodule) => {
@@ -416,11 +420,11 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
     /// use-declaration resolving one).
     fn finish_resolve_declaration(
         &mut self,
-        declaration: lowered_ast::Declaration,
+        declaration: lo_ast::Declaration,
         module: Option<LocalDeclarationIndex>,
         context: Context,
-    ) -> hir::Declaration {
-        use lowered_ast::BareDeclaration::*;
+    ) -> Option<hir::Declaration> {
+        use lo_ast::BareDeclaration::*;
 
         match declaration.bare {
             Function(function) => {
@@ -435,22 +439,22 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
                     .resolve_expression(function.type_, &FunctionScope::Module(module))
                     .stain(&mut self.health);
 
-                let expression = function.expression.map(|expression| {
+                let expression = function.body.map(|expression| {
                     self.as_ref()
                         .resolve_expression(expression, &FunctionScope::Module(module))
                         .stain(&mut self.health)
                 });
 
-                hir::Declaration::new(
+                Some(hir::Declaration::new(
                     declaration.attributes,
                     declaration.span,
                     hir::Function {
                         binder,
-                        type_annotation,
-                        expression,
+                        type_: type_annotation,
+                        body: expression,
                     }
                     .into(),
-                )
+                ))
             }
             Data(type_) => {
                 let module = module.unwrap();
@@ -467,10 +471,10 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
                     .resolve_expression(type_.type_, &FunctionScope::Module(module))
                     .stain(&mut self.health);
 
-                let constructors = type_.constructors.map(|constructors| {
+                let constructors = type_.declarations.map(|constructors| {
                     constructors
                         .into_iter()
-                        .map(|constructor| {
+                        .filter_map(|constructor| {
                             self.finish_resolve_declaration(
                                 constructor,
                                 Some(module),
@@ -484,20 +488,25 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
                         .collect::<Vec<_>>()
                 });
 
-                hir::Declaration::new(
+                Some(hir::Declaration::new(
                     declaration.attributes,
                     declaration.span,
                     hir::Data {
                         binder,
-                        type_annotation,
+                        type_: type_annotation,
                         constructors,
                     }
                     .into(),
-                )
+                ))
             }
             Constructor(constructor) => {
                 let module = module.unwrap();
-                let Context::DataDeclaration { index: namespace, .. } = context else { unreachable!() };
+                let Context::DataDeclaration {
+                    index: namespace, ..
+                } = context
+                else {
+                    unreachable!()
+                };
 
                 let binder = self
                     .as_ref()
@@ -508,15 +517,15 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
                     .resolve_expression(constructor.type_, &FunctionScope::Module(module))
                     .stain(&mut self.health);
 
-                hir::Declaration::new(
+                Some(hir::Declaration::new(
                     declaration.attributes,
                     declaration.span,
                     hir::Constructor {
                         binder,
-                        type_annotation,
+                        type_: type_annotation,
                     }
                     .into(),
-                )
+                ))
             }
             Module(submodule) => {
                 let index = match module {
@@ -533,7 +542,7 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
                 let declarations = submodule
                     .declarations
                     .into_iter()
-                    .map(|declaration| {
+                    .filter_map(|declaration| {
                         self.finish_resolve_declaration(
                             declaration,
                             Some(index),
@@ -542,7 +551,7 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
                     })
                     .collect();
 
-                hir::Declaration::new(
+                Some(hir::Declaration::new(
                     declaration.attributes,
                     declaration.span,
                     hir::Module {
@@ -551,28 +560,10 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
                         declarations,
                     }
                     .into(),
-                )
+                ))
             }
-            Use(use_) => {
-                let module = module.unwrap();
-
-                let binder = Identifier::new(
-                    self.as_ref()
-                        .reobtain_resolved_identifier::<target::Any>(use_.binder, module),
-                    use_.binder,
-                );
-
-                hir::Declaration::new(
-                    declaration.attributes,
-                    declaration.span,
-                    hir::Use {
-                        binder: Some(binder),
-                        target: binder,
-                    }
-                    .into(),
-                )
-            }
-            Error(error) => PossiblyErroneous::error(error),
+            Use(_) => None,
+            Error(error) => Some(PossiblyErroneous::error(error)),
         }
     }
 
@@ -639,22 +630,7 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
                         .map(|(index, binding)| (index, binding.binder))
                         .collect(),
                 ) {
-                    let paths = cycle
-                        .iter()
-                        .map(|&&index| self.session.local_index_to_path(index).quote())
-                        .list(Conjunction::And);
-                    Diagnostic::error()
-                        .code(ErrorCode::E024)
-                        .message(format!(
-                            "the {} {paths} {} circular",
-                            pluralize!(cycle.len(), "declaration"),
-                            pluralize!(cycle.len(), "is", "are"),
-                        ))
-                        .unlabeled_spans(
-                            cycle
-                                .into_iter()
-                                .map(|&index| self.session[index].source.span()),
-                        )
+                    error::circular_declarations(cycle, self.session)
                         .report(self.session.reporter());
                 }
 
@@ -721,7 +697,7 @@ expected the exposure of ‘{}’
 }
 
 impl Handler for &mut ResolverMut<'_, '_> {
-    fn handle<T: PossiblyErroneous>(self, diagnostic: Diagnostic) -> T {
+    fn embed<T: PossiblyErroneous>(self, diagnostic: Diagnostic) -> T {
         let error = diagnostic.report(self.session.reporter());
         self.health.taint(error);
         T::error(error)
@@ -739,50 +715,86 @@ impl<'a> Resolver<'a> {
 
     fn resolve_expression(
         &self,
-        expression: lowered_ast::Expression,
+        expression: lo_ast::Expression,
         scope: &FunctionScope<'_>,
     ) -> Result<hir::Expression> {
-        use lowered_ast::BareExpression::*;
+        use lo_ast::BareExpression::*;
 
-        let expression = match expression.bare {
+        Ok(match expression.bare {
+            Type => {
+                // @Task don't use def-site span use use-site span
+                // @Bug the span is not really a "user" (in the typer sense) but just a reference
+                // @Task distinguish
+                let type_ = self
+                    .session
+                    .require_special(special::Type::Type, Some(expression.span))?;
+
+                hir::Expression::new(
+                    expression.attributes,
+                    expression.span,
+                    hir::Binding(type_).into(),
+                )
+            }
+            LocalBinding(level) => hir::Expression::new(
+                expression.attributes,
+                expression.span,
+                hir::Binding(Identifier::new(
+                    scope.index_from_level(level),
+                    ast::Identifier::new_unchecked(expression.span, Atom::UNDERSCORE),
+                ))
+                .into(),
+            ),
+            Wildcard(_) => {
+                return Err(Diagnostic::error()
+                    .message("wildcards are not supported yet")
+                    .unlabeled_span(expression)
+                    .report(self.session.reporter()))
+            }
+            Projection(projection) => hir::Expression::new(
+                expression.attributes,
+                expression.span,
+                hir::Projection {
+                    basis: self.resolve_expression(projection.basis, scope)?,
+                    field: projection.field,
+                }
+                .into(),
+            ),
             PiType(pi) => {
-                let domain = self.resolve_expression(pi.domain.clone(), scope);
+                let domain = self.resolve_expression(pi.domain, scope);
                 let codomain = match pi.binder {
-                    Some(parameter) => self.resolve_expression(
-                        pi.codomain.clone(),
-                        &scope.extend_with_parameter(parameter),
-                    ),
-                    None => self.resolve_expression(pi.codomain.clone(), scope),
+                    Some(parameter) => self
+                        .resolve_expression(pi.codomain, &scope.extend_with_parameter(parameter)),
+                    None => self.resolve_expression(pi.codomain, scope),
                 };
 
-                return Ok(hir::Expression::new(
+                hir::Expression::new(
                     expression.attributes,
                     expression.span,
                     hir::PiType {
                         domain: domain?,
                         codomain: codomain?,
-                        explicitness: pi.explicitness,
+                        kind: pi.kind,
                         binder: pi
                             .binder
-                            .map(|parameter| Identifier::new(Index::DeBruijnParameter, parameter)),
+                            .map(|parameter| Identifier::new(Index::Parameter, parameter)),
                     }
                     .into(),
-                ));
+                )
             }
             Application(application) => {
-                let callee = self.resolve_expression(application.callee.clone(), scope);
-                let argument = self.resolve_expression(application.argument.clone(), scope);
+                let callee = self.resolve_expression(application.callee, scope);
+                let argument = self.resolve_expression(application.argument, scope);
 
-                return Ok(hir::Expression::new(
+                hir::Expression::new(
                     expression.attributes,
                     expression.span,
                     hir::Application {
                         callee: callee?,
                         argument: argument?,
-                        explicitness: application.explicitness,
+                        kind: application.kind,
                     }
                     .into(),
-                ));
+                )
             }
             NumberLiteral(number) => self.resolve_number_literal(
                 hir::Item::new(expression.attributes, expression.span, *number),
@@ -798,27 +810,32 @@ impl<'a> Resolver<'a> {
                 hir::Binding(self.resolve_path_inside_function(&path, scope)?).into(),
             ),
             Lambda(lambda) => {
-                let parameter_type_annotation = lambda
+                let domain = lambda
                     .domain
-                    .clone()
                     .map(|type_| self.resolve_expression(type_, scope));
-                let body_type_annotation = lambda.codomain.clone().map(|type_| {
-                    self.resolve_expression(type_, &scope.extend_with_parameter(lambda.parameter))
-                });
-                let body = self.resolve_expression(
-                    lambda.body.clone(),
-                    &scope.extend_with_parameter(lambda.parameter),
-                );
+                let scope = match lambda.binder {
+                    Some(binder) => Owned(scope.extend_with_parameter(binder)),
+                    None => Borrowed(scope),
+                };
+                let scope = scope.as_ref();
+
+                let codomain = lambda
+                    .codomain
+                    .map(|type_| self.resolve_expression(type_, scope));
+
+                let body = self.resolve_expression(lambda.body, scope);
 
                 hir::Expression::new(
                     expression.attributes,
                     expression.span,
                     hir::Lambda {
-                        binder: Identifier::new(Index::DeBruijnParameter, lambda.parameter),
-                        domain: parameter_type_annotation.transpose()?,
-                        codomain: body_type_annotation.transpose()?,
+                        binder: lambda
+                            .binder
+                            .map(|binder| Identifier::new(Index::Parameter, binder)),
+                        domain: domain.transpose()?,
+                        codomain: codomain.transpose()?,
                         body: body?,
-                        explicitness: lambda.explicitness,
+                        kind: lambda.kind,
                     }
                     .into(),
                 )
@@ -830,13 +847,13 @@ impl<'a> Resolver<'a> {
                     .report(self.session.reporter()));
             }
             CaseAnalysis(analysis) => {
-                let scrutinee = self.resolve_expression(analysis.scrutinee.clone(), scope)?;
+                let scrutinee = self.resolve_expression(analysis.scrutinee, scope)?;
                 let mut cases = Vec::new();
 
-                for case in &analysis.cases {
-                    let (pattern, binders) = self.resolve_pattern(case.pattern.clone(), scope)?;
+                for case in analysis.cases {
+                    let (pattern, binders) = self.resolve_pattern(case.pattern, scope)?;
                     let body = self.resolve_expression(
-                        case.body.clone(),
+                        case.body,
                         &scope.extend_with_pattern_binders(binders),
                     )?;
 
@@ -869,24 +886,34 @@ impl<'a> Resolver<'a> {
                     scope,
                 )?
             }
+            RecordLiteral(_) => {
+                return Err(Diagnostic::error()
+                    .message("record literals are not supported yet")
+                    .unlabeled_span(expression.span)
+                    .report(self.session.reporter()))
+            }
             Error(error) => PossiblyErroneous::error(error),
-        };
-
-        Ok(expression)
+        })
     }
 
     // @Task use the Stain::stain instead of moving the try operator below resolve calls
     fn resolve_pattern(
         &self,
-        pattern: lowered_ast::Pattern,
+        pattern: lo_ast::Pattern,
         scope: &FunctionScope<'_>,
     ) -> Result<(hir::Pattern, Vec<ast::Identifier>)> {
-        use lowered_ast::BarePattern::*;
+        use lo_ast::BarePattern::*;
 
         // @Task replace this hideous binders.append logic
         let mut binders: Vec<ast::Identifier> = Vec::new();
 
-        let pattern = match pattern.bare.clone() {
+        let pattern = match pattern.bare {
+            Wildcard(_) => {
+                return Err(Diagnostic::error()
+                    .message("wildcards are not supported yet")
+                    .unlabeled_span(pattern)
+                    .report(self.session.reporter()))
+            }
             NumberLiteral(number) => self.resolve_number_literal(
                 hir::Item::new(pattern.attributes, pattern.span, *number),
                 scope,
@@ -900,18 +927,22 @@ impl<'a> Resolver<'a> {
                 pattern.span,
                 hir::Binding(self.resolve_path_inside_function(&path, scope)?).into(),
             ),
-            Binder(binder) => {
-                binders.push(*binder);
+            LetBinding(binder) => {
+                if let ast::LocalBinder::Named(binder) = binder {
+                    binders.push(binder);
+                }
 
                 hir::Pattern::new(
                     pattern.attributes,
                     pattern.span,
-                    hir::Binder(Identifier::new(Index::DeBruijnParameter, *binder)).into(),
+                    binder
+                        .map(|binder| Identifier::new(Index::Parameter, binder))
+                        .into(),
                 )
             }
             Application(application) => {
-                let callee = self.resolve_pattern(application.callee.clone(), scope);
-                let argument = self.resolve_pattern(application.argument.clone(), scope);
+                let callee = self.resolve_pattern(application.callee, scope);
+                let argument = self.resolve_pattern(application.argument, scope);
 
                 let (callee, mut callee_binders) = callee?;
                 let (argument, mut argument_binders) = argument?;
@@ -924,7 +955,7 @@ impl<'a> Resolver<'a> {
                     pattern.span,
                     hir::Application {
                         callee,
-                        explicitness: application.explicitness,
+                        kind: application.kind,
                         argument,
                     }
                     .into(),
@@ -1008,7 +1039,7 @@ impl<'a> Resolver<'a> {
                 .report(self.session.reporter()));
         };
 
-        Ok(number.map(|_| resolved_number.into()))
+        Ok(number.remap(resolved_number.into()))
     }
 
     fn resolve_text_literal<T>(
@@ -1112,28 +1143,20 @@ impl<'a> Resolver<'a> {
                 .report(self.session.reporter()));
         };
 
-        // @Task don't unwrap, @Bug this is gonna crash if sb. were to define
-        // `List` as `@known data List: … of {}` (no constructors)
-        // @Task use `require` instead once it returns an Identifier instead of an Item
         let empty = self
             .session
-            .specials()
-            .get(special::Constructor::ListEmpty)
-            .unwrap();
+            .require_special(special::Constructor::ListEmpty, Some(span))?;
         let prepend = self
             .session
-            .specials()
-            .get(special::Constructor::ListPrepend)
-            .unwrap();
+            .require_special(special::Constructor::ListPrepend, Some(span))?;
 
         // @Task check if all those attributes & spans make sense
-        let mut result = hir::Item::new(
-            default(),
+        let mut result = hir::Item::common(
             span,
             hir::Application {
-                // @Task don't throw away attributes & span
-                callee: hir::Item::new(default(), span, hir::Binding(empty).into()),
-                explicitness: Explicit,
+                // @Task don't throw away attributes
+                callee: hir::Item::common(span, hir::Binding(empty).into()),
+                kind: Explicit,
                 argument: element_type.clone(),
             }
             .into(),
@@ -1141,33 +1164,30 @@ impl<'a> Resolver<'a> {
 
         for element in elements.rev() {
             // @Task check if all those attributes & spans make sense
-            let prepend = hir::Item::new(
-                default(),
+            let prepend = hir::Item::common(
                 element.span,
                 hir::Application {
-                    callee: hir::Item::new(default(), element.span, hir::Binding(prepend).into()),
-                    explicitness: Explicit,
+                    callee: hir::Item::common(element.span, hir::Binding(prepend).into()),
+                    kind: Explicit,
                     argument: element_type.clone(),
                 }
                 .into(),
             );
 
             // @Task check if all those attributes & spans make sense
-            result = hir::Item::new(
-                default(),
+            result = hir::Item::common(
                 element.span,
                 hir::Application {
-                    callee: hir::Item::new(
-                        default(),
+                    callee: hir::Item::common(
                         element.span,
                         hir::Application {
                             callee: prepend,
-                            explicitness: Explicit,
+                            kind: Explicit,
                             argument: element,
                         }
                         .into(),
                     ),
-                    explicitness: Explicit,
+                    kind: Explicit,
                     argument: result,
                 }
                 .into(),
@@ -1199,28 +1219,20 @@ impl<'a> Resolver<'a> {
                 .report(self.session.reporter()));
         };
 
-        // @Task don't unwrap, @Bug this is gonna crash if sb. were to define
-        // `Vector` as `@known data Vector: … of {}` (no constructors)
-        // @Task use `require` instead once it returns an Identifier instead of an Item
         let empty = self
             .session
-            .specials()
-            .get(special::Constructor::VectorEmpty)
-            .unwrap();
+            .require_special(special::Constructor::VectorEmpty, Some(span))?;
         let prepend = self
             .session
-            .specials()
-            .get(special::Constructor::VectorPrepend)
-            .unwrap();
+            .require_special(special::Constructor::VectorPrepend, Some(span))?;
 
         // @Task check if all those attributes & spans make sense
-        let mut result = hir::Item::new(
-            default(),
+        let mut result = hir::Item::common(
             span,
             hir::Application {
                 // @Task don't throw away attributes & span
-                callee: hir::Item::new(default(), span, hir::Binding(empty).into()),
-                explicitness: Explicit,
+                callee: hir::Item::common(span, hir::Binding(empty).into()),
+                kind: Explicit,
                 argument: element_type.clone(),
             }
             .into(),
@@ -1228,52 +1240,43 @@ impl<'a> Resolver<'a> {
 
         for (length, element) in elements.rev().enumerate() {
             // @Task check if all those attributes & spans make sense
-            let prepend = hir::Item::new(
-                default(),
+            let prepend = hir::Item::common(
                 element.span,
                 hir::Application {
-                    callee: hir::Item::new(
-                        default(),
+                    callee: hir::Item::common(
                         element.span,
                         hir::Application {
-                            callee: hir::Item::new(
-                                default(),
-                                element.span,
-                                hir::Binding(prepend).into(),
-                            ),
-                            explicitness: Explicit,
+                            callee: hir::Item::common(element.span, hir::Binding(prepend).into()),
+                            kind: Explicit,
                             // @Beacon @Question What happens if the user does not define the intrinsic type `Nat`?
                             //                   Is that going to lead to crashes later on?
-                            argument: hir::Item::new(
-                                default(),
+                            argument: hir::Item::common(
                                 element.span,
                                 hir::Number::Nat(length.into()).into(),
                             ),
                         }
                         .into(),
                     ),
-                    explicitness: Explicit,
+                    kind: Explicit,
                     argument: element_type.clone(),
                 }
                 .into(),
             );
 
             // @Task check if all those attributes & spans make sense
-            result = hir::Item::new(
-                default(),
+            result = hir::Item::common(
                 element.span,
                 hir::Application {
-                    callee: hir::Item::new(
-                        default(),
+                    callee: hir::Item::common(
                         element.span,
                         hir::Application {
                             callee: prepend,
-                            explicitness: Explicit,
+                            kind: Explicit,
                             argument: element,
                         }
                         .into(),
                     ),
-                    explicitness: Explicit,
+                    kind: Explicit,
                     argument: result,
                 }
                 .into(),
@@ -1300,50 +1303,35 @@ impl<'a> Resolver<'a> {
                 .report(self.session.reporter()));
         }
 
-        // @Task don't unwrap, @Bug this is gonna crash if sb. were to define
-        // `Tuple` as `@known data Tuple: … of {}` (no constructors)
-        // @Task use `require` instead once it returns an Identifier instead of an Item
         let empty = self
             .session
-            .specials()
-            .get(special::Constructor::TupleEmpty)
-            .unwrap();
+            .require_special(special::Constructor::TupleEmpty, Some(elements.span))?;
         let prepend = self
             .session
-            .specials()
-            .get(special::Constructor::TuplePrepend)
-            .unwrap();
-        let type_ = self.session.specials().get(special::Type::Type).unwrap();
+            .require_special(special::Constructor::TuplePrepend, Some(elements.span))?;
+        let type_ = self
+            .session
+            .require_special(special::Type::Type, Some(elements.span))?;
 
         // @Task check if all those attributes & spans make sense
-        let mut result = hir::Item::new(default(), elements.span, hir::Binding(empty).into());
-        let mut list = vec![hir::Item::new(
-            default(),
-            elements.span,
-            hir::Binding(type_).into(),
-        )];
+        let mut result = hir::Item::common(elements.span, hir::Binding(empty).into());
+        let mut list = vec![hir::Item::common(elements.span, hir::Binding(type_).into())];
 
         for [element_type, element] in elements.bare.into_iter().array_chunks().rev() {
             // @Task check if all those attributes & spans make sense
-            let prepend = hir::Item::new(
-                default(),
+            let prepend = hir::Item::common(
                 element.span,
                 hir::Application {
-                    callee: hir::Item::new(
-                        default(),
+                    callee: hir::Item::common(
                         element.span,
                         hir::Application {
-                            callee: hir::Item::new(
-                                default(),
-                                element.span,
-                                hir::Binding(prepend).into(),
-                            ),
-                            explicitness: Explicit,
+                            callee: hir::Item::common(element.span, hir::Binding(prepend).into()),
+                            kind: Explicit,
                             argument: element_type.clone(),
                         }
                         .into(),
                     ),
-                    explicitness: Explicit,
+                    kind: Explicit,
                     argument: self
                         .resolve_list_literal(Spanned::new(element.span, list.clone()))?,
                 }
@@ -1354,21 +1342,19 @@ impl<'a> Resolver<'a> {
             list.insert(1, element_type);
 
             // @Task check if all those attributes & spans make sense
-            result = hir::Item::new(
-                default(),
+            result = hir::Item::common(
                 element.span,
                 hir::Application {
-                    callee: hir::Item::new(
-                        default(),
+                    callee: hir::Item::common(
                         element.span,
                         hir::Application {
                             callee: prepend,
-                            explicitness: Explicit,
+                            kind: Explicit,
                             argument: element,
                         }
                         .into(),
                     ),
-                    explicitness: Explicit,
+                    kind: Explicit,
                     argument: result,
                 }
                 .into(),
@@ -1455,11 +1441,8 @@ impl<'a> Resolver<'a> {
                             .report(self.session.reporter())
                     })?;
 
-                    let Some(&component) = self
-                        .session
-                        .component()
-                        .dependencies()
-                        .get(&component.bare)
+                    let Some(&component) =
+                        self.session.component().dependencies().get(&component.bare)
                     else {
                         // @Task If it's not a single source file, suggest adding to `dependencies` section in
                         // the package manifest
@@ -1483,7 +1466,7 @@ impl<'a> Resolver<'a> {
                         &[identifier] => Ok(Target::output(root, identifier)),
                         [_, identifiers @ ..] => self.resolve_path::<Target>(
                             // @Task use PathView once available
-                            &ast::Path::with_segments(identifiers.to_owned().into()),
+                            &ast::Path::unhung(identifiers.to_owned().into()),
                             PathResolutionContext::new(root)
                                 .origin_namespace(context.origin_namespace)
                                 .qualified_identifier(),
@@ -1504,7 +1487,7 @@ impl<'a> Resolver<'a> {
             } else {
                 self.resolve_path::<Target>(
                     // @Task use PathView once available
-                    &ast::Path::with_segments(path.segments.clone()),
+                    &ast::Path::unhung(path.segments.clone()),
                     context.namespace(namespace).qualified_identifier(),
                 )
             };
@@ -1523,7 +1506,7 @@ impl<'a> Resolver<'a> {
                 if entity.is_namespace() {
                     self.resolve_path::<Target>(
                         // @Task use PathView once available
-                        &ast::Path::with_segments(identifiers.to_owned().into()),
+                        &ast::Path::unhung(identifiers.to_owned().into()),
                         context.namespace(index).qualified_identifier(),
                     )
                 } else if entity.is_error() {
@@ -1720,13 +1703,13 @@ impl<'a> Resolver<'a> {
     ///
     /// This way, [`ResolverMut::start_resolve_declaration`] does not need to return
     /// a new intermediate representation being a representation between the
-    /// lowered AST and the HIR where all the _binders_ of declarations are resolved
+    /// Lo-AST and the HIR where all the _binders_ of declarations are resolved
     /// (i.e. are [`Identifier`]s) but all _bindings_ (in type annotations, expressions, …)
     /// are still unresolved (i.e. are [`ast::Identifier`]s).
     ///
     /// Such an IR would imply writing a lot of boilerplate if we were to duplicate
     /// definitions & mappings or – if even possible – creating a totally complicated
-    /// parameterized lowered AST with complicated traits having many associated types
+    /// parameterized Lo-AST with complicated traits having many associated types
     /// (painfully learned through previous experiences).
     // @Task add to documentation that this panics on unresolved and does not check exposure,
     // also it does not check the resolution target etc
@@ -1894,6 +1877,7 @@ impl<'a> Resolver<'a> {
         })
     }
 
+    #[allow(clippy::needless_pass_by_value)] // by design
     fn report_resolution_error_searching_lookalikes(
         &self,
         error: ResolutionError,
@@ -1992,7 +1976,7 @@ impl<'a> Resolver<'a> {
             .label(
                 // the subbinder together with the leading dot
                 // @Task trim_start_matches ascii_whitespace
-                binder.span().end().merge(subbinder),
+                binder.span().end().merge(&subbinder),
                 "denotes a reference to a binding inside of a namespace",
             )
             .with(|it| match similarly_named_namespace {
@@ -2028,7 +2012,7 @@ impl ProgramEntryExt for Session<'_> {
     fn look_up_program_entry(&self) -> Option<Identifier> {
         let resolver = Resolver::new(self);
 
-        let binder = ast::Identifier::new_unchecked(PROGRAM_ENTRY, default());
+        let binder = ast::Identifier::new_unchecked(default(), PROGRAM_ENTRY);
         let index = resolver
             .resolve_identifier(
                 binder,
@@ -2047,10 +2031,10 @@ impl ProgramEntryExt for Session<'_> {
     }
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone, Copy)]
 enum Context {
     #[default]
-    Boring,
+    Declaration,
     DataDeclaration {
         index: LocalDeclarationIndex,
         transparency: Option<Transparency>,
@@ -2058,7 +2042,7 @@ enum Context {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 enum Transparency {
     Transparent,
     Abstract,
@@ -2254,6 +2238,18 @@ impl<'a> FunctionScope<'a> {
             }
         }
     }
+
+    fn depth(&self) -> usize {
+        match self {
+            Self::Module(_) => 0,
+            Self::FunctionParameter { parent, .. } => 1 + parent.depth(),
+            Self::PatternBinders { parent, binders } => binders.len() + parent.depth(),
+        }
+    }
+
+    fn index_from_level(&self, DeBruijnLevel(level): DeBruijnLevel) -> DeBruijnIndex {
+        DeBruijnIndex(self.depth() - 1 + level)
+    }
 }
 
 fn is_similar(identifier: &str, other_identifier: &str) -> bool {
@@ -2353,7 +2349,7 @@ trait ResolutionTarget {
 }
 
 mod target {
-    #[allow(clippy::wildcard_imports)]
+    #[allow(clippy::wildcard_imports)] // private inline module
     use super::*;
 
     pub(super) enum Any {}
@@ -2457,5 +2453,44 @@ enum ResolutionError {
 impl From<ErasedReportedError> for ResolutionError {
     fn from(error: ErasedReportedError) -> Self {
         Self::Erased(error)
+    }
+}
+
+mod error {
+    #[allow(clippy::wildcard_imports)] // private inline module
+    use super::*;
+    use utility::cycle::Cycle;
+
+    pub(super) fn confliction_definitions(
+        binder: ast::Identifier,
+        conflicts: &[Span],
+    ) -> Diagnostic {
+        Diagnostic::error()
+            .code(ErrorCode::E020)
+            .message(format!(
+                "‘{binder}’ is defined multiple times in this scope"
+            ))
+            .spans(conflicts, "conflicting definition")
+    }
+
+    // @Note hmm, taking a Session is not really in the spirit of those error fns
+    // but the alternative wouldn't be performant
+    pub(super) fn circular_declarations(
+        cycle: Cycle<'_, LocalDeclarationIndex>,
+        session: &Session<'_>,
+    ) -> Diagnostic {
+        let paths = cycle
+            .iter()
+            .map(|&&index| session.local_index_to_path(index).quote())
+            .list(Conjunction::And);
+
+        Diagnostic::error()
+            .code(ErrorCode::E024)
+            .message(format!(
+                "the {} {paths} {} circular",
+                pluralize!(cycle.len(), "declaration"),
+                pluralize!(cycle.len(), "is", "are"),
+            ))
+            .unlabeled_spans(cycle.into_iter().map(|&index| session[index].source.span()))
     }
 }

@@ -1,8 +1,8 @@
 error[E024]: the declarations ‘topmost.fake-my-dude.alpha0’ and ‘topmost.alpha1’ are circular
-  ┌─ ${TEST_FOLDER}/name-resolution/circular-uses.lushui:1:35
+  ┌─ ${TEST_FOLDER}/name-resolution/circular-uses.lushui:1:34
   │
-1 │ use fake-my-dude.alpha0.((self as alpha1))
-  │                                   ══════
+1 │ use fake-my-dude.alpha0.(self as alpha1)
+  │                                  ══════
   │
   ├─ ${TEST_FOLDER}/name-resolution/circular-uses.lushui:7:25
   │

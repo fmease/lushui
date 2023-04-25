@@ -1,5 +1,5 @@
 //! The documentation generator.
-#![feature(decl_macro, default_free_fn)]
+#![feature(decl_macro)]
 
 // @Bug We currently store the documentation of each component (be it a target component,
 // a direct dependency or a transitive dependency) flat in a single folder meaning we
@@ -21,13 +21,12 @@ use session::{
     Context, Session, OUTPUT_FOLDER_NAME,
 };
 use std::{
-    default::default,
     fs,
     io::BufWriter,
     path::{Path, PathBuf},
 };
 use text_processor::TextProcessor;
-use utilities::Atom;
+use utility::{default, Atom};
 
 mod fonts;
 mod format;
@@ -336,11 +335,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                     subsections.functions.0.push(subsections::Function {
                         attributes: &declaration.attributes,
                         binder: function.binder.to_str(),
-                        type_: format::format_expression(
-                            &function.type_annotation,
-                            url_prefix,
-                            self.session,
-                        ),
+                        type_: format::format_expression(&function.type_, url_prefix, self.session),
                     });
                 }
                 hir::BareDeclaration::Data(type_) => {
@@ -354,7 +349,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                                 attributes: &declaration.attributes,
                                 binder: constructor.binder.to_str(),
                                 type_: format::format_expression(
-                                    &constructor.type_annotation,
+                                    &constructor.type_,
                                     url_prefix,
                                     self.session,
                                 ),
@@ -367,11 +362,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                         // of the specific attributes
                         attributes: &declaration.attributes,
                         binder: type_.binder.to_str(),
-                        type_: format::format_expression(
-                            &type_.type_annotation,
-                            url_prefix,
-                            self.session,
-                        ),
+                        type_: format::format_expression(&type_.type_, url_prefix, self.session),
                         constructors: formatted_constructors,
                     });
                 }
@@ -533,7 +524,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
             content: render_page(
                 head(
                     // @Temporary hack
-                    Word::new_unchecked(Atom::__),
+                    Word::new_unchecked(Atom::UNDERSCORE),
                     url_prefix,
                     format!("Package {name}").into(),
                 ),
@@ -874,6 +865,8 @@ fn add_declaration_attribute(attribute: &Attribute, parent: &mut Element<'_>, ur
 
         // should not exist at this point in time
         Ignore | Include | Test => unreachable!(),
+        // render given-declarations properly
+        Context => todo!(),
     }
 }
 

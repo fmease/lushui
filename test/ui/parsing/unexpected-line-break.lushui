@@ -1,1 +1,3 @@
+;;; @Bug this should just say "expected expression", not "expected ‘)’ or expression"
+
 data X: (

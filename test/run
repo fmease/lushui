@@ -1,4 +1,4 @@
-#!/usr/bin/env sh
+#!/usr/bin/env bash
 
 FOLDER="$( dirname $( realpath $0 ) )"
 
@@ -40,6 +40,7 @@ selected () {
 selected "ui"
 if [[ $? == 0 ]]; then
     echo "note: running golden ui tests"
+
     cargo \
         +nightly \
         run \
@@ -65,5 +66,3 @@ if [[ $? == 0 ]]; then
         -- \
         --format pretty
 fi
-
-echo "xxx: end"

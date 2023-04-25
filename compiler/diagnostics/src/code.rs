@@ -1,6 +1,6 @@
 use derivation::Str;
 use std::fmt;
-use utilities::obtain;
+use utility::obtain;
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Code {
@@ -51,7 +51,7 @@ pub enum ErrorCode {
     E013,
     /// Mutually exclusive attributes.
     E014,
-    /// Missing mandatory type annotations.
+    /// Missing required type annotations.
     E015,
     /// Unable to load out-of-line module.
     E016,
@@ -61,7 +61,7 @@ pub enum ErrorCode {
     E018,
     /// Attribute arguments arity mismatch.
     E019,
-    /// Duplicate definitions.
+    /// Conflicting definitions.
     E020,
     /// Undefined binding.
     E021,

@@ -591,10 +591,12 @@ fn anchored_subheading<'a>(
     content: impl Into<Cow<'a, str>>,
 ) -> Element<'a> {
     fn anchored_subheading<'a>(level: u8, id: Cow<'a, str>, content: Cow<'a, str>) -> Element<'a> {
+        let href = format!("#{id}");
+
         Element::new(format!("h{level}"))
-            .attribute("id", id.clone())
+            .attribute("id", id)
             .class("subheading")
-            .child(Element::anchor(format!("#{id}"), content))
+            .child(Element::anchor(href, content))
     }
 
     anchored_subheading(level, id.into(), content.into())

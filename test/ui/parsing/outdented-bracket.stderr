@@ -1,8 +1,17 @@
-error[E010]: found ‘case’ but expected word
-  ┌─ ${TEST_FOLDER}/parsing/outdented-bracket.lushui:3:23
+error[E010]: found line break but expected ‘::’, ‘'’, argument, ‘,’, ‘)’, ‘)’ or expression
+  ┌─ ${TEST_FOLDER}/parsing/outdented-bracket.lushui:3:30
   │
-3 │ lengthy-space-filler (case 0 of
-  │                       ════ unexpected token
+3 │   main = lengthy-space-filler (case 0 of
+  │ ┌──────────────────────────────┘
+4 │ │     \\n => n
+)
+  │ └────────────┘ while parsing this expression starting here
+  │
+  ├─ ${TEST_FOLDER}/parsing/outdented-bracket.lushui:4:14
+  │
+4 │     \\n => n
+)
+  │            ⟫⟪ unexpected token
 
 error: aborting due to previous error
 

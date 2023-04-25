@@ -1,10 +1,10 @@
 ;;; TEST pass check
 
 use extern.core.(
-    type.Type
-    list.List
-    bool.(Bool false true)
-    unit.(Unit unit)
+    type.Type,
+    list.List,
+    bool.(Bool, false, true),
+    unit.(Unit, unit),
     )
 
 data Any: Type of
@@ -13,7 +13,7 @@ data Any: Type of
 use Any.any
 
 foo: List Bool =
-    List.[(Bool) false true]
+    List.((Bool), false, true)
 
 bar: List Any =
-    List.[(Any) (any Unit unit) (any Bool false)]
+    List.((Any), any Unit unit, any Bool false)

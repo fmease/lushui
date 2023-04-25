@@ -10,5 +10,5 @@ module alpha of
     module beta of
         use super.air
 
-use alpha.(Nothingness beta.space)
+use alpha.(Nothingness, beta.space)
 

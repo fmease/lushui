@@ -1,7 +1,7 @@
 use crate::{Diagnostic, ErrorCode, LintCode, UnboxedUntaggedDiagnostic};
 use span::{span, FileName::Anonymous, SourceMap};
 use std::sync::Arc;
-use utilities::difference;
+use utility::difference;
 
 #[track_caller]
 fn assert_format(diagnostic: &UnboxedUntaggedDiagnostic, map: Option<&SourceMap>, expected: &str) {

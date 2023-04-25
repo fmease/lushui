@@ -1,0 +1,13 @@
+data Outer of
+    data Inner of
+        module innermost of
+
+    module
+
+record Record of
+    use resource
+
+trait Trait of
+    use prelude
+
+    record Common of

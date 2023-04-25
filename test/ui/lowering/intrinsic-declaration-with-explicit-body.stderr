@@ -1,4 +1,4 @@
-error[E042]: the declaration ‘Void’ marked as ‘intrinsic’ has a body
+error[E042]: intrinsic declarations may not have a body
   ┌─ ${TEST_FOLDER}/lowering/intrinsic-declaration-with-explicit-body.lushui:3:1
   │
 3 │ @intrinsic
@@ -9,10 +9,8 @@ error[E042]: the declaration ‘Void’ marked as ‘intrinsic’ has a body
 4 │ data Void: Type of
   │                 ══ the body specifying that the data type has no constructors and is therefore uninhabited
   │                             conflicting with the attribute
-  │
- help: remove either the body or the attribute
 
-error[E042]: the declaration ‘Unit’ marked as ‘intrinsic’ has a body
+error[E042]: intrinsic declarations may not have a body
   ┌─ ${TEST_FOLDER}/lowering/intrinsic-declaration-with-explicit-body.lushui:6:1
   │
 6 │ @intrinsic
@@ -25,10 +23,8 @@ error[E042]: the declaration ‘Unit’ marked as ‘intrinsic’ has a body
 8 │ ║     unit: Unit
   │ ╚══════════════╝ the body containing a set of constructors
   │                           conflicting with the attribute
-  │
- help: remove either the body or the attribute
 
-error[E042]: the declaration ‘Bool’ marked as ‘intrinsic’ has a body
+error[E042]: intrinsic declarations may not have a body
    ┌─ ${TEST_FOLDER}/lowering/intrinsic-declaration-with-explicit-body.lushui:10:1
    │
 10 │ @intrinsic
@@ -41,10 +37,8 @@ error[E042]: the declaration ‘Bool’ marked as ‘intrinsic’ has a body
 13 │ ║     true: Bool
    │ ╚══════════════╝ the body containing a set of constructors
    │                           conflicting with the attribute
-   │
-  help: remove either the body or the attribute
 
-error[E042]: the declaration ‘thing’ marked as ‘intrinsic’ has a body
+error[E042]: intrinsic declarations may not have a body
    ┌─ ${TEST_FOLDER}/lowering/intrinsic-declaration-with-explicit-body.lushui:15:1
    │
 15 │ @intrinsic thing = 0
@@ -54,14 +48,12 @@ error[E042]: the declaration ‘thing’ marked as ‘intrinsic’ has a body
    │
 15 │ @intrinsic thing = 0
    │                  ═══ the body conflicting with the attribute
-   │
-  help: remove either the body or the attribute
 
-error[E015]: the declaration ‘thing’ does not have a type annotation
+error[E015]: the function ‘thing’ does not have a type annotation
    ┌─ ${TEST_FOLDER}/lowering/intrinsic-declaration-with-explicit-body.lushui:15:17
    │
 15 │ @intrinsic thing = 0
-   │                ⟫⟪ missing mandatory type annotation
+   │                ⟫⟪ missing required type annotation
    │
   help: annotate the declaration with a type
    ┌─ ${TEST_FOLDER}/lowering/intrinsic-declaration-with-explicit-body.lushui:15:17

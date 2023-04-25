@@ -12,7 +12,7 @@ hir = { path = "../hir" }
 joinery = "3.1.0"
 lexer = { path = "../lexer" }
 session = { path = "../session" }
-utilities = { path = "../utilities" }
+utility = { path = "../utility" }
 
 [dev-dependencies]
 session = { path = "../session", features = ["test"] }

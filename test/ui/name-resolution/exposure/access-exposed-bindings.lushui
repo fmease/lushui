@@ -1,7 +1,7 @@
 ;;; TEST pass check
 
 use extern.core.type.Type
-use boundary.(Thing (Th as TH) inner)
+use boundary.(Thing, Th as TH, inner)
 
 module boundary of
     @public
@@ -20,7 +20,7 @@ module boundary of
         @public
         D: topmost.Type = super.Intermediate
 
-use boundary.(T Th inner.D)
+use boundary.(T, Th, inner.D)
 
 D_: Type = D
 

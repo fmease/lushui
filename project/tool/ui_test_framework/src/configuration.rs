@@ -4,8 +4,8 @@ use crate::TestType;
 use derivation::{FromStr, Str};
 use lexer::token::BareToken;
 use span::{SourceFile, SourceMap, Span, Spanned};
-use std::{collections::HashMap, default::default, str::FromStr, time::Duration};
-use utilities::{pluralize, Str};
+use std::{collections::HashMap, str::FromStr, time::Duration};
+use utility::{default, pluralize, Str};
 
 #[cfg(test)]
 mod tests;

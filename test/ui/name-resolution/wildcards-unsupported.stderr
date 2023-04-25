@@ -1,0 +1,38 @@
+error: wildcards are not supported yet
+  ┌─ ${TEST_FOLDER}/name-resolution/wildcards-unsupported.lushui:1:10
+  │
+1 │ meaning: ?Hole = ?hole
+  │          ═════
+
+error: wildcards are not supported yet
+  ┌─ ${TEST_FOLDER}/name-resolution/wildcards-unsupported.lushui:1:18
+  │
+1 │ meaning: ?Hole = ?hole
+  │                  ═════
+
+error: wildcards are not supported yet
+  ┌─ ${TEST_FOLDER}/name-resolution/wildcards-unsupported.lushui:3:11
+  │
+3 │ careless: _ = _
+  │           ═
+
+error: wildcards are not supported yet
+  ┌─ ${TEST_FOLDER}/name-resolution/wildcards-unsupported.lushui:3:15
+  │
+3 │ careless: _ = _
+  │               ═
+
+error[E021]: the binding ‘Unit’ is not defined in this scope
+  ┌─ ${TEST_FOLDER}/name-resolution/wildcards-unsupported.lushui:5:7
+  │
+5 │ main: Unit = case scrutinee of
+  │       ════
+
+error[E021]: the binding ‘scrutinee’ is not defined in this scope
+  ┌─ ${TEST_FOLDER}/name-resolution/wildcards-unsupported.lushui:5:19
+  │
+5 │ main: Unit = case scrutinee of
+  │                   ═════════
+
+error: aborting due to 6 previous errors
+

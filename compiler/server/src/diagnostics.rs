@@ -1,11 +1,12 @@
 use crate::span::ToLocationExt;
 use diagnostics::{Code, Highlight, LintCode, Role, Severity, UnboxedUntaggedDiagnostic};
 use span::SourceMap;
-use std::{collections::BTreeSet, default::default};
+use std::collections::BTreeSet;
 use tower_lsp::lsp_types::{
     self, DiagnosticRelatedInformation, DiagnosticSeverity, DiagnosticTag, MessageType,
     NumberOrString, OneOf, Range,
 };
+use utility::default;
 
 const SOURCE: &str = "lushui";
 

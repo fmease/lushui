@@ -5,7 +5,7 @@ use diagnostics::Diagnostic;
 use difference::{Changeset, Difference};
 use span::{SourceMap, Span};
 use std::{io::Write, path::PathBuf, process::ExitStatus, time::Duration};
-use utilities::{pluralize, Str};
+use utility::{pluralize, Str};
 
 pub(crate) struct FailedTest {
     pub(crate) path: PathBuf,

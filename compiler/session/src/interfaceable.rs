@@ -1,8 +1,7 @@
 use crate::Session;
-use ast::Explicitness::Explicit;
 use diagnostics::error::Result;
-use hir::{interfaceable, special, Expression};
-use utilities::condition;
+use hir::{interfaceable, special, Expression, ParameterKind::Explicit};
+use utility::condition;
 
 pub trait InterfaceableBindingExt: Sized {
     fn from_expression(expression: &Expression, session: &Session<'_>) -> Option<Self>;
@@ -50,7 +49,9 @@ impl InterfaceableBindingExt for interfaceable::Type {
         use special::{NumericType::*, Type::*};
 
         macro special($name:ident) {
-            session.require_special($name, None)
+            session
+                .require_special($name, None)
+                .map(hir::Identifier::to_item)
         }
 
         match self {
@@ -137,10 +138,10 @@ impl InterfaceableBindingExt for interfaceable::Value {
         use special::{Constructor::*, Type::*};
 
         Ok(match self {
-            Self::Unit => session.require_special(Unit, None)?,
-            Self::Bool(value) => {
-                session.require_special(if value { BoolTrue } else { BoolFalse }, None)?
-            }
+            Self::Unit => session.require_special(Unit, None)?.to_item(),
+            Self::Bool(value) => session
+                .require_special(if value { BoolTrue } else { BoolFalse }, None)?
+                .to_item(),
             Self::Text(value) => Expression::bare(hir::Text::Text(value).into()),
             Self::Nat(value) => Expression::bare(Nat(value).into()),
             Self::Nat32(value) => Expression::bare(Nat32(value).into()),
@@ -151,13 +152,13 @@ impl InterfaceableBindingExt for interfaceable::Value {
             Self::Option { type_, value } => match value {
                 Some(value) => application(
                     application(
-                        session.require_special(OptionSome, None)?,
+                        session.require_special(OptionSome, None)?.to_item(),
                         type_.into_expression(session)?,
                     ),
                     value.into_expression(session)?,
                 ),
                 None => application(
-                    session.require_special(OptionNone, None)?,
+                    session.require_special(OptionNone, None)?.to_item(),
                     type_.into_expression(session)?,
                 ),
             },
@@ -180,7 +181,7 @@ fn application(callee: Expression, argument: Expression) -> Expression {
         hir::Application {
             callee,
             argument,
-            explicitness: Explicit,
+            kind: Explicit,
         }
         .into(),
     )

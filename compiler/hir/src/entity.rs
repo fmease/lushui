@@ -3,8 +3,8 @@ use crate::{
     Namespace, ValueView,
 };
 use diagnostics::{error::PossiblyErroneous, reporter::ErasedReportedError};
-use std::default::default;
-use utilities::obtain;
+use utility::default;
+use utility::obtain;
 
 /// Something that can be bound to an identifier.
 ///

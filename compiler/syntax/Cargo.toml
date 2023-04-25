@@ -11,3 +11,4 @@ lexer = { path = "../lexer" }
 parser = { path = "../parser" }
 session = { path = "../session" }
 span = { path = "../span" }
+utility = { path = "../utility" }

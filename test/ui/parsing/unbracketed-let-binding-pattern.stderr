@@ -1,0 +1,19 @@
+error[E010]: found ‘let’ but expected ‘.’, ‘'’ or argument
+  ┌─ ${TEST_FOLDER}/parsing/unbracketed-let-binding-pattern.lushui:2:5
+  │
+2 │     some let result => adjust result
+  │     ──── while parsing this pattern starting here
+  │
+  ├─ ${TEST_FOLDER}/parsing/unbracketed-let-binding-pattern.lushui:2:10
+  │
+2 │     some let result => adjust result
+  │          ═══ unexpected token
+  │
+ help: surround the let-binding with round brackets
+  ┌─ ${TEST_FOLDER}/parsing/unbracketed-let-binding-pattern.lushui:2:10
+  │
+2 │     some (let result) => adjust result
+  │          ~~~~~~~~~~~~
+
+error: aborting due to previous error
+

@@ -1,4 +1,4 @@
-use fake-my-dude.alpha0.((self as alpha1))
+use fake-my-dude.alpha0.(self as alpha1)
 
 module fake-my-dude of
     use beta0 as beta1

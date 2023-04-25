@@ -2,7 +2,6 @@ use crate::utility::{HelperAttribute, TokenStream1, TokenStream2};
 use quote::quote;
 use syn::{
     parse::{Nothing, Parse, ParseStream},
-    token::Paren,
     Attribute, Error, Fields, Ident, Token,
 };
 
@@ -68,13 +67,11 @@ impl HelperAttribute for DiscriminantAttribute {
 
 impl Parse for DiscriminantAttribute {
     fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
-        let content;
-        let _: Paren = syn::parenthesized!(content in input);
-        let method = content.parse()?;
-        let _: Token![:] = content.parse()?;
-        let attributes = Attribute::parse_outer(&content)?;
-        let type_ = content.parse()?;
-        let _: Nothing = content.parse()?;
+        let method = input.parse()?;
+        let _: Token![:] = input.parse()?;
+        let attributes = Attribute::parse_outer(input)?;
+        let type_ = input.parse()?;
+        let _: Nothing = input.parse()?;
         let _: Nothing = input.parse()?;
 
         Ok(Self {

@@ -7,7 +7,7 @@ use hir_format::{ComponentExt, Display, SessionExt};
 use joinery::JoinableIterator;
 use session::Session;
 use std::fmt::Write;
-use utilities::{displayed, Atom};
+use utility::{displayed, Atom};
 
 pub(super) fn format_expression(
     expression: &hir::Expression,
@@ -47,56 +47,89 @@ impl<'a> Formatter<'a> {
     }
 
     fn format_expression(&mut self, expression: &hir::Expression) {
-        self.format_pi_type_literal_or_lower(expression);
+        self.format_pi_type_or_lower(expression);
     }
 
-    fn format_pi_type_literal_or_lower(&mut self, expression: &hir::Expression) {
+    fn format_pi_type_or_lower(&mut self, expression: &hir::Expression) {
         use hir::BareExpression::*;
 
         match &expression.bare {
             PiType(pi) => {
-                self.write(&pi.explicitness.to_string());
-
-                // @Note fragile
-                let domain_needs_brackets = pi.binder.is_some();
-
-                // @Task add tests to check if parameter aspect is handled correctly
-                if domain_needs_brackets {
-                    self.write("(");
-
-                    if let Some(parameter) = &pi.binder {
-                        self.write(&parameter.to_string());
-                        self.write(": ");
-                    }
-
-                    self.format_expression(&pi.domain);
-                    self.write(")");
-                } else {
+                if pi.binder.is_none() && pi.kind == hir::ParameterKind::Explicit {
                     self.format_application_or_lower(&pi.domain);
+                } else {
+                    self.write("For ");
+
+                    if pi.kind == hir::ParameterKind::Implicit {
+                        self.write("'");
+                    }
+                    if pi.kind == hir::ParameterKind::Context {
+                        self.write("[");
+
+                        if let Some(binder) = pi.binder {
+                            self.write(binder.to_str());
+                            self.write(": ");
+                        }
+
+                        self.format_expression(&pi.domain);
+
+                        self.write("]");
+                    } else {
+                        let binder = pi
+                            .binder
+                            .map_or(Atom::UNDERSCORE, hir::Identifier::bare)
+                            .to_str();
+
+                        self.write("(");
+                        self.write(binder);
+                        self.write(": ");
+                        self.format_expression(&pi.domain);
+                        self.write(")");
+                    }
                 }
+
                 self.write(" -&gt; ");
-                self.format_pi_type_literal_or_lower(&pi.codomain);
+                self.format_pi_type_or_lower(&pi.codomain);
             }
             Lambda(lambda) => {
-                self.write(r"\");
-                self.write(&lambda.explicitness.to_string());
-                let parameter_needs_brackets = lambda.domain.is_some();
+                self.write("for ");
+                if lambda.kind == hir::ParameterKind::Implicit {
+                    self.write("'");
+                }
+                if lambda.kind == hir::ParameterKind::Context {
+                    self.write("[");
 
-                if parameter_needs_brackets {
-                    self.write("(");
-                    self.write(&lambda.binder.to_string());
-                    if let Some(annotation) = &lambda.domain {
+                    if let Some(binder) = lambda.binder {
+                        self.write(binder.to_str());
                         self.write(": ");
-                        self.format_expression(annotation);
                     }
-                    self.write(")");
+
+                    if let Some(domain) = &lambda.domain {
+                        self.write(": ");
+                        self.format_expression(domain);
+                    }
+
+                    self.write("]");
                 } else {
-                    self.write(&lambda.binder.to_string());
+                    let binder = lambda
+                        .binder
+                        .map_or(Atom::UNDERSCORE, hir::Identifier::bare)
+                        .to_str();
+
+                    if let Some(domain) = &lambda.domain {
+                        self.write("(");
+                        self.write(binder);
+                        self.write(": ");
+                        self.format_expression(domain);
+                        self.write(")");
+                    } else {
+                        self.write(binder);
+                    }
                 }
 
-                if let Some(annotation) = &lambda.codomain {
+                if let Some(codomain) = &lambda.codomain {
                     self.write(": ");
-                    self.format_expression(annotation);
+                    self.format_expression(codomain);
                 }
 
                 self.write(" =&gt; ");
@@ -130,8 +163,16 @@ impl<'a> Formatter<'a> {
             Application(application) => {
                 self.format_application_or_lower(&application.callee);
                 self.write(" ");
-                self.write(&application.explicitness.to_string());
-                self.format_lower_expression(&application.argument);
+                if application.kind == hir::ParameterKind::Implicit {
+                    self.write("'");
+                }
+                if application.kind == hir::ParameterKind::Context {
+                    self.write("[");
+                    self.format_expression(&application.argument);
+                    self.write("]");
+                } else {
+                    self.format_lower_expression(&application.argument);
+                }
             }
             IntrinsicApplication(application) => {
                 self.write(&application.callee.to_string());
@@ -158,11 +199,11 @@ impl<'a> Formatter<'a> {
             Text(literal) => self.write(&literal.to_string()),
             Binding(binding) => self.format_binder(&binding.0),
             // @Beacon @Temporary @Task just write out the path
-            Projection(_projection) => self.write("?(projection)"),
+            Projection(_projection) => self.write("⟨projection⟩"),
             IO(io) => {
-                self.write("?(io ");
+                self.write("⟨io ");
                 self.write(&io.index.to_string());
-                self.write(")");
+                self.write("⟩");
 
                 for argument in &io.arguments {
                     self.write(" ");
@@ -170,7 +211,7 @@ impl<'a> Formatter<'a> {
                 }
             }
             Substituted(substituted) => {
-                self.write("?(substituted ");
+                self.write("⟨subst ");
                 write!(
                     self.output,
                     "{}",
@@ -178,9 +219,9 @@ impl<'a> Formatter<'a> {
                 )
                 .unwrap();
                 self.format_expression(&substituted.expression);
-                self.write(")");
+                self.write("⟩");
             }
-            Error(_) => self.write("?(error)"),
+            Error(_) => self.write("⟨error⟩"),
             _ => {
                 self.write("(");
                 self.format_expression(expression);
@@ -197,9 +238,10 @@ impl<'a> Formatter<'a> {
             Number(number) => self.write(&number.to_string()),
             Text(text) => self.write(&text.to_string()),
             Binding(binding) => self.format_binder(&binding.0),
-            Binder(binder) => {
-                self.write(r"\");
-                self.write(&binder.0.to_string());
+            LetBinding(binder) => {
+                self.write("(let ");
+                self.write(binder.to_str());
+                self.write(")");
             }
             Application(application) => {
                 self.write("("); // @Temporary
@@ -209,7 +251,7 @@ impl<'a> Formatter<'a> {
                 self.format_pattern(&application.argument);
                 self.write(")"); // @Temporary
             }
-            Error(_) => self.write("?(error)"),
+            Error(_) => self.write("⟨error⟩"),
         }
     }
 
@@ -261,7 +303,7 @@ impl<'a> Formatter<'a> {
             let declaration_url = self.declaration_url_fragment(index);
             let path = self.session.index_to_path(index);
 
-            Element::anchor(declaration_url, binder.to_string())
+            Element::anchor(declaration_url, binder.to_str())
                 .attribute("title", path)
                 .render(&mut self.output);
         } else {

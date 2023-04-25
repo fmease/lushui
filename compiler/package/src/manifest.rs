@@ -11,7 +11,7 @@ use session::{package::Version, unit::ComponentType};
 use lexer::word::Word;
 use span::{SourceFileIndex, SourceMap, Spanned, WeaklySpanned};
 use std::{fmt, path::PathBuf, str::FromStr};
-use utilities::{try_all, AndThenMapExt, Conjunction, HashMap, ListingExt, QuoteExt};
+use utility::{try_all, AndThenMapExt, Conjunction, HashMap, ListingExt, QuoteExt};
 
 pub(super) struct PackageManifest {
     pub(super) profile: PackageProfile,
@@ -73,6 +73,7 @@ fn parse_name(
         })
 }
 
+#[derive(Clone, Copy)]
 enum NameKind {
     Package,
     Component,

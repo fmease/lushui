@@ -1,6 +1,5 @@
 #![feature(
     decl_macro,
-    default_free_fn,
     let_chains,
     associated_type_bounds,
     impl_trait_in_assoc_type
@@ -12,7 +11,7 @@ use colored::Colorize;
 use diagnostics::{error::Result, reporter::ErasedReportedError, Diagnostic, ErrorCode, Reporter};
 use hir_format::Display as _;
 use index_map::IndexMap;
-use lowered_ast::Display as _;
+use lo_ast::Display as _;
 use package::{find_package, resolve_file, resolve_package};
 use resolver::ProgramEntryExt;
 use session::{
@@ -23,14 +22,13 @@ use session::{
 use span::SourceMap;
 use std::{
     borrow::Cow,
-    default::default,
     path::Path,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, RwLock,
     },
 };
-use utilities::{displayed, ComponentIndex, FormatError, PROGRAM_ENTRY};
+use utility::{default, displayed, ComponentIndex, FormatError, PROGRAM_ENTRY};
 
 mod cli;
 mod create;
@@ -102,7 +100,7 @@ fn execute_command(
                             .report(&reporter));
                     }
 
-                    resolve_package(path, options.filter, map, reporter)?
+                    resolve_package(path, &options.filter, map, reporter)?
                 }
                 None => {
                     let current_folder_path = match std::env::current_dir() {
@@ -127,7 +125,7 @@ fn execute_command(
                             ))
                             .report(&reporter));
                     };
-                    resolve_package(path, options.filter, map, reporter)?
+                    resolve_package(path, &options.filter, map, reporter)?
                 }
             };
 
@@ -223,6 +221,7 @@ fn build_units(
     Ok(())
 }
 
+#[allow(clippy::needless_pass_by_value)] // by design
 fn build_unit(
     unit: BuildUnit,
     mode: &cli::BuildMode,
@@ -339,7 +338,7 @@ fn build_unit(
             lowerer::lower_file(component_root, lowering_options, session)?;
     }
 
-    if unit.is_root(session) && options.emit_lowered_ast {
+    if unit.is_root(session) && options.emit_lo_ast {
         eprintln!("{}", displayed(|f| component_root.write(f)));
     }
 

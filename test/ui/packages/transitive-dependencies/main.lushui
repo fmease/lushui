@@ -1,14 +1,13 @@
 ;;; TEST auxiliary packages/transitive-dependencies
 
-use extern.core.(type.Type duple.Duple nat.(Nat ==) bool.Bool)
-use extern.alpha.(bet g-one jamma)
-use extern.gamma.((G as The-G) g1 gam)
+use extern.core.(type.Type, nat.(Nat, ==), bool.Bool)
+use extern.core.(tuple.Tuple, list.List)
+use extern.alpha.(bet, g-one, jamma)
+use extern.gamma.(G as The-G, g1, gam)
 
-v0: Duple Nat Nat = bet
+v0: Tuple List.((Type), Nat, Nat) = bet
 v1: The-G = g-one
 v2: Bool = == gam jamma
 
-use extern.core.(tuple.Tuple list.List)
-
-main: Tuple List.[(Type) (Duple Nat Nat) The-G Bool] =
-    Tuple.[(Duple Nat Nat) v0 (The-G) v1 (Bool) v2]
+main: Tuple List.((Type), (Tuple List.((Type), Nat, Nat)), The-G, Bool) =
+    Tuple.((Tuple List.((Type), Nat, Nat)), v0, (The-G), v1, (Bool), v2)

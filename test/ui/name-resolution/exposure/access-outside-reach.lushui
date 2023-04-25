@@ -12,7 +12,7 @@ module grotto of
             @(public topmost.grotto)
             data Ingrown-Stalactite: topmost.Type of
 
-use grotto.deeper-end.((self as cave) (Icicle as I))
+use grotto.deeper-end.(self as cave, Icicle as I)
 J: Type = cave.Icicle
 
 module mod of

@@ -1,6 +1,6 @@
 ;;; @Task better error message
 
-lengthy-space-filler (case 0 of
+main = lengthy-space-filler (case 0 of
     \\n => n
 )
 

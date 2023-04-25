@@ -1,13 +1,13 @@
 ;;; TEST auxiliary packages/transitive-dependencies
 
-use extern.core.(nat.* duple.Duple)
-use extern.gamma.(N G g1 gam)
+use extern.core.(type.Type, nat.*, list.List, tuple.Tuple)
+use extern.gamma.(N, G, g1, gam)
 
 @public
-use extern.gamma.((N as Unsigned) (gam as gamma))
+use extern.gamma.(N as Unsigned, gam as gamma)
 
 @public
-bet: Duple N N = Duple.duple N N gam (* gam 3)
+bet: Tuple List.((Type), N, N) = Tuple.((N), gam, (N), (* gam 3))
 
 @public
 g-one: G = g1

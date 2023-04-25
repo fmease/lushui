@@ -2,7 +2,6 @@
 #![feature(
     adt_const_params,
     decl_macro,
-    default_free_fn,
     min_specialization,
     type_changing_struct_update
 )]
@@ -11,12 +10,14 @@
 // @Task handle overflows showing errors like "file too big" to the user
 
 use generic::Locality::*;
+use std::ops::{Add, Range, Sub};
+
 pub use source_map::{FileName, SourceFile, SourceFileIndex, SourceMap};
 pub use spanned::Spanned;
 pub use spanning::{PossiblySpanning, Spanning};
-use std::ops::{Add, Range, Sub};
 pub use weakly_spanned::WeaklySpanned;
 
+pub mod binder;
 pub mod item;
 pub mod source_map;
 
@@ -24,19 +25,20 @@ mod generic {
     use std::{
         cmp::Ordering,
         fmt,
+        marker::ConstParamTy,
         num::TryFromIntError,
         ops::{Add, AddAssign, Sub},
     };
 
-    /// An locality-abstract byte index.
+    /// A locality-abstract byte index.
     #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash, Default)]
     pub struct ByteIndex<const L: Locality>(pub(super) u32);
 
     impl<const L: Locality> ByteIndex<L> {
         /// Relates the index to the given span.
         ///
-        /// If the index is to the left of the span (i.e. smaller), it is considered [less].
-        /// If it is to the right (i.e. greater), it is considered [greater].
+        /// If the index is to the left of the span, it is considered [less].
+        /// If it is to the right, it is considered [greater].
         /// Otherwise, it has to be contained within the span and [equal] is returned.
         ///
         /// [less]: Ordering::Less
@@ -97,6 +99,7 @@ mod generic {
         }
     }
 
+    /// A locality-generic byte span.
     // @Task if feasible, make the fields private
     #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
     pub struct Span<const L: Locality> {
@@ -178,7 +181,7 @@ mod generic {
         }
     }
 
-    #[derive(PartialEq, Eq)]
+    #[derive(PartialEq, Eq, ConstParamTy)]
     pub enum Locality {
         Local,
         Global,
@@ -196,7 +199,7 @@ pub type LocalByteIndex = generic::ByteIndex<{ Local }>;
 // @Task replace
 impl From<LocalByteIndex> for usize {
     fn from(index: LocalByteIndex) -> Self {
-        index.0 as _ // @Bug may truncate (u16)
+        index.0.try_into().unwrap()
     }
 }
 
@@ -249,7 +252,7 @@ impl Span {
     // documentation
 
     #[must_use]
-    pub fn merge(self, other: impl PossiblySpanning) -> Self {
+    pub fn merge(self, other: &impl PossiblySpanning) -> Self {
         if let Some(other) = other.possible_span() {
             // self.assert_disjoint_and_consecutive(other);
             Self::new(self.start, other.end)
@@ -259,7 +262,7 @@ impl Span {
     }
 
     #[must_use]
-    pub fn merge_into(self, other: impl PossiblySpanning) -> Self {
+    pub fn merge_into(self, other: &impl PossiblySpanning) -> Self {
         if let Some(other) = other.possible_span() {
             // other.assert_disjoint_and_consecutive(self);
             Self::new(other.start, self.end)
@@ -277,7 +280,7 @@ impl Span {
     }
 
     // @Note naming is not great
-    pub fn merging_from(&mut self, other: impl PossiblySpanning) {
+    pub fn merging_from(&mut self, other: &impl PossiblySpanning) {
         if let Some(other) = other.possible_span() {
             // self.assert_disjoint_and_consecutive(other);
             debug_assert!(other.start <= self.start && other.end <= self.end);
@@ -287,7 +290,7 @@ impl Span {
 
     /// Similar to [`Self::merge`] except that the spans do not need to be disjoint.
     #[must_use]
-    pub fn fit_end(self, other: impl PossiblySpanning) -> Self {
+    pub fn fit_end(self, other: &impl PossiblySpanning) -> Self {
         match other.possible_span() {
             Some(other) => {
                 // debug_assert!(self.start <= other.start && self.start <= other.end);
@@ -366,7 +369,7 @@ pub fn span(start: u32, end: u32) -> Span {
 
 mod spanning {
     use super::Span;
-    use utilities::SmallVec;
+    use utility::SmallVec;
 
     pub trait Spanning: PossiblySpanning {
         fn span(&self) -> Span;
@@ -375,12 +378,6 @@ mod spanning {
     impl<S: Spanning> Spanning for &S {
         fn span(&self) -> Span {
             (**self).span()
-        }
-    }
-
-    impl<S: Spanning, Z: Spanning> Spanning for (S, Z) {
-        fn span(&self) -> Span {
-            self.0.span().merge(self.1.span())
         }
     }
 
@@ -424,41 +421,14 @@ mod spanning {
             self.as_ref().and_then(<_>::possible_span)
         }
     }
-
-    // @Task smh (specialization?) abstract over those two impls
-    // with impl<S: PossiblySpanning> PossiblySpanning for &S
-    // this currently (obviously) conflicts with impl<S: Spanning> Spanning for &S
-
-    // impl<S: PossiblySpanning> PossiblySpanning for &S {
-    //     fn possible_span(&self) -> Option<Span> {
-    //         (**self).possible_span()
-    //     }
-    // }
-
-    impl<S: PossiblySpanning> PossiblySpanning for &Option<S> {
-        fn possible_span(&self) -> Option<Span> {
-            (**self).possible_span()
-        }
-    }
-
-    impl<S: Spanning> PossiblySpanning for &Vec<S> {
-        fn possible_span(&self) -> Option<Span> {
-            (**self).possible_span()
-        }
-    }
-
-    impl<S: Spanning, const N: usize> PossiblySpanning for &SmallVec<S, N> {
-        fn possible_span(&self) -> Option<Span> {
-            (**self).possible_span()
-        }
-    }
 }
 
 // @Task combine Spanned, WeaklySpanned via parameter <const I: Influence = {Weak, Strong}>
 
 mod spanned {
     use super::{Span, Spanning, WeaklySpanned};
-    use std::{default::default, fmt, hash::Hash, ops::Deref};
+    use std::{fmt, hash::Hash, ops::Deref};
+    use utility::default;
 
     #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
     pub struct Spanned<Bare> {
@@ -479,8 +449,12 @@ mod spanned {
             Spanned::new(self.span, mapper(self.bare))
         }
 
+        pub fn remap<U>(self, bare: U) -> Spanned<U> {
+            Spanned::new(self.span, bare)
+        }
+
         #[must_use]
-        pub fn map_span(mut self, mapper: impl FnOnce(Span) -> Span) -> Self {
+        pub fn transform(mut self, mapper: impl FnOnce(Span) -> Span) -> Self {
             self.span = mapper(self.span);
             self
         }

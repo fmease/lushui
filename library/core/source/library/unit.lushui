@@ -1,17 +1,15 @@
 ;; The canonical unit type and related functions.
 module
 
-use topmost.type.Type
-
 @public @known
-data Unit: Type of
-    unit: Unit
+data Unit of
+    unit
 
-@public   
+@public
 use Unit.unit
 
 @public
-Thunk (A: Type): Type = Unit -> A
+Thunk A: topmost.type.Type = Unit -> A
 
 @public
-force (A: Type) (thunk: Thunk A): A = thunk unit
+force 'A (thunk: Thunk A): A = thunk unit

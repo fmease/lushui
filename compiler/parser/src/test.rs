@@ -4,19 +4,17 @@
 
 use super::parse;
 use ast::{
-    Attribute, Attributes, BareAttribute, BareParameter, BareUsePathTree, Case, Debug, Declaration,
-    Explicitness::{Explicit, Implicit},
-    Expression, Format, Identifier, Item, Parameter, Parameters, Path, Pattern, UsePathTree,
+    Attribute, BareAttribute, BareParameter, BareUsePathTree, Case, Debug, Declaration, Expression,
+    Format, Identifier, Item, Parameter,
+    ParameterKind::{Explicit, Implicit},
+    Parameters, Path, Pattern, UsePathTree,
 };
 use diagnostics::{error::Result, Reporter};
 use index_map::Index as _;
 use lexer::lex;
 use span::{span, FileName, SourceFileIndex, SourceMap, Span, Spanned};
-use std::{
-    default::default,
-    sync::{Arc, RwLock},
-};
-use utilities::{displayed, smallvec, SmallVec};
+use std::sync::{Arc, RwLock};
+use utility::{default, displayed, smallvec, SmallVec};
 
 fn parse_expression(source: &str) -> Result<Expression> {
     let mut map = SourceMap::default();
@@ -118,8 +116,9 @@ use no_std_assert as assert_eq;
 #[allow(unused_imports)]
 use no_std_assert as assert_ne;
 
+// @Task swap arguments
 fn identifier(name: &str, span: Span) -> Identifier {
-    Identifier::new_unchecked(name.into(), span)
+    Identifier::new_unchecked(span, name.into())
 }
 
 /// Compare with [application_lambda_literal_argument_strict_grouping].
@@ -128,24 +127,21 @@ fn identifier(name: &str, span: Span) -> Identifier {
 fn application_lambda_literal_argument_lax_grouping() {
     assert_eq(
         parse_expression(r"(read for this => this) alpha"),
-        Ok(Expression::new(
-            Attributes::new(),
+        Ok(Expression::common(
             span(1, 30),
             ast::Application {
-                callee: Expression::new(
-                    Attributes::new(),
+                callee: Expression::common(
                     span(1, 24),
                     ast::Application {
                         callee: identifier("read", span(2, 6)).into(),
-                        argument: Expression::new(
-                            Attributes::new(),
+                        argument: Expression::common(
                             span(7, 23),
                             ast::LambdaLiteral {
                                 parameters: smallvec![Parameter::new(
                                     span(11, 15),
                                     BareParameter {
-                                        explicitness: Explicit,
-                                        binder: identifier("this", span(11, 15)),
+                                        kind: Explicit,
+                                        binder: Some(identifier("this", span(11, 15)).into()),
                                         type_: None,
                                     },
                                 )],
@@ -155,13 +151,13 @@ fn application_lambda_literal_argument_lax_grouping() {
                             .into(),
                         ),
                         binder: None,
-                        explicitness: Explicit,
+                        kind: Explicit,
                     }
                     .into(),
                 ),
                 argument: identifier("alpha", span(25, 30)).into(),
                 binder: None,
-                explicitness: Explicit,
+                kind: Explicit,
             }
             .into(),
         )),
@@ -174,24 +170,21 @@ fn application_lambda_literal_argument_lax_grouping() {
 fn application_lambda_literal_argument_strict_grouping() {
     assert_eq(
         parse_expression(r"read (for this => this) alpha"),
-        Ok(Expression::new(
-            Attributes::new(),
+        Ok(Expression::common(
             span(1, 30),
             ast::Application {
-                callee: Expression::new(
-                    Attributes::new(),
+                callee: Expression::common(
                     span(1, 24),
                     ast::Application {
                         callee: identifier("read", span(1, 5)).into(),
-                        argument: Expression::new(
-                            Attributes::new(),
+                        argument: Expression::common(
                             span(6, 24),
                             ast::LambdaLiteral {
                                 parameters: smallvec![Parameter::new(
                                     span(11, 15),
                                     BareParameter {
-                                        explicitness: Explicit,
-                                        binder: identifier("this", span(11, 15)),
+                                        kind: Explicit,
+                                        binder: Some(identifier("this", span(11, 15)).into()),
                                         type_: None,
                                     },
                                 )],
@@ -201,13 +194,13 @@ fn application_lambda_literal_argument_strict_grouping() {
                             .into(),
                         ),
                         binder: None,
-                        explicitness: Explicit,
+                        kind: Explicit,
                     }
                     .into(),
                 ),
                 argument: identifier("alpha", span(25, 30)).into(),
                 binder: None,
-                explicitness: Explicit,
+                kind: Explicit,
             }
             .into(),
         )),
@@ -218,23 +211,21 @@ fn application_lambda_literal_argument_strict_grouping() {
 fn pi_type_literal_application_bracketed_argument_domain() {
     assert_eq(
         parse_expression("Alpha (Beta) -> Gamma"),
-        Ok(Expression::new(
-            Attributes::new(),
+        Ok(Expression::common(
             span(1, 22),
             ast::QuantifiedType {
                 quantifier: ast::Quantifier::Pi,
                 parameters: smallvec![Parameter::new(
                     span(1, 13),
                     BareParameter {
-                        explicitness: Explicit,
-                        binder: identifier("_", span(1, 1)),
-                        type_: Some(Expression::new(
-                            Attributes::new(),
+                        kind: Explicit,
+                        binder: None,
+                        type_: Some(Expression::common(
                             span(1, 13),
                             ast::Application {
                                 callee: identifier("Alpha", span(1, 6)).into(),
                                 argument: identifier("Beta", span(7, 13)).into(),
-                                explicitness: Explicit,
+                                kind: Explicit,
                                 binder: None,
                             }
                             .into(),
@@ -252,23 +243,21 @@ fn pi_type_literal_application_bracketed_argument_domain() {
 fn bracketed_pi_type_literal_application_bracketed_argument_domain() {
     assert_eq(
         parse_expression("(Alpha (Beta) -> Gamma)"),
-        Ok(Expression::new(
-            Attributes::new(),
+        Ok(Expression::common(
             span(1, 24),
             ast::QuantifiedType {
                 quantifier: ast::Quantifier::Pi,
                 parameters: smallvec![Parameter::new(
                     span(2, 14),
                     BareParameter {
-                        explicitness: Explicit,
-                        binder: identifier("_", span(2, 2)),
-                        type_: Some(Expression::new(
-                            Attributes::new(),
+                        kind: Explicit,
+                        binder: None,
+                        type_: Some(Expression::common(
                             span(2, 14),
                             ast::Application {
                                 callee: identifier("Alpha", span(2, 7)).into(),
                                 argument: identifier("Beta", span(8, 14)).into(),
-                                explicitness: Explicit,
+                                kind: Explicit,
                                 binder: None,
                             }
                             .into(),
@@ -290,23 +279,21 @@ fn bracketed_pi_type_literal_application_bracketed_argument_domain() {
 fn pi_type_literal_application_implicit_argument_domain() {
     assert_eq(
         parse_expression("f 'Int -> Type"),
-        Ok(Expression::new(
-            Attributes::new(),
+        Ok(Expression::common(
             span(1, 15),
             ast::QuantifiedType {
                 quantifier: ast::Quantifier::Pi,
                 parameters: smallvec![Parameter::new(
                     span(1, 7),
                     BareParameter {
-                        explicitness: Explicit,
-                        binder: identifier("_", span(1, 1)),
-                        type_: Some(Expression::new(
-                            Attributes::new(),
+                        kind: Explicit,
+                        binder: None,
+                        type_: Some(Expression::common(
                             span(1, 7),
                             ast::Application {
                                 callee: identifier("f", span(1, 2)).into(),
                                 argument: identifier("Int", span(4, 7)).into(),
-                                explicitness: Implicit,
+                                kind: Implicit,
                                 binder: None,
                             }
                             .into(),
@@ -324,23 +311,21 @@ fn pi_type_literal_application_implicit_argument_domain() {
 fn pi_type_literal_application_implicit_named_argument_domain() {
     assert_eq(
         parse_expression("f '(T = Int) -> Type"),
-        Ok(Expression::new(
-            Attributes::new(),
+        Ok(Expression::common(
             span(1, 21),
             ast::QuantifiedType {
                 quantifier: ast::Quantifier::Pi,
                 parameters: smallvec![Parameter::new(
                     span(1, 13),
                     BareParameter {
-                        explicitness: Explicit,
-                        binder: identifier("_", span(1, 1)),
-                        type_: Some(Expression::new(
-                            Attributes::new(),
+                        kind: Explicit,
+                        binder: None,
+                        type_: Some(Expression::common(
                             span(1, 13),
                             ast::Application {
                                 callee: identifier("f", span(1, 2)).into(),
                                 argument: identifier("Int", span(9, 12)).into(),
-                                explicitness: Implicit,
+                                kind: Implicit,
                                 binder: Some(identifier("T", span(5, 6))),
                             }
                             .into(),
@@ -359,21 +344,19 @@ fn pi_type_literal_application_implicit_named_argument_domain() {
 fn application_pi_type_literal_implicit_domain() {
     assert_eq(
         parse_expression("receive (For '(n: Int) -> Type)"),
-        Ok(Expression::new(
-            Attributes::new(),
+        Ok(Expression::common(
             span(1, 32),
             ast::Application {
                 callee: identifier("receive", span(1, 8)).into(),
-                argument: Expression::new(
-                    Attributes::new(),
+                argument: Expression::common(
                     span(9, 32),
                     ast::QuantifiedType {
                         quantifier: ast::Quantifier::Pi,
                         parameters: smallvec![Parameter::new(
                             span(14, 23),
                             BareParameter {
-                                explicitness: Implicit,
-                                binder: identifier("n", span(16, 17)),
+                                kind: Implicit,
+                                binder: Some(identifier("n", span(16, 17)).into()),
                                 type_: Some(identifier("Int", span(19, 22)).into()),
                             }
                         )],
@@ -381,7 +364,7 @@ fn application_pi_type_literal_implicit_domain() {
                     }
                     .into(),
                 ),
-                explicitness: Explicit,
+                kind: Explicit,
                 binder: None,
             }
             .into(),
@@ -393,12 +376,10 @@ fn application_pi_type_literal_implicit_domain() {
 fn chained_fields() {
     assert_eq(
         parse_expression("base::member::protrusion"),
-        Ok(Expression::new(
-            Attributes::new(),
+        Ok(Expression::common(
             span(1, 25),
             ast::Projection {
-                basis: Expression::new(
-                    Attributes::new(),
+                basis: Expression::common(
                     span(1, 13),
                     ast::Projection {
                         basis: identifier("base", span(1, 5)).into(),
@@ -417,12 +398,10 @@ fn chained_fields() {
 fn namespaced_base_with_field() {
     assert_eq(
         parse_expression("path.to.base::member"),
-        Ok(Expression::new(
-            Attributes::new(),
+        Ok(Expression::common(
             span(1, 21),
             ast::Projection {
-                basis: Expression::new(
-                    Attributes::new(),
+                basis: Expression::common(
                     span(1, 13),
                     ast::Path {
                         hanger: None,
@@ -469,8 +448,7 @@ fn field_with_attribute() {
 fn base_with_attribute_and_field() {
     assert_eq(
         parse_expression("(@specifically compound)::projection"),
-        Ok(Expression::new(
-            Attributes::new(),
+        Ok(Expression::common(
             span(1, 37),
             ast::Projection {
                 basis: Expression::new(
@@ -495,12 +473,10 @@ fn base_with_attribute_and_field() {
 fn field_inside_application() {
     assert_eq(
         parse_expression("cb::cm ab::am"),
-        Ok(Expression::new(
-            Attributes::new(),
+        Ok(Expression::common(
             span(1, 14),
             ast::Application {
-                callee: Expression::new(
-                    Attributes::new(),
+                callee: Expression::common(
                     span(1, 7),
                     ast::Projection {
                         basis: identifier("cb", span(1, 3)).into(),
@@ -508,8 +484,7 @@ fn field_inside_application() {
                     }
                     .into(),
                 ),
-                argument: Expression::new(
-                    Attributes::new(),
+                argument: Expression::common(
                     span(8, 14),
                     ast::Projection {
                         basis: identifier("ab", span(8, 10)).into(),
@@ -518,7 +493,7 @@ fn field_inside_application() {
                     .into(),
                 ),
                 binder: None,
-                explicitness: Explicit,
+                kind: Explicit,
             }
             .into(),
         )),
@@ -569,12 +544,10 @@ fn outer_and_inner_attributes() {
 fn bracketed_empty_case_analysis() {
     assert_eq(
         parse_expression("(case 1 of)"),
-        Ok(Expression::new(
-            Attributes::new(),
+        Ok(Expression::common(
             span(1, 12),
             ast::CaseAnalysis {
-                scrutinee: Expression::new(
-                    Attributes::new(),
+                scrutinee: Expression::common(
                     span(7, 8),
                     ast::NumberLiteral {
                         path: None,
@@ -592,28 +565,24 @@ fn bracketed_empty_case_analysis() {
 /// Btw, notice how the case (“match arm”) is effectively outdented relative to the
 /// start of the case analysis, the keyword `case`. This may be counter-intuitive but technically,
 /// it is correct since indentation is relative to the start of the line.
-// @Temporary name
 #[test]
 fn bracketed_case_analysis() {
     assert_eq(
         parse_expression(
             "\
 lengthy-space-filler (case 0 of
-    \\n => n)",
+    let n => n)",
         ),
-        Ok(Expression::new(
-            Attributes::new(),
-            span(1, 45),
+        Ok(Expression::common(
+            span(1, 48),
             ast::Application {
-                explicitness: Explicit,
+                kind: Explicit,
                 binder: None,
                 callee: identifier("lengthy-space-filler", span(1, 21)).into(),
-                argument: Expression::new(
-                    Attributes::new(),
-                    span(22, 45),
+                argument: Expression::common(
+                    span(22, 48),
                     ast::CaseAnalysis {
-                        scrutinee: Expression::new(
-                            Attributes::new(),
+                        scrutinee: Expression::common(
                             span(28, 29),
                             ast::NumberLiteral {
                                 path: None,
@@ -622,12 +591,11 @@ lengthy-space-filler (case 0 of
                             .into(),
                         ),
                         cases: vec![Case {
-                            pattern: Pattern::new(
-                                Attributes::new(),
-                                span(37, 39),
-                                identifier("n", span(38, 39)).into(),
+                            pattern: Pattern::common(
+                                span(37, 42),
+                                ast::LocalBinder::Named(identifier("n", span(41, 42))).into(),
                             ),
-                            body: identifier("n", span(43, 44)).into(),
+                            body: identifier("n", span(46, 47)).into(),
                         }],
                     }
                     .into(),
@@ -662,14 +630,12 @@ lengthy-space-filler (case 0 of
 fn use_as_plain() {
     assert_eq(
         parse_declaration("use alpha.beta as gamma\n"),
-        Ok(Declaration::new(
-            Attributes::new(),
+        Ok(Declaration::common(
             span(1, 25),
             ast::Module {
                 binder: test_module_name(),
                 file: test_file_index(),
-                declarations: Some(vec![Declaration::new(
-                    Attributes::new(),
+                declarations: Some(vec![Declaration::common(
                     span(1, 24),
                     ast::Use {
                         bindings: UsePathTree::new(
@@ -694,83 +660,41 @@ fn use_as_plain() {
     )
 }
 
-/// Compare with [use_as_plain].
+/// Compare with [unindented_case_analysis]. They are identical up to span.
 #[test]
-fn use_as_double_brackets() {
-    assert_eq(
-        parse_declaration("use alpha.((beta as gamma))\n"),
-        Ok(Declaration::new(
-            Attributes::new(),
-            span(1, 29),
-            ast::Module {
-                binder: test_module_name(),
-                file: test_file_index(),
-                declarations: Some(vec![Declaration::new(
-                    Attributes::new(),
-                    span(1, 28),
-                    ast::Use {
-                        bindings: UsePathTree::new(
-                            span(5, 28),
-                            BareUsePathTree::Multiple {
-                                path: identifier("alpha", span(5, 10)).into(),
-                                bindings: vec![UsePathTree::new(
-                                    span(12, 27),
-                                    BareUsePathTree::Single {
-                                        target: identifier("beta", span(13, 17)).into(),
-                                        binder: Some(identifier("gamma", span(21, 26))),
-                                    },
-                                )],
-                            },
-                        ),
-                    }
-                    .into(),
-                )]),
-            }
-            .into(),
-        )),
-    )
-}
-
-/// Compare with [case_analysis_not_indented]. They are identical up to span.
-#[test]
-fn case_analysis_indented() {
+fn indented_case_analysis() {
     assert_eq(
         parse_declaration(
             "\
 main =
     case x of
         false => 0
-        \\bar =>
+        let bar =>
             \"bar\"
 ",
         ),
-        Ok(Declaration::new(
-            Attributes::new(),
-            span(1, 75),
+        Ok(Declaration::common(
+            span(1, 78),
             ast::Module {
                 binder: test_module_name(),
                 file: test_file_index(),
-                declarations: Some(vec![Declaration::new(
-                    Attributes::new(),
-                    span(1, 75),
+                declarations: Some(vec![Declaration::common(
+                    span(1, 78),
                     ast::Function {
                         binder: identifier("main", span(1, 5)),
                         parameters: Parameters::new(),
                         type_: None,
-                        body: Some(Expression::new(
-                            Attributes::new(),
-                            span(12, 75),
+                        body: Some(Expression::common(
+                            span(12, 78),
                             ast::CaseAnalysis {
                                 scrutinee: identifier("x", span(17, 18)).into(),
                                 cases: vec![
                                     Case {
-                                        pattern: Pattern::new(
-                                            Attributes::new(),
+                                        pattern: Pattern::common(
                                             span(30, 35),
                                             Path::from(identifier("false", span(30, 35))).into(),
                                         ),
-                                        body: Expression::new(
-                                            Attributes::new(),
+                                        body: Expression::common(
                                             span(39, 40),
                                             ast::NumberLiteral {
                                                 path: None,
@@ -780,17 +704,19 @@ main =
                                         ),
                                     },
                                     Case {
-                                        pattern: Pattern::new(
-                                            Attributes::new(),
-                                            span(49, 53),
-                                            identifier("bar", span(50, 53)).into(),
+                                        pattern: Pattern::common(
+                                            span(49, 56),
+                                            ast::LocalBinder::Named(identifier(
+                                                "bar",
+                                                span(53, 56),
+                                            ))
+                                            .into(),
                                         ),
-                                        body: Expression::new(
-                                            Attributes::new(),
-                                            span(69, 74),
+                                        body: Expression::common(
+                                            span(72, 77),
                                             ast::TextLiteral {
                                                 path: None,
-                                                literal: Spanned::new(span(69, 74), "bar".into()),
+                                                literal: Spanned::new(span(72, 77), "bar".into()),
                                             }
                                             .into(),
                                         ),
@@ -808,45 +734,40 @@ main =
     );
 }
 
-/// Compare with [case_analysis_indented]. They are identical up to span.
+/// Compare with [indented_case_analysis]. They are identical up to span.
 #[test]
-fn case_analysis_not_indented() {
+fn unindented_case_analysis() {
     assert_eq(
         parse_declaration(
             "\
 main = case x of
     false => 0
-    \\bar =>
+    let bar =>
         \"bar\"
 ",
         ),
-        Ok(Declaration::new(
-            Attributes::new(),
-            span(1, 59),
+        Ok(Declaration::common(
+            span(1, 62),
             ast::Module {
                 binder: test_module_name(),
                 file: test_file_index(),
-                declarations: Some(vec![Declaration::new(
-                    Attributes::new(),
-                    span(1, 59),
+                declarations: Some(vec![Declaration::common(
+                    span(1, 62),
                     ast::Function {
                         binder: identifier("main", span(1, 5)),
                         parameters: Parameters::new(),
                         type_: None,
-                        body: Some(Expression::new(
-                            Attributes::new(),
-                            span(8, 59),
+                        body: Some(Expression::common(
+                            span(8, 62),
                             ast::CaseAnalysis {
                                 scrutinee: identifier("x", span(13, 14)).into(),
                                 cases: vec![
                                     Case {
-                                        pattern: Pattern::new(
-                                            Attributes::new(),
+                                        pattern: Pattern::common(
                                             span(22, 27),
                                             Path::from(identifier("false", span(22, 27))).into(),
                                         ),
-                                        body: Expression::new(
-                                            Attributes::new(),
+                                        body: Expression::common(
                                             span(31, 32),
                                             ast::NumberLiteral {
                                                 path: None,
@@ -856,17 +777,19 @@ main = case x of
                                         ),
                                     },
                                     Case {
-                                        pattern: Pattern::new(
-                                            Attributes::new(),
-                                            span(37, 41),
-                                            identifier("bar", span(38, 41)).into(),
+                                        pattern: Pattern::common(
+                                            span(37, 44),
+                                            ast::LocalBinder::Named(identifier(
+                                                "bar",
+                                                span(41, 44),
+                                            ))
+                                            .into(),
                                         ),
-                                        body: Expression::new(
-                                            Attributes::new(),
-                                            span(53, 58),
+                                        body: Expression::common(
+                                            span(56, 61),
                                             ast::TextLiteral {
                                                 path: None,
-                                                literal: Spanned::new(span(53, 58), "bar".into()),
+                                                literal: Spanned::new(span(56, 61), "bar".into()),
                                             }
                                             .into(),
                                         ),
@@ -898,12 +821,11 @@ fn pattern_with_attributes() {
             )],
             span(5, 18),
             ast::Application {
-                callee: Pattern::new(
-                    Attributes::new(),
+                callee: Pattern::common(
                     span(6, 9),
                     Path::from(identifier("has".into(), span(6, 9))).into(),
                 ),
-                explicitness: Explicit,
+                kind: Explicit,
                 binder: None,
                 argument: Pattern::new(
                     vec![Attribute::new(

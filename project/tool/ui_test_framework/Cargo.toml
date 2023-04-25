@@ -6,7 +6,7 @@ edition = "2021"
 publish = false
 
 [dependencies]
-clap = { version = "4.1.8", features = ["deprecated", "string"] }
+clap = { version = "4.3.8", features = ["deprecated", "string"] }
 colored = "2.0.0"
 derivation = { path = "../../library/derivation" }
 diagnostics = { path = "../../../compiler/diagnostics" }
@@ -18,5 +18,5 @@ recnot = { path = "../../library/recnot" }
 span = { path = "../../../compiler/span" }
 terminal_size = "0.2.5"
 unicode-width = "0.1.10"
-utilities = { path = "../../../compiler/utilities" }
-walkdir = "2.3.2"
+utility = { path = "../../../compiler/utility" }
+walkdir = "2.3.3"

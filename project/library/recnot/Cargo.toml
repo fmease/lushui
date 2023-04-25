@@ -9,4 +9,4 @@ publish = false
 derivation = { path = "../derivation" }
 diagnostics = { path = "../../../compiler/diagnostics" }
 span = { path = "../../../compiler/span" }
-utilities = { path = "../../../compiler/utilities" }
+utility = { path = "../../../compiler/utility" }

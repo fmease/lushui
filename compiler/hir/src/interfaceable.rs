@@ -1,6 +1,6 @@
 // @Task get rid of interfaceable::{Type, Value} if possible, it's needless indirection
 
-use utilities::{Int, Nat};
+use utility::{Int, Nat};
 
 // @Beacon @Task make this an enum { Intrinsic(_), Known(_) } to DRY
 /// An “interfaceable” type (i.e. an intrinsic or known type).

@@ -13,4 +13,4 @@ lexer = { path = "../lexer" }
 recnot = { path = "../../project/library/recnot" }
 session = { path = "../session" }
 span = { path = "../span" }
-utilities = { path = "../utilities" }
+utility = { path = "../utility" }

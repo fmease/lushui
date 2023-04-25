@@ -1,16 +1,14 @@
 ;; Types and functions related to comparing and ordering.
 module
 
-use topmost.type.Type
+@public
+data Ordering of
+    less
+    equal
+    greater
 
 @public
-data Ordering: Type of
-    less: Ordering
-    equal: Ordering
-    greater: Ordering
-
-@public
-use Ordering.(less equal greater)
+use Ordering.(less, equal, greater)
 
 @public
 invert (o: Ordering): Ordering =
@@ -19,21 +17,21 @@ invert (o: Ordering): Ordering =
         equal => equal
         greater => less
 
-use topmost.unit.(unit Unit Thunk (force as !))
+use topmost.unit.(unit, Unit, Thunk, force)
 use topmost.int.Int
 
 ;;; @Task uncomment once `@lazy` is implemented
 ;;; @public
 ;;; then (o: Ordering) @lazy (p: Thunk Ordering): Ordering =
 ;;;     case o of
-;;;         equal => ! Ordering p
-;;;         \o => o
+;;;         equal => force 'Ordering p
+;;;         let o => o
 
 @public
 then_ (o: Ordering) (p: Ordering): Ordering =
     case o of
         equal => p
-        \o => o
+        let o => o
 
 @public
 to-int (o: Ordering): Int =

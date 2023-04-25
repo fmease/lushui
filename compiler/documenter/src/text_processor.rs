@@ -6,7 +6,6 @@ use session::Session;
 use span::FileName;
 use std::{
     cell::RefCell,
-    default::default,
     fs::{self, File},
     io::{BufWriter, Error, ErrorKind, Read, Write},
     path::{Path, PathBuf},
@@ -18,7 +17,7 @@ use std::{
     time::Duration,
 };
 use syntax::parse_path;
-use utilities::HashSet;
+use utility::{default, HashSet};
 
 pub(super) enum TextProcessor<'env> {
     None,
@@ -48,7 +47,7 @@ impl<'scope> TextProcessor<'scope> {
         match self {
             Self::None => Ok(description.into()),
             Self::AsciiDoctor(asciidoctor) => {
-                asciidoctor.borrow_mut().process(description, url_prefix)
+                asciidoctor.borrow_mut().process(&description, url_prefix)
             }
         }
     }
@@ -215,7 +214,7 @@ impl<'scope> Asciidoctor<'scope> {
 
     pub(super) fn process(
         &mut self,
-        description: String,
+        description: &str,
         url_prefix: String,
     ) -> Result<Node<'static>, Error> {
         let mut input_file = BufWriter::new(&mut self.input_file);

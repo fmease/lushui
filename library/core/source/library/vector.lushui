@@ -2,12 +2,15 @@
 module
 
 use topmost.type.Type
-use topmost.nat.(Nat +)
+use topmost.nat.(Nat, +)
 
 @public @known
-data Vector (n: Nat) (A: Type): Type of
-    empty (A: Type): Vector 0 A
-    prepend (n: Nat) (A: Type): A -> Vector n A -> Vector (+ n 1) A
+data Vector A: For (n: Nat) -> Type of
+    empty: Vector A 0
+    prepend '(n: Nat)
+        (head: A)
+        (tail: Vector A n):
+            Vector A (+ n 1)
 
 @public
-use Vector.(empty prepend)
+use Vector.(empty, prepend)

@@ -5,25 +5,25 @@
     never_type_fallback,
     never_type,
     lazy_cell,
-    string_leak,
     macro_metavar_expr,
     negative_impls
 )]
 
-pub use atom::Atom;
 use colored::Colorize;
 use difference::{Changeset, Difference};
+use std::{cell::Cell, ffi::OsStr, fmt, path::Path};
+
+pub use atom::Atom;
 pub use num_bigint::{BigInt as Int, BigUint as Nat};
 pub use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 pub use smallvec::smallvec;
-use std::{cell::Cell, ffi::OsStr, fmt, path::Path};
 
 pub mod atom;
 pub mod cycle;
 pub mod path;
 
 pub const FILE_EXTENSION: &str = "lushui"; // @Question worth to be an Atom?
-pub const PROGRAM_ENTRY: Atom = Atom::main;
+pub const PROGRAM_ENTRY: Atom = Atom::MAIN;
 
 pub type Str = std::borrow::Cow<'static, str>;
 
@@ -33,13 +33,15 @@ pub fn has_file_extension(path: &Path, required_extension: &str) -> bool {
     path.extension().and_then(OsStr::to_str) == Some(required_extension)
 }
 
-// @Task replace `$( $pat:pat_param )|+` with `$pat:pat` once rust-analyzer understands
-// 2021 patterns
-pub macro obtain($expr:expr, $( $pat:pat_param )|+ $( if $guard:expr )? $(,)? => $mapping:expr $(,)?) {
+pub macro obtain($expr:expr, $pat:pat $( if $guard:expr )? $(,)? => $mapping:expr $(,)?) {
     match $expr {
-        $( $pat )|+ $( if $guard )? => Some($mapping),
+        $pat $( if $guard )? => Some($mapping),
         _ => None
     }
+}
+
+pub fn default<T: Default>() -> T {
+    T::default()
 }
 
 // This can theoretically be generalized using GATs to support the implementors
@@ -90,6 +92,22 @@ pub macro condition($( $condition:expr => $consequence:expr ),+ $(, else => $alt
 #[allow(unused_macros)]
 pub macro no_std_assert($( $anything:tt )*) {
     compile_error!("use the function `assert_eq` instead of macro `assert_eq` and similar")
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
+pub enum OwnedOrBorrowed<'a, T> {
+    Owned(T),
+    Borrowed(&'a T),
+}
+
+impl<'a, T> OwnedOrBorrowed<'a, T> {
+    #[allow(clippy::should_implement_trait)] // ambiguity with `std::conver::AsRef` is fine
+    pub fn as_ref(&'a self) -> &'a T {
+        match self {
+            Self::Owned(value) => value,
+            Self::Borrowed(value) => value,
+        }
+    }
 }
 
 pub fn difference(original: &str, edit: &str, split: &str) -> String {
@@ -172,7 +190,7 @@ impl fmt::Display for Conjunction {
 /// # Examples
 ///
 /// ```
-/// # use utilities::pluralize;
+/// # use utility::pluralize;
 /// # fn main() {
 /// assert_eq!(pluralize!(1, "factor"), "factor");
 /// assert_eq!(pluralize!(15, "factor"), "factors");

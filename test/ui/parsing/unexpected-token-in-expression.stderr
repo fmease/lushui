@@ -1,8 +1,8 @@
-error[E010]: found ‘data’ but expected ‘.’, ‘::’, function argument or terminator
+error[E010]: found ‘data’ but expected ‘.’, ‘::’, ‘'’, argument or line break
   ┌─ ${TEST_FOLDER}/parsing/unexpected-token-in-expression.lushui:1:8
   │
 1 │ main = something data
-  │        ───────── while parsing this expression
+  │        ───────── while parsing this expression starting here
   │
   ├─ ${TEST_FOLDER}/parsing/unexpected-token-in-expression.lushui:1:18
   │

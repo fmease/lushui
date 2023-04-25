@@ -33,14 +33,14 @@ error[E021]: the binding ‘air’ is not defined in module ‘topmost.alpha’
 error[E021]: the binding ‘Nothingness’ is not defined in module ‘topmost.alpha’
    ┌─ ${TEST_FOLDER}/name-resolution/multiple-undefined1.lushui:13:12
    │
-13 │ use alpha.(Nothingness beta.space)
+13 │ use alpha.(Nothingness, beta.space)
    │            ═══════════
 
 error[E029]: binding ‘topmost.alpha.beta’ is private
-   ┌─ ${TEST_FOLDER}/name-resolution/multiple-undefined1.lushui:13:24
+   ┌─ ${TEST_FOLDER}/name-resolution/multiple-undefined1.lushui:13:25
    │
-13 │ use alpha.(Nothingness beta.space)
-   │                        ════
+13 │ use alpha.(Nothingness, beta.space)
+   │                         ════
 
 error: aborting due to 7 previous errors
 

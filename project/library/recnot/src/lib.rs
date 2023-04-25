@@ -8,16 +8,15 @@
 //! * multi-line text with indentation awareness
 //! * text escape sequences
 //! * negative numbers
-#![feature(default_free_fn)]
-
 use derivation::Discriminant;
 use diagnostics::{error::Result, reporter::ErasedReportedError, Diagnostic, ErrorCode, Reporter};
 use span::{SourceFileIndex, SourceMap, Span, Spanned, Spanning, WeaklySpanned};
 use std::{fmt, sync::RwLock};
-use utilities::{obtain, HashMap};
+use utility::{obtain, HashMap};
+
+mod parser;
 
 pub mod lexer;
-mod parser;
 
 pub type Value = Spanned<BareValue>;
 pub type Record<K = String, V = Value> = HashMap<WeaklySpanned<K>, V>;
@@ -188,7 +187,7 @@ pub trait WithTextContentSpanExt {
 
 impl<T> WithTextContentSpanExt for Spanned<T> {
     fn with_text_content_span(self, map: &SourceMap) -> Self {
-        self.map_span(|span| span.text_content_span(map))
+        self.transform(|span| span.text_content_span(map))
     }
 }
 

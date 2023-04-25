@@ -5,7 +5,7 @@ use derivation::{Elements, FromStr, Str};
 use lexer::word::Word;
 use span::Spanned;
 use std::fmt;
-use utilities::{path::CanonicalPathBuf, ComponentIndex, HashMap};
+use utility::{path::CanonicalPathBuf, ComponentIndex, HashMap};
 
 // @Beacon @Beacon @Beacon @Task rename BuildUnit again to sth containing "Component"
 

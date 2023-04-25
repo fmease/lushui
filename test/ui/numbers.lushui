@@ -1,16 +1,16 @@
 ;;; TEST pass check
 
 use extern.core.(
-    nat.(self Nat)
-    nat32.Nat32
-    int.Int
-    int64.Int64
-    duple.(Duple duple))
+    nat.(self, Nat),
+    nat32.Nat32,
+    int.Int,
+    int64.Int64,
+    )
 
 alpha: Int = Int.-1000
 
 beta: Nat = nat.+ 69696 44
 
-gamma: Duple Int64 Nat32 =
-    duple Int64 Nat32
-        Int64.334333223322 Nat32.233323
+gamma: Int64 = Int64.334333223322
+
+delta: Nat32 = Nat32.233323

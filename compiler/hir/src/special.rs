@@ -3,7 +3,7 @@ use diagnostics::{error::Result, Diagnostic, ErrorCode, Substitution};
 use num_traits::{CheckedDiv, CheckedSub};
 use span::{Span, Spanning};
 use std::fmt;
-use utilities::{Atom, HashMap};
+use utility::{Atom, HashMap};
 
 /// A special binding.
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]
@@ -16,52 +16,54 @@ pub enum Binding {
 impl Binding {
     pub fn parse(namespace: Option<Atom>, name: Atom) -> Option<Self> {
         Some(match (namespace, name) {
-            (None, Atom::Type) => Type::Type.into(),
-            (None, Atom::Unit) => Type::Unit.into(),
-            (None, Atom::Bool) => Type::Bool.into(),
-            (None, Atom::Text) => Type::Text.into(),
-            (None, Atom::Option) => Type::Option.into(),
-            (None, Atom::List) => SequentialType::List.into(),
-            (None, Atom::Vector) => SequentialType::Vector.into(),
-            (None, Atom::Tuple) => SequentialType::Tuple.into(),
-            (None, Atom::Nat) => NumericType::Nat.into(),
-            (None, Atom::Nat32) => NumericType::Nat32.into(),
-            (None, Atom::Nat64) => NumericType::Nat64.into(),
-            (None, Atom::Int) => NumericType::Int.into(),
-            (None, Atom::Int32) => NumericType::Int32.into(),
-            (None, Atom::Int64) => NumericType::Int64.into(),
-            (None, Atom::IO) => Type::IO.into(),
-            (Some(Atom::Unit), Atom::unit) => Constructor::UnitUnit.into(),
-            (Some(Atom::Bool), Atom::false_) => Constructor::BoolFalse.into(),
-            (Some(Atom::Bool), Atom::true_) => Constructor::BoolTrue.into(),
-            (Some(Atom::Option), Atom::none) => Constructor::OptionNone.into(),
-            (Some(Atom::Option), Atom::some) => Constructor::OptionSome.into(),
-            (Some(Atom::List), Atom::empty) => Constructor::ListEmpty.into(),
-            (Some(Atom::List), Atom::prepend) => Constructor::ListPrepend.into(),
-            (Some(Atom::Vector), Atom::empty) => Constructor::VectorEmpty.into(),
-            (Some(Atom::Vector), Atom::prepend) => Constructor::VectorPrepend.into(),
-            (Some(Atom::Tuple), Atom::empty) => Constructor::TupleEmpty.into(),
-            (Some(Atom::Tuple), Atom::prepend) => Constructor::TuplePrepend.into(),
-            (Some(Atom::nat), Atom::add) => Function::NatAdd.into(),
-            (Some(Atom::nat), Atom::subtract) => Function::NatSubtract.into(),
-            (Some(Atom::nat), Atom::unchecked_subtract) => Function::NatUncheckedSubtract.into(),
-            (Some(Atom::nat), Atom::multiply) => Function::NatMultiply.into(),
-            (Some(Atom::nat), Atom::divide) => Function::NatDivide.into(),
-            (Some(Atom::nat), Atom::equal) => Function::NatEqual.into(),
-            (Some(Atom::nat), Atom::less) => Function::NatLess.into(),
-            (Some(Atom::nat), Atom::less_equal) => Function::NatLessEqual.into(),
-            (Some(Atom::nat), Atom::greater) => Function::NatGreater.into(),
-            (Some(Atom::nat), Atom::greater_equal) => Function::NatGreaterEqual.into(),
-            (Some(Atom::nat), Atom::display) => Function::NatDisplay.into(),
-            (Some(Atom::text), Atom::concat) => Function::TextConcat.into(),
-            (Some(Atom::nat32), Atom::add) => Function::Nat32Add.into(),
-            (Some(Atom::nat32), Atom::successor) => Function::Nat32Successor.into(),
-            (Some(Atom::io), Atom::print) => Function::IoPrint.into(),
+            (None, Atom::TYPE) => Type::Type.into(),
+            (None, Atom::UNIT_UPPER) => Type::Unit.into(),
+            (None, Atom::BOOL) => Type::Bool.into(),
+            (None, Atom::TEXT_UPPER) => Type::Text.into(),
+            (None, Atom::OPTION) => Type::Option.into(),
+            (None, Atom::LIST) => SequentialType::List.into(),
+            (None, Atom::VECTOR) => SequentialType::Vector.into(),
+            (None, Atom::TUPLE) => SequentialType::Tuple.into(),
+            (None, Atom::NAT_UPPER) => NumericType::Nat.into(),
+            (None, Atom::NAT32_UPPER) => NumericType::Nat32.into(),
+            (None, Atom::NAT64) => NumericType::Nat64.into(),
+            (None, Atom::INT) => NumericType::Int.into(),
+            (None, Atom::INT32) => NumericType::Int32.into(),
+            (None, Atom::INT64) => NumericType::Int64.into(),
+            (None, Atom::IO_UPPER) => Type::IO.into(),
+            (Some(Atom::UNIT_UPPER), Atom::UNIT_LOWER) => Constructor::UnitUnit.into(),
+            (Some(Atom::BOOL), Atom::FALSE) => Constructor::BoolFalse.into(),
+            (Some(Atom::BOOL), Atom::TRUE) => Constructor::BoolTrue.into(),
+            (Some(Atom::OPTION), Atom::NONE) => Constructor::OptionNone.into(),
+            (Some(Atom::OPTION), Atom::SOME) => Constructor::OptionSome.into(),
+            (Some(Atom::LIST), Atom::EMPTY) => Constructor::ListEmpty.into(),
+            (Some(Atom::LIST), Atom::PREPEND) => Constructor::ListPrepend.into(),
+            (Some(Atom::VECTOR), Atom::EMPTY) => Constructor::VectorEmpty.into(),
+            (Some(Atom::VECTOR), Atom::PREPEND) => Constructor::VectorPrepend.into(),
+            (Some(Atom::TUPLE), Atom::EMPTY) => Constructor::TupleEmpty.into(),
+            (Some(Atom::TUPLE), Atom::PREPEND) => Constructor::TuplePrepend.into(),
+            (Some(Atom::NAT_LOWER), Atom::ADD) => Function::NatAdd.into(),
+            (Some(Atom::NAT_LOWER), Atom::SUBTRACT) => Function::NatSubtract.into(),
+            (Some(Atom::NAT_LOWER), Atom::UNCHECKED_SUBTRACT) => {
+                Function::NatUncheckedSubtract.into()
+            }
+            (Some(Atom::NAT_LOWER), Atom::MULTIPLY) => Function::NatMultiply.into(),
+            (Some(Atom::NAT_LOWER), Atom::DIVIDE) => Function::NatDivide.into(),
+            (Some(Atom::NAT_LOWER), Atom::EQUAL) => Function::NatEqual.into(),
+            (Some(Atom::NAT_LOWER), Atom::LESS) => Function::NatLess.into(),
+            (Some(Atom::NAT_LOWER), Atom::LESS_EQUAL) => Function::NatLessEqual.into(),
+            (Some(Atom::NAT_LOWER), Atom::GREATER) => Function::NatGreater.into(),
+            (Some(Atom::NAT_LOWER), Atom::GREATER_EQUAL) => Function::NatGreaterEqual.into(),
+            (Some(Atom::NAT_LOWER), Atom::DISPLAY) => Function::NatDisplay.into(),
+            (Some(Atom::TEXT_LOWER), Atom::CONCAT) => Function::TextConcat.into(),
+            (Some(Atom::NAT32_LOWER), Atom::ADD) => Function::Nat32Add.into(),
+            (Some(Atom::NAT32_LOWER), Atom::SUCCESSOR) => Function::Nat32Successor.into(),
+            (Some(Atom::IO_LOWER), Atom::PRINT) => Function::IoPrint.into(),
             _ => return None,
         })
     }
 
-    fn kind(self) -> Kind {
+    pub fn kind(self) -> Kind {
         match self {
             Self::Type(binding) => binding.kind(),
             Self::Constructor(_) => Kind::Known,
@@ -252,17 +254,17 @@ pub enum Constructor {
 impl fmt::Display for Constructor {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
-            Constructor::UnitUnit => "Unit.unit",
-            Constructor::BoolFalse => "Bool.false",
-            Constructor::BoolTrue => "Bool.true",
-            Constructor::OptionNone => "Option.none",
-            Constructor::OptionSome => "Option.some",
-            Constructor::ListEmpty => "List.empty",
-            Constructor::ListPrepend => "List.prepend",
-            Constructor::VectorEmpty => "Vector.empty",
-            Constructor::VectorPrepend => "Vector.prepend",
-            Constructor::TupleEmpty => "Tuple.empty",
-            Constructor::TuplePrepend => "Tuple.prepend",
+            Self::UnitUnit => "Unit.unit",
+            Self::BoolFalse => "Bool.false",
+            Self::BoolTrue => "Bool.true",
+            Self::OptionNone => "Option.none",
+            Self::OptionSome => "Option.some",
+            Self::ListEmpty => "List.empty",
+            Self::ListPrepend => "List.prepend",
+            Self::VectorEmpty => "Vector.empty",
+            Self::VectorPrepend => "Vector.prepend",
+            Self::TupleEmpty => "Tuple.empty",
+            Self::TuplePrepend => "Tuple.prepend",
         })
     }
 }
@@ -358,75 +360,129 @@ impl Function {
         let mut arguments = arguments.into_iter();
         match self {
             Self::NatAdd => {
-                let Some(Nat(x)) = arguments.next() else { unreachable!() };
-                let Some(Nat(y)) = arguments.next() else { unreachable!() };
+                let Some(Nat(x)) = arguments.next() else {
+                    unreachable!()
+                };
+                let Some(Nat(y)) = arguments.next() else {
+                    unreachable!()
+                };
                 (x + y).into()
             }
             Self::NatSubtract => {
-                let Some(Nat(x)) = arguments.next() else { unreachable!() };
-                let Some(Nat(y)) = arguments.next() else { unreachable!() };
+                let Some(Nat(x)) = arguments.next() else {
+                    unreachable!()
+                };
+                let Some(Nat(y)) = arguments.next() else {
+                    unreachable!()
+                };
                 x.checked_sub(&y).into()
             }
             Self::NatUncheckedSubtract => {
-                let Some(Nat(x)) = arguments.next() else { unreachable!() };
-                let Some(Nat(y)) = arguments.next() else { unreachable!() };
+                let Some(Nat(x)) = arguments.next() else {
+                    unreachable!()
+                };
+                let Some(Nat(y)) = arguments.next() else {
+                    unreachable!()
+                };
                 (x - y).into()
             }
             Self::NatMultiply => {
-                let Some(Nat(x)) = arguments.next() else { unreachable!() };
-                let Some(Nat(y)) = arguments.next() else { unreachable!() };
+                let Some(Nat(x)) = arguments.next() else {
+                    unreachable!()
+                };
+                let Some(Nat(y)) = arguments.next() else {
+                    unreachable!()
+                };
                 (x * y).into()
             }
             Self::NatDivide => {
-                let Some(Nat(x)) = arguments.next() else { unreachable!() };
-                let Some(Nat(y)) = arguments.next() else { unreachable!() };
+                let Some(Nat(x)) = arguments.next() else {
+                    unreachable!()
+                };
+                let Some(Nat(y)) = arguments.next() else {
+                    unreachable!()
+                };
                 x.checked_div(&y).into()
             }
             Self::NatEqual => {
-                let Some(Nat(x)) = arguments.next() else { unreachable!() };
-                let Some(Nat(y)) = arguments.next() else { unreachable!() };
+                let Some(Nat(x)) = arguments.next() else {
+                    unreachable!()
+                };
+                let Some(Nat(y)) = arguments.next() else {
+                    unreachable!()
+                };
                 (x == y).into()
             }
             Self::NatLess => {
-                let Some(Nat(x)) = arguments.next() else { unreachable!() };
-                let Some(Nat(y)) = arguments.next() else { unreachable!() };
+                let Some(Nat(x)) = arguments.next() else {
+                    unreachable!()
+                };
+                let Some(Nat(y)) = arguments.next() else {
+                    unreachable!()
+                };
                 (x < y).into()
             }
             Self::NatLessEqual => {
-                let Some(Nat(x)) = arguments.next() else { unreachable!() };
-                let Some(Nat(y)) = arguments.next() else { unreachable!() };
+                let Some(Nat(x)) = arguments.next() else {
+                    unreachable!()
+                };
+                let Some(Nat(y)) = arguments.next() else {
+                    unreachable!()
+                };
                 (x <= y).into()
             }
             Self::NatGreater => {
-                let Some(Nat(x)) = arguments.next() else { unreachable!() };
-                let Some(Nat(y)) = arguments.next() else { unreachable!() };
+                let Some(Nat(x)) = arguments.next() else {
+                    unreachable!()
+                };
+                let Some(Nat(y)) = arguments.next() else {
+                    unreachable!()
+                };
                 (x > y).into()
             }
             Self::NatGreaterEqual => {
-                let Some(Nat(x)) = arguments.next() else { unreachable!() };
-                let Some(Nat(y)) = arguments.next() else { unreachable!() };
+                let Some(Nat(x)) = arguments.next() else {
+                    unreachable!()
+                };
+                let Some(Nat(y)) = arguments.next() else {
+                    unreachable!()
+                };
                 (x >= y).into()
             }
             Self::NatDisplay => {
-                let Some(Nat(x)) = arguments.next() else { unreachable!() };
+                let Some(Nat(x)) = arguments.next() else {
+                    unreachable!()
+                };
                 x.to_string().into()
             }
             Self::TextConcat => {
-                let Some(Text(x)) = arguments.next() else { unreachable!() };
-                let Some(Text(y)) = arguments.next() else { unreachable!() };
+                let Some(Text(x)) = arguments.next() else {
+                    unreachable!()
+                };
+                let Some(Text(y)) = arguments.next() else {
+                    unreachable!()
+                };
                 (x + &y).into()
             }
             Self::Nat32Add => {
-                let Some(Nat32(x)) = arguments.next() else { unreachable!() };
-                let Some(Nat32(y)) = arguments.next() else { unreachable!() };
+                let Some(Nat32(x)) = arguments.next() else {
+                    unreachable!()
+                };
+                let Some(Nat32(y)) = arguments.next() else {
+                    unreachable!()
+                };
                 (x + y).into()
             }
             Self::Nat32Successor => {
-                let Some(Nat32(x)) = arguments.next() else { unreachable!() };
+                let Some(Nat32(x)) = arguments.next() else {
+                    unreachable!()
+                };
                 (x + 1).into()
             }
             Self::IoPrint => {
-                let Some(Text(message)) = arguments.next() else { unreachable!() };
+                let Some(Text(message)) = arguments.next() else {
+                    unreachable!()
+                };
                 crate::interfaceable::Value::IO {
                     index: 0,
                     arguments: vec![message.into()],
@@ -486,18 +542,6 @@ pub struct Bindings {
 }
 
 impl Bindings {
-    pub fn require<T: From<crate::Binding>>(
-        &self,
-        special: impl Into<Binding>,
-        user: Option<Span>,
-    ) -> Result<crate::Item<T>, Diagnostic> {
-        let special = special.into();
-
-        self.get(special)
-            .map(Identifier::to_item)
-            .ok_or_else(|| missing_binding_error(special, user))
-    }
-
     // @Beacon @Note kinda weird having both name & binder, can we move one of em into DefStyle?
     pub fn define(
         &mut self,
@@ -587,6 +631,7 @@ impl Bindings {
     }
 }
 
+#[derive(Clone, Copy)]
 pub enum DefinitionStyle<'a, T = Atom> {
     /// The name of the special binding is implied by the binder & the namespace of the declaration (e.g. in `@known`).
     Implicit { namespace: Option<T> },
@@ -642,20 +687,4 @@ impl Key for DeclarationIndex {
     fn index(self, bindings: &Bindings) -> Option<Self::Output> {
         bindings.to.get(&self).copied()
     }
-}
-
-fn missing_binding_error(special: Binding, user: Option<Span>) -> Diagnostic {
-    let kind = special.kind();
-
-    Diagnostic::error()
-        .code(match kind {
-            Kind::Known => ErrorCode::E062,
-            Kind::Intrinsic => ErrorCode::E060,
-        })
-        .message(format!("the {kind} binding ‘{special}’ is not defined"))
-        .with(|it| match user {
-            // @Task label
-            Some(user) => it.span(user, "the type of this expression"),
-            None => it,
-        })
 }

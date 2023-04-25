@@ -6,9 +6,9 @@ use topmost.type.Type
 ;;; @Task better name for this type, module and constructors!
 
 @public
-data Either (A: Type) (B: Type): Type of
-    first (A: Type) (B: Type): A -> Either A B
-    second (A: Type) (B: Type): B -> Either A B
+data Either A B of
+    first (_: A)
+    second (_: B)
 
 @public
-use Either.(first second)
+use Either.(first, second)

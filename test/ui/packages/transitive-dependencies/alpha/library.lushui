@@ -1,7 +1,7 @@
 ;;; TEST auxiliary packages/transitive-dependencies
 
 @public
-use extern.beta.(Unsigned bet g-one)
+use extern.beta.(Unsigned, bet, g-one)
 
 @public
 jamma: Unsigned = extern.beta.gamma

@@ -1,7 +1,7 @@
 ;;; TEST pass check
 
 use extern.core.type.Type
-use Bool.((false as f) (true as t))
+use Bool.(false as f, true as t)
 
 data Bool: Type of
     false: Bool

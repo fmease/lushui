@@ -2,7 +2,7 @@ use derivation::Discriminant;
 use diagnostics::Diagnostic;
 use span::{LocalByteIndex, LocalSpan, SourceFile, Span, Spanned};
 use std::{fmt, iter::Peekable, num::ParseIntError, str::CharIndices};
-use utilities::{obtain, quoted};
+use utility::{obtain, quoted};
 use BareToken::*;
 
 // @Task add "unbalanced bracket" errors

@@ -1,26 +1,42 @@
 use derivation::{Discriminant, Elements, Str};
 use span::{Span, Spanned, Spanning};
-use std::fmt;
-use utilities::{condition, obtain, Atom, Str};
+use std::{fmt, marker::ConstParamTy};
+use utility::{condition, obtain, Atom, Str};
 
 /// Something attributes can be ascribed to.
 ///
 /// This is the trait version of the struct [`super::Item`].
+// @Task get rid of this! this is so ugly and leaky!
 pub trait Target: Spanning {
-    /// Used in diagnostics.
-    fn name(&self) -> &'static str;
+    type Context: Copy;
 
-    fn as_targets(&self) -> Targets;
+    /// Used in diagnostics.
+    fn name(&self, context: Self::Context) -> &'static str;
+
+    fn targets(&self, context: Self::Context) -> Targets;
 }
 
 impl Target for ast::Declaration {
-    fn name(&self) -> &'static str {
+    type Context = ParentDeclarationKind;
+
+    fn name(&self, parent: ParentDeclarationKind) -> &'static str {
         use ast::BareDeclaration::*;
 
         match &self.bare {
-            Function(_) => "a function declaration",
-            Data(_) => "a data declaration",
-            Constructor(_) => "a constructor declaration",
+            Function(_) => {
+                use ParentDeclarationKind::*;
+
+                match parent {
+                    Module => "a function declaration",
+                    Data => "a constructor declaration",
+                    Record | Trait | Given => "a field declaration",
+                }
+            }
+            Data(type_) => match type_.kind {
+                ast::DataKind::Data => "a data declaration",
+                ast::DataKind::Record => "a record declaration",
+                ast::DataKind::Trait => "a trait declaration",
+            },
             // @Task it would be better (= less confusing) if we didn't mention "inline" and "out-of-line"
             // unconditionally, only for relevant target mismatches
             Module(module) => {
@@ -30,19 +46,30 @@ impl Target for ast::Declaration {
                     "an out-of-line module declaration"
                 }
             }
-            ModuleHeader => "a module header declaration",
-            Group(_) => "an attribute group declaration",
+            ModuleHeader => "a module-header declaration",
             Use(_) => "a use-declaration",
+            Given(_) => "a given-declaration",
         }
     }
 
-    fn as_targets(&self) -> Targets {
+    fn targets(&self, parent: ParentDeclarationKind) -> Targets {
         use ast::BareDeclaration::*;
 
         match &self.bare {
-            Function(_) => Targets::FUNCTION_DECLARATION,
-            Data(_) => Targets::DATA_DECLARATION,
-            Constructor(_) => Targets::CONSTRUCTOR_DECLARATION,
+            Function(_) => {
+                use ParentDeclarationKind::*;
+
+                match parent {
+                    Module => Targets::FUNCTION_DECLARATION,
+                    Data => Targets::CONSTRUCTOR_DECLARATION,
+                    Record | Trait | Given => Targets::FIELD_DECLARATION,
+                }
+            }
+            Data(data) => match data.kind {
+                ast::DataKind::Data => Targets::DATA_DECLARATION,
+                ast::DataKind::Record => Targets::RECORD_DECLARATION,
+                ast::DataKind::Trait => Targets::TRAIT_DECLARATION,
+            },
             Module(module) => {
                 if module.declarations.is_some() {
                     Targets::INLINE_MODULE_DECLARATION
@@ -51,38 +78,50 @@ impl Target for ast::Declaration {
                 }
             }
             ModuleHeader => Targets::MODULE_HEADER_DECLARATION,
-            Group(_) => Targets::all(),
             Use(_) => Targets::USE_DECLARATION,
+            Given(_) => Targets::GIVEN_DECLARATION,
         }
     }
 }
 
+#[derive(Clone, Copy)]
+pub enum ParentDeclarationKind {
+    Data,
+    Record,
+    Trait,
+    Module,
+    Given,
+}
+
 impl Target for ast::Expression {
-    fn name(&self) -> &'static str {
+    type Context = ();
+
+    fn name(&self, _: ()) -> &'static str {
         use ast::BareExpression::*;
 
         match &self.bare {
+            Wildcard(_) => "a wildcard",
+            NumberLiteral(_) => "a number literal",
+            TextLiteral(_) => "a text literal",
+            Path(_) => "a path",
+            Application(_) => "a function application",
             QuantifiedType(type_) => match type_.quantifier {
                 ast::Quantifier::Pi => "a function type",
                 ast::Quantifier::Sigma => "a pair type",
             },
-            Application(_) => "an application",
-            NumberLiteral(_) => "a number literal expression",
-            TextLiteral(_) => "a text literal expression",
-            TypedHole(_) => "a typed hole",
-            Path(_) => "a path expression",
             Projection(_) => "a record field projection",
             LambdaLiteral(_) => "a lambda literal",
             LetBinding(_) => "a let-binding",
             UseBinding(_) => "a use-binding",
             CaseAnalysis(_) => "a case analysis",
             DoBlock(_) => "a do block",
-            SequenceLiteral(_) => "a sequence literal expression",
-            Error(_) => "an erroneous expression",
+            SequenceLiteral(_) => "a sequence literal",
+            RecordLiteral(_) => "a record literal",
+            Error(_) => "an error",
         }
     }
 
-    fn as_targets(&self) -> Targets {
+    fn targets(&self, _: ()) -> Targets {
         use ast::BareExpression::*;
 
         match self.bare {
@@ -90,122 +129,143 @@ impl Target for ast::Expression {
             Application(_) => Targets::APPLICATION_EXPRESSION,
             NumberLiteral(_) => Targets::NUMBER_LITERAL_EXPRESSION,
             TextLiteral(_) => Targets::TEXT_LITERAL_EXPRESSION,
-            TypedHole(_) => Targets::TYPED_HOLE_EXPRESSION,
+            Wildcard(_) => Targets::WILDCARD_EXPRESSION,
             Path(_) => Targets::PATH_EXPRESSION,
-            Projection(_) => Targets::FIELD_EXPRESSION,
+            Projection(_) => Targets::PROJECTION_EXPRESSION,
             LambdaLiteral(_) => Targets::LAMBDA_LITERAL_EXPRESSION,
-            LetBinding(_) => Targets::LET_IN_EXPRESSION,
-            UseBinding(_) => Targets::USE_IN_EXPRESSION,
+            LetBinding(_) => Targets::LET_BINDING_EXPRESSION,
+            UseBinding(_) => Targets::USE_BINDING_EXPRESSION,
             CaseAnalysis(_) => Targets::CASE_ANALYSIS_EXPRESSION,
             DoBlock(_) => Targets::DO_BLOCK_EXPRESSION,
             SequenceLiteral(_) => Targets::SEQUENCE_LITERAL_EXPRESSION,
+            RecordLiteral(_) => Targets::RECORD_LITERAL_EXPRESSION,
             Error(_) => Targets::empty(),
         }
     }
 }
 
 impl Target for ast::Pattern {
-    fn name(&self) -> &'static str {
+    type Context = ();
+
+    fn name(&self, _: ()) -> &'static str {
         use ast::BarePattern::*;
 
         match self.bare {
-            NumberLiteral(_) => "a number literal pattern",
-            TextLiteral(_) => "a text literal pattern",
-            SequenceLiteral(_) => "a sequence literal pattern",
-            Path(_) => "a path pattern",
-            Binder(_) => "a binder pattern",
-            Application(_) => "an application pattern",
+            Wildcard(_) => "a wildcard",
+            NumberLiteral(_) => "a number literal",
+            TextLiteral(_) => "a text literal",
+            LetBinding(_) => "a let-binding",
+            Path(_) => "a path",
+            Application(_) => "a function application",
+            SequenceLiteral(_) => "a sequence literal",
+            RecordLiteral(_) => "a record literal",
         }
     }
 
-    fn as_targets(&self) -> Targets {
+    fn targets(&self, _: ()) -> Targets {
         use ast::BarePattern::*;
 
         match self.bare {
+            Wildcard(_) => Targets::WILDCARD_PATTERN,
             NumberLiteral(_) => Targets::NUMBER_LITERAL_PATTERN,
             TextLiteral(_) => Targets::TEXT_LITERAL_PATTERN,
             SequenceLiteral(_) => Targets::SEQUENCE_LITERAL_PATTERN,
+            RecordLiteral(_) => Targets::RECORD_LITERAL_PATTERN,
             Path(_) => Targets::PATH_PATTERN,
-            Binder(_) => Targets::BINDER_PATTERN,
+            LetBinding(_) => Targets::BINDER_PATTERN,
             Application(_) => Targets::APPLICATION_PATTERN,
         }
     }
 }
 
-// excluded: crate::syntax::ast::DeclarationKind::{Header, Group}
-// @Task somehow generate the explicit bits
-// @Beacon @Task replace this!
+// excluded: crate::syntax::ast::DeclarationKind::ModuleHeader
+// @Task get rid of this
 bitflags::bitflags! {
     /// Attribute targets.
-    pub struct Targets: u32 {
+    #[derive(PartialEq, Eq, Clone, Copy)]
+    pub struct Targets: u64 {
         const FUNCTION_DECLARATION = 1 << 0;
-        const DATA_DECLARATION = 1 << 1;
-        const CONSTRUCTOR_DECLARATION = 1 << 2;
-        const INLINE_MODULE_DECLARATION = 1 << 3;
-        const OUT_OF_LINE_MODULE_DECLARATION = 1 << 26;
-        const MODULE_HEADER_DECLARATION = 1 << 4;
-        const USE_DECLARATION = 1 << 5;
+        const CONSTRUCTOR_DECLARATION = 1 << 1;
+        const FIELD_DECLARATION = 1 << 2;
+        const DATA_DECLARATION = 1 << 3;
+        const RECORD_DECLARATION = 1 << 4;
+        const TRAIT_DECLARATION = 1 << 5;
+        const GIVEN_DECLARATION = 1 << 6;
+        const INLINE_MODULE_DECLARATION = 1 << 7;
+        const OUT_OF_LINE_MODULE_DECLARATION = 1 << 8;
+        const MODULE_HEADER_DECLARATION = 1 << 9;
+        const USE_DECLARATION = 1 << 10;
 
-        const MODULE_DECLARATION = Self::INLINE_MODULE_DECLARATION.bits
-            | Self::OUT_OF_LINE_MODULE_DECLARATION.bits;
+        const MODULE_DECLARATION = Self::INLINE_MODULE_DECLARATION.bits()
+            | Self::OUT_OF_LINE_MODULE_DECLARATION.bits();
 
-        const DECLARATION = Self::FUNCTION_DECLARATION.bits
-            | Self::DATA_DECLARATION.bits
-            | Self::CONSTRUCTOR_DECLARATION.bits
-            | Self::MODULE_DECLARATION.bits
-            | Self::MODULE_HEADER_DECLARATION.bits
-            | Self::USE_DECLARATION.bits;
+        const DECLARATION = Self::FUNCTION_DECLARATION.bits()
+            | Self::CONSTRUCTOR_DECLARATION.bits()
+            | Self::FIELD_DECLARATION.bits()
+            | Self::DATA_DECLARATION.bits()
+            | Self::RECORD_DECLARATION.bits()
+            | Self::TRAIT_DECLARATION.bits()
+            | Self::GIVEN_DECLARATION.bits()
+            | Self::MODULE_DECLARATION.bits()
+            | Self::MODULE_HEADER_DECLARATION.bits()
+            | Self::USE_DECLARATION.bits();
 
-        const QUANTIFIED_TYPE_EXPRESSION = 1 << 6;
-        const APPLICATION_EXPRESSION = 1 << 7;
-        const TYPE_LITERAL_EXPRESSION = 1 << 8;
-        const NUMBER_LITERAL_EXPRESSION = 1 << 9;
-        const TEXT_LITERAL_EXPRESSION = 1 << 10;
-        const TYPED_HOLE_EXPRESSION = 1 << 11;
-        const PATH_EXPRESSION = 1 << 12;
-        const FIELD_EXPRESSION = 1 << 13;
-        const LAMBDA_LITERAL_EXPRESSION = 1 << 14;
-        const LET_IN_EXPRESSION = 1 << 15;
-        const USE_IN_EXPRESSION = 1 << 16;
-        const CASE_ANALYSIS_EXPRESSION = 1 << 17;
-        const DO_BLOCK_EXPRESSION = 1 << 18;
-        const SEQUENCE_LITERAL_EXPRESSION = 1 << 19;
+        const QUANTIFIED_TYPE_EXPRESSION = 1 << 11;
+        const APPLICATION_EXPRESSION = 1 << 12;
+        const NUMBER_LITERAL_EXPRESSION = 1 << 13;
+        const TEXT_LITERAL_EXPRESSION = 1 << 14;
+        const WILDCARD_EXPRESSION = 1 << 15;
+        const PATH_EXPRESSION = 1 << 16;
+        const PROJECTION_EXPRESSION = 1 << 17;
+        const LAMBDA_LITERAL_EXPRESSION = 1 << 18;
+        const LET_BINDING_EXPRESSION = 1 << 19;
+        const USE_BINDING_EXPRESSION = 1 << 20;
+        const CASE_ANALYSIS_EXPRESSION = 1 << 21;
+        const DO_BLOCK_EXPRESSION = 1 << 22;
+        const SEQUENCE_LITERAL_EXPRESSION = 1 << 23;
+        const RECORD_LITERAL_EXPRESSION = 1 << 24;
 
-        const EXPRESSION = Self::QUANTIFIED_TYPE_EXPRESSION.bits
-            | Self::APPLICATION_EXPRESSION.bits
-            | Self::TYPE_LITERAL_EXPRESSION.bits
-            | Self::NUMBER_LITERAL_EXPRESSION.bits
-            | Self::TEXT_LITERAL_EXPRESSION.bits
-            | Self::TYPED_HOLE_EXPRESSION.bits
-            | Self::PATH_EXPRESSION.bits
-            | Self::FIELD_EXPRESSION.bits
-            | Self::LAMBDA_LITERAL_EXPRESSION.bits
-            | Self::LET_IN_EXPRESSION.bits
-            | Self::USE_IN_EXPRESSION.bits
-            | Self::CASE_ANALYSIS_EXPRESSION.bits
-            | Self::DO_BLOCK_EXPRESSION.bits
-            | Self::SEQUENCE_LITERAL_EXPRESSION.bits;
+        const EXPRESSION = Self::QUANTIFIED_TYPE_EXPRESSION.bits()
+            | Self::APPLICATION_EXPRESSION.bits()
+            | Self::NUMBER_LITERAL_EXPRESSION.bits()
+            | Self::TEXT_LITERAL_EXPRESSION.bits()
+            | Self::WILDCARD_EXPRESSION.bits()
+            | Self::PATH_EXPRESSION.bits()
+            | Self::PROJECTION_EXPRESSION.bits()
+            | Self::LAMBDA_LITERAL_EXPRESSION.bits()
+            | Self::LET_BINDING_EXPRESSION.bits()
+            | Self::USE_BINDING_EXPRESSION.bits()
+            | Self::CASE_ANALYSIS_EXPRESSION.bits()
+            | Self::DO_BLOCK_EXPRESSION.bits()
+            | Self::SEQUENCE_LITERAL_EXPRESSION.bits()
+            | Self::RECORD_LITERAL_EXPRESSION.bits();
 
-        const NUMBER_LITERAL_PATTERN = 1 << 20;
-        const TEXT_LITERAL_PATTERN = 1 << 21;
-        const SEQUENCE_LITERAL_PATTERN = 1 << 22;
-        const PATH_PATTERN = 1 << 23;
-        const BINDER_PATTERN = 1 << 24;
-        const APPLICATION_PATTERN = 1 << 25;
+        const WILDCARD_PATTERN = 1 << 25;
+        const NUMBER_LITERAL_PATTERN = 1 << 26;
+        const TEXT_LITERAL_PATTERN = 1 << 27;
+        const SEQUENCE_LITERAL_PATTERN = 1 << 28;
+        const RECORD_LITERAL_PATTERN = 1 << 29;
+        const PATH_PATTERN = 1 << 30;
+        const BINDER_PATTERN = 1 << 31;
+        const APPLICATION_PATTERN = 1 << 32;
 
-        const PATTERN = Self::NUMBER_LITERAL_PATTERN.bits
-            | Self::TEXT_LITERAL_PATTERN.bits
-            | Self::SEQUENCE_LITERAL_PATTERN.bits
-            | Self::PATH_PATTERN.bits
-            | Self::BINDER_PATTERN.bits
-            | Self::APPLICATION_PATTERN.bits;
+        const PATTERN = Self::WILDCARD_PATTERN.bits()
+            | Self::NUMBER_LITERAL_PATTERN.bits()
+            | Self::TEXT_LITERAL_PATTERN.bits()
+            | Self::SEQUENCE_LITERAL_PATTERN.bits()
+            | Self::RECORD_LITERAL_PATTERN.bits()
+            | Self::PATH_PATTERN.bits()
+            | Self::BINDER_PATTERN.bits()
+            | Self::APPLICATION_PATTERN.bits();
 
-        const NUMBER_LITERAL = Self::NUMBER_LITERAL_EXPRESSION.bits
-            | Self::NUMBER_LITERAL_PATTERN.bits;
-        const TEXT_LITERAL = Self::TEXT_LITERAL_EXPRESSION.bits
-            | Self::TEXT_LITERAL_PATTERN.bits;
-        const SEQUENCE_LITERAL = Self::SEQUENCE_LITERAL_EXPRESSION.bits
-            | Self::SEQUENCE_LITERAL_PATTERN.bits;
+        const NUMBER_LITERAL = Self::NUMBER_LITERAL_EXPRESSION.bits()
+            | Self::NUMBER_LITERAL_PATTERN.bits();
+        const TEXT_LITERAL = Self::TEXT_LITERAL_EXPRESSION.bits()
+            | Self::TEXT_LITERAL_PATTERN.bits();
+        const SEQUENCE_LITERAL = Self::SEQUENCE_LITERAL_EXPRESSION.bits()
+            | Self::SEQUENCE_LITERAL_PATTERN.bits();
+        const RECORD_LITERAL = Self::RECORD_LITERAL_EXPRESSION.bits()
+            | Self::RECORD_LITERAL_PATTERN.bits();
     }
 }
 
@@ -216,6 +276,7 @@ impl Targets {
         condition! {
             self == Self::all() => "anything",
             self == Self::DECLARATION => "declarations",
+            self == Self::FUNCTION_DECLARATION => "function declaration",
             self == Self::FUNCTION_DECLARATION | Self::DATA_DECLARATION => "function or data declarations",
             self == Self::TEXT_LITERAL => "text literals",
             self == Self::DATA_DECLARATION => "data declarations",
@@ -231,8 +292,8 @@ impl Targets {
             self == Self::FUNCTION_DECLARATION
                 | Self::CONSTRUCTOR_DECLARATION
                 | Self::EXPRESSION
-                | Self::PATTERN => "function or constructor declarations, expressions or patterns",
-            // the particular description is not needed for `AttributeKinds::target` and thus it is not defined
+                | Self::PATTERN => "function declarations, constructors, expressions or patterns",
+            // the particular description is not needed for `AttributeKind::targets` and thus it is not defined
             else => unreachable!(),
         }
     }
@@ -291,7 +352,7 @@ pub type Attribute = Spanned<BareAttribute>;
 #[derive(Clone, PartialEq, Eq, Hash, Discriminant)]
 #[discriminant(
     name:
-        #[derive(Elements, Str)]
+        #[derive(Elements, Str, ConstParamTy)]
         #[format(dash_case)]
         #[str(to_str)]
         AttributeName
@@ -307,6 +368,11 @@ pub enum BareAttribute {
     /// allow <0:lint:Path>
     /// ```
     Allow { lint: Lint },
+    /// Make the declaration available in the context.
+    ///
+    /// Not part of the surface language.
+    /// Used by the lowered form of given-declarations.
+    Context,
     /// Deny a [lint](Lint).
     ///
     /// # Form
@@ -441,9 +507,10 @@ impl BareAttribute {
     pub fn targets(&self) -> Targets {
         use BareAttribute::*;
 
-        // when updating, update `AttributeTargets::description` accordingly
+        // when updating, update `Targets::description` accordingly
         match self {
             Allow { .. } | Deny { .. } | Forbid { .. } | Warn { .. } => Targets::all(),
+            Context => Targets::FUNCTION_DECLARATION,
             Deprecated { .. } | Doc { .. } | If { .. } | Ignore | Statistics | Unstable { .. } => {
                 Targets::DECLARATION
             }
@@ -504,6 +571,7 @@ impl fmt::Display for BareAttribute {
 
         match self {
             Self::Abstract
+            | Self::Context
             | Self::Ignore
             | Self::Include
             | Self::Moving
@@ -564,27 +632,27 @@ impl fmt::Display for BareAttribute {
 impl AttributeName {
     pub fn parse(name: Atom) -> Option<Self> {
         Some(match name {
-            Atom::abstract_ => Self::Abstract,
-            Atom::allow => Self::Allow,
-            Atom::deny => Self::Deny,
-            Atom::deprecated => Self::Deprecated,
-            Atom::doc => Self::Doc,
-            Atom::forbid => Self::Forbid,
-            Atom::if_ => Self::If,
-            Atom::ignore => Self::Ignore,
-            Atom::include => Self::Include,
-            Atom::intrinsic => Self::Intrinsic,
-            Atom::known => Self::Known,
-            Atom::location => Self::Location,
-            Atom::moving => Self::Moving,
-            Atom::public => Self::Public,
-            Atom::recursion_limit => Self::RecursionLimit,
-            Atom::static_ => Self::Static,
-            Atom::statistics => Self::Statistics,
-            Atom::test => Self::Test,
-            Atom::unsafe_ => Self::Unsafe,
-            Atom::unstable => Self::Unstable,
-            Atom::warn => Self::Warn,
+            Atom::ABSTRACT => Self::Abstract,
+            Atom::ALLOW => Self::Allow,
+            Atom::DENY => Self::Deny,
+            Atom::DEPRECATED => Self::Deprecated,
+            Atom::DOC => Self::Doc,
+            Atom::FORBID => Self::Forbid,
+            Atom::IF => Self::If,
+            Atom::IGNORE => Self::Ignore,
+            Atom::INCLUDE => Self::Include,
+            Atom::INTRINSIC => Self::Intrinsic,
+            Atom::KNOWN => Self::Known,
+            Atom::LOCATION => Self::Location,
+            Atom::MOVING => Self::Moving,
+            Atom::PUBLIC => Self::Public,
+            Atom::RECURSION_LIMIT => Self::RecursionLimit,
+            Atom::STATIC => Self::Static,
+            Atom::STATISTICS => Self::Statistics,
+            Atom::TEST => Self::Test,
+            Atom::UNSAFE => Self::Unsafe,
+            Atom::UNSTABLE => Self::Unstable,
+            Atom::WARN => Self::Warn,
             _ => return None,
         })
     }
@@ -660,7 +728,6 @@ pub struct NameQuery<const NAME: AttributeName>;
 
 pub type DataQueryOutput<const NAME: AttributeName> = <NameQuery<NAME> as DataQuery>::Output;
 
-// @Task use proc macro to derive non-unit getters
 macro data_queries($( $name:ident: $Output:ty = $pat:pat => $expr:expr ),+ $(,)?) {
     $(
         impl DataQuery for NameQuery<{ AttributeName::$name }> {

@@ -1,25 +1,21 @@
 ;; Simple combinators working on and with functions.
 module
 
-use topmost.type.Type
+@public
+identity 'A (a: A): A = a
 
 @public
-identity (A: Type) (a: A): A = a
-
-@public
-constant (A: Type) (B: Type) (a: A) (b: B): A = a
+constant 'A 'B (a: A) (b: B): A = a
 
 ;;; @Task write a more general version (wrt dependent typing)
 @public
-compose
-    (A: Type) (B: Type) (C: Type)
+compose 'A 'B 'C
     (f: A -> B) (g: B -> C) (a: A): C
     =
     g (f a)
 
 @public
-flip
-    (A: Type) (B: Type) (C: Type)
+flip 'A 'B 'C
     (f: A -> B -> C) (b: B) (a: A): C
     =
     f a b

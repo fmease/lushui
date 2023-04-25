@@ -1,6 +1,6 @@
 use span::{ByteIndex, LocalByteIndex, SourceMap, Span};
 use tower_lsp::lsp_types::{Location, Position, Range, Url};
-use utilities::path::CanonicalPath;
+use utility::path::CanonicalPath;
 
 pub(crate) trait ToLocationExt {
     fn to_location(self, map: &SourceMap) -> Location;

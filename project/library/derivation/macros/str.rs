@@ -6,7 +6,6 @@ use proc_macro2::Span;
 use quote::quote;
 use syn::{
     parse::{Nothing, Parse, ParseStream},
-    token::Paren,
     Error, Fields, Ident,
 };
 
@@ -73,10 +72,8 @@ impl HelperAttribute for StrAttribute {
 
 impl Parse for StrAttribute {
     fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
-        let content;
-        let _: Paren = syn::parenthesized!(content in input);
-        let method = content.parse()?;
-        let _: Nothing = content.parse()?;
+        let method = input.parse()?;
+        let _: Nothing = input.parse()?;
         let _: Nothing = input.parse()?;
 
         Ok(Self { method })

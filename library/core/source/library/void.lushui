@@ -1,10 +1,8 @@
 ;; The canonical empty type and related functions.
 module
 
-use topmost.type.Type
-
 @public
-data Void: Type of
+data Void of
 
 ;;; @public
-;;; absurd (A: Type) (v: Void): A = (case v of) A
+;;; absurd 'A (v: Void): A = case v of

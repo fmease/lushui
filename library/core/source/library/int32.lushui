@@ -1,7 +1,5 @@
 ;; (Signed) integers with 32-bit precision and related functions.
 module
 
-use topmost.type.Type
-
 @public @intrinsic
-data Int32: Type
+data Int32

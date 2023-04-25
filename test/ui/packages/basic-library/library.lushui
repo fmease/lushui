@@ -1,6 +1,6 @@
 ;;; TEST auxiliary packages/basic-library
 
-use extern.core.(type.Type nat.Nat)
+use extern.core.(type.Type, nat.Nat)
 
 @public @abstract
 data T: Nat -> Type of

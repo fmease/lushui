@@ -1,0 +1,58 @@
+error[E025]: the path ‘super’ is not bound to a name
+  ┌─ ${TEST_FOLDER}/lowering/unnamed-path-hanger.lushui:1:5
+  │
+1 │ use super
+  │     ═════
+  │
+ help: bind the path to a name
+  ┌─ ${TEST_FOLDER}/lowering/unnamed-path-hanger.lushui:1:10
+  │
+1 │ use super as name
+  │          ~~~~~~~~
+
+error[E025]: the path ‘topmost’ is not bound to a name
+  ┌─ ${TEST_FOLDER}/lowering/unnamed-path-hanger.lushui:2:5
+  │
+2 │ use topmost
+  │     ═══════
+  │
+ help: bind the path to a name
+  ┌─ ${TEST_FOLDER}/lowering/unnamed-path-hanger.lushui:2:12
+  │
+2 │ use topmost as name
+  │            ~~~~~~~~
+
+error[E025]: the path ‘self’ is not bound to a name
+  ┌─ ${TEST_FOLDER}/lowering/unnamed-path-hanger.lushui:4:5
+  │
+4 │ use self
+  │     ════
+  │
+ help: bind the path to a name
+  ┌─ ${TEST_FOLDER}/lowering/unnamed-path-hanger.lushui:4:9
+  │
+4 │ use self as name
+  │         ~~~~~~~~
+
+error[E025]: the path ‘self’ is not bound to a name
+  ┌─ ${TEST_FOLDER}/lowering/unnamed-path-hanger.lushui:6:21
+  │
+6 │ use topmost.(space, self, space)
+  │                     ════
+  │
+ help: bind the path to a name
+  ┌─ ${TEST_FOLDER}/lowering/unnamed-path-hanger.lushui:6:25
+  │
+6 │ use topmost.(space, self as name, space)
+  │                         ~~~~~~~~
+
+error[E026]: path ‘super’ not allowed in this position
+  ┌─ ${TEST_FOLDER}/lowering/unnamed-path-hanger.lushui:8:32
+  │
+8 │ use topmost.(self.(self.thing, super))
+  │                                ═════
+  │
+ help: consider moving this path to a separate use-declaration
+
+error: aborting due to 5 previous errors
+

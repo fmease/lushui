@@ -1,44 +1,42 @@
 ;; Optional values and related functions.
 module
 
-use topmost.type.Type
-
 @public @known
-data Option (A: Type): Type of
-    none (A: Type): Option A
-    some (A: Type): A -> Option A
+data Option A of
+    none
+    some (_: A)
 
 @public
-use Option.(none some)
+use Option.(none, some)
 
-;;; use core.bool.(Bool false true not)
+;;; use core.bool.(Bool, false, true, not)
 ;;;
 ;;; @public
-;;; is-some (A: Type) (a: Option A): Bool =
+;;; is-some 'A (a: Option A): Bool =
 ;;;     case a of
-;;;         some \_ \_ => true
-;;;         none \_ => false
+;;;         some (let _) => true
+;;;         none => false
 
 ;;; @Task use compose, not (blocked on implicits)
 ;;; @public
-;;; is-none (A: Type) (a: Option A): Bool =
+;;; is-none 'A (a: Option A): Bool =
 ;;;     case a of
-;;;         some \_ \_ => false
-;;;         none \_ => true
+;;;         some (let _) => false
+;;;         none => true
 
 ;;; @public
-;;; and (A B: Type) (a: Option A) (b: Option B): Option B =
+;;; and 'A 'B (a: Option A) (b: Option B): Option B =
 ;;;    case a of
-;;;         some \_ \_ => b
-;;;         none \_ => none (Option B)
+;;;         some (let _) => b
+;;;         none => none
 
 ;;; use core.unit.(Unit unit)
 ;;;
 ;;; @public
-;;; or (A: Type) (a: Option A) (b: Unit -> Option A): Option A =
+;;; or 'A (a: Option A) (b: Unit -> Option A): Option A =
 ;;;     case a of
-;;;         some \_ \_ => a
-;;;         none \_ => b unit
+;;;         some (let _) => a
+;;;         none => b unit
 
 ;;; @public
 ;;; or_: (A: Type) -> (a b: Option A): Option A
