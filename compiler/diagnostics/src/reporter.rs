@@ -4,14 +4,13 @@ use super::{Diagnostic, ErrorCode, Severity, UntaggedDiagnostic};
 use span::SourceMap;
 use std::{
     collections::BTreeSet,
-    default::default,
     mem,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex, RwLock, RwLockReadGuard,
     },
 };
-use utilities::{pluralize, Conjunction, ListingExt};
+use utility::{default, pluralize, Conjunction, ListingExt};
 
 // @Task diagnostic formatting options
 // like display style: verbose (current default) vs. terse
@@ -123,7 +122,7 @@ impl StderrBuffer {
         }
 
         if !warnings.is_empty() {
-            Self::report_warning_summary(warnings, map);
+            Self::report_warning_summary(&warnings, map);
         }
 
         let errors = mem::take(&mut *self.errors.lock().unwrap());
@@ -134,11 +133,11 @@ impl StderrBuffer {
 
         if !errors.is_empty() {
             self.reported_any_errors.store(true, Ordering::SeqCst);
-            Self::report_error_summary(errors, map);
+            Self::report_error_summary(&errors, map);
         }
     }
 
-    fn report_error_summary(errors: BTreeSet<UntaggedDiagnostic>, map: Option<&SourceMap>) {
+    fn report_error_summary(errors: &BTreeSet<UntaggedDiagnostic>, map: Option<&SourceMap>) {
         let explained_codes: BTreeSet<_> = errors
             .iter()
             .filter_map(|error| error.code)
@@ -177,7 +176,7 @@ impl StderrBuffer {
         stderr_print(&summary);
     }
 
-    fn report_warning_summary(warnings: BTreeSet<UntaggedDiagnostic>, map: Option<&SourceMap>) {
+    fn report_warning_summary(warnings: &BTreeSet<UntaggedDiagnostic>, map: Option<&SourceMap>) {
         let summary = Diagnostic::warning()
             .message(format!(
                 "emitted {} {}",

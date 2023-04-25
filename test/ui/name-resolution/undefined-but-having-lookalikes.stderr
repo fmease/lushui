@@ -49,16 +49,16 @@ error[E021]: the binding ‘gamha_blocker’ is not defined in this scope
 error[E021]: the binding ‘Alppa’ is not defined in this scope
    ┌─ ${TEST_FOLDER}/name-resolution/undefined-but-having-lookalikes.lushui:24:9
    │
-24 │         Alppa \omega 0 => onega ;;; @Bug fatal
+24 │         Alppa (let omega) 0 => onega ;;; @Bug fatal
    │         ═════
    │
   help: a binding with a similar name exists in scope: ‘Alpha’ (Alppha)
 
 error[E021]: the binding ‘onega’ is not defined in this scope
-   ┌─ ${TEST_FOLDER}/name-resolution/undefined-but-having-lookalikes.lushui:28:21
+   ┌─ ${TEST_FOLDER}/name-resolution/undefined-but-having-lookalikes.lushui:28:26
    │
-28 │         \omega 0 => onega
-   │                     ═════
+28 │         (let omega) 0 => onega
+   │                          ═════
    │
   help: a binding with a similar name exists in scope: ‘omega’ (onmega)
 

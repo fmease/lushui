@@ -26,7 +26,7 @@ use span::{
 };
 use std::fmt;
 use unicode_width::UnicodeWidthStr;
-use utilities::displayed;
+use utility::displayed;
 
 #[cfg(test)]
 mod test;
@@ -149,7 +149,9 @@ struct Formatter<'a, 'f> {
 
 impl Formatter<'_, '_> {
     fn write_path(&mut self) -> fmt::Result {
-        let Some(path) = &self.diagnostic.path else { return Ok(()); };
+        let Some(path) = &self.diagnostic.path else {
+            return Ok(());
+        };
 
         let needs_downward_connection =
             !self.diagnostic.highlights.is_empty() || !self.diagnostic.subdiagnostics.is_empty();

@@ -9,7 +9,8 @@ use diagnostics::error::Result;
 use lexer::word::Word;
 use package::ComponentFilter;
 use session::unit::ComponentType;
-use std::{cmp::max, default::default, ffi::OsStr, path::PathBuf};
+use std::{cmp::max, ffi::OsStr, path::PathBuf};
+use utility::default;
 
 // @Task update the color scheme of the `-Zhelp` output from clap-3-style to clap-4-style
 //       i.e. from upper-case section titles and the use of yellow & green to
@@ -519,7 +520,7 @@ pub(crate) struct BuildOptions {
     pub(crate) internals: bool,
     pub(crate) emit_tokens: bool,
     pub(crate) emit_ast: bool,
-    pub(crate) emit_lowered_ast: bool,
+    pub(crate) emit_lo_ast: bool,
     pub(crate) emit_hir: bool,
     pub(crate) emit_untyped_bindings: bool,
     pub(crate) emit_bindings: bool,
@@ -538,7 +539,7 @@ impl BuildOptions {
                 Internals => options.internals = true,
                 EmitTokens => options.emit_tokens = true,
                 EmitAst => options.emit_ast = true,
-                EmitLoweredAst => options.emit_lowered_ast = true,
+                EmitLoAst => options.emit_lo_ast = true,
                 EmitHir => options.emit_hir = true,
                 EmitUntypedBindings => options.emit_untyped_bindings = true,
                 EmitBindings => options.emit_bindings = true,
@@ -779,7 +780,7 @@ mod unstable {
     use derivation::{Elements, FromStr, Str};
     use diagnostics::{error::Result, Diagnostic, Reporter};
     use std::{fmt::Write, iter::once, str::FromStr};
-    use utilities::{pluralize, Conjunction, ListingExt, QuoteExt};
+    use utility::{pluralize, Conjunction, ListingExt, QuoteExt};
 
     const HELP_OPTION: &str = "help";
     const SEPARATOR: &str = "=";
@@ -819,7 +820,7 @@ mod unstable {
     }
 
     pub(super) trait UnstableOption:
-        Copy + Elements + FromStr<Err: Into<ParsingError>>
+        Copy + Elements + FromStr<Err: Into<ParseError>>
     {
         fn syntax(self) -> &'static str;
         fn help(self) -> &'static str;
@@ -871,7 +872,7 @@ mod unstable {
         EmitAst,
         EmitBindings,
         EmitHir,
-        EmitLoweredAst,
+        EmitLoAst,
         EmitTokens,
         EmitUntypedBindings,
         Internals,
@@ -892,7 +893,7 @@ mod unstable {
                 Self::EmitAst => "Emit the abstract syntax tree (AST) of the current component output by the parser",
                 Self::EmitBindings => "Emit the (typed) bindings of the current component after type checking",
                 Self::EmitHir => "Emit the high-level intermediate representation (HIR) of the current component output by the resolver",
-                Self::EmitLoweredAst => "Emit the lowered AST of the current component",
+                Self::EmitLoAst => "Emit the lowered AST (Lo-AST) of the current component",
                 Self::EmitTokens => "Emit the tokens of the current component output by the lexer",
                 Self::EmitUntypedBindings => "Emit the (untyped) bindings of the current component after name resolution",
                 Self::Internals => "Enable internal language and library features",
@@ -962,11 +963,11 @@ mod unstable {
     }
 
     impl FromStr for DocumentationOption {
-        type Err = ParsingError;
+        type Err = ParseError;
 
         fn from_str(source: &str) -> Result<Self, Self::Err> {
             let mut parts = source.splitn(2, SEPARATOR);
-            let key = parts.next().ok_or(ParsingError::InvalidSyntax)?;
+            let key = parts.next().ok_or(ParseError::InvalidSyntax)?;
             let value = parts.next();
 
             // @Task derive the key mapping logic smh
@@ -977,14 +978,14 @@ mod unstable {
                         value
                             .map(str::parse)
                             .transpose()
-                            .map_err(|_| ParsingError::InvalidSyntax)?,
+                            .map_err(|_| ParseError::InvalidSyntax)?,
                     ))
                 }
-                _ => return Err(ParsingError::UndefinedOption),
+                _ => return Err(ParseError::UndefinedOption),
             };
 
             if value.is_some() {
-                return Err(ParsingError::InvalidSyntax);
+                return Err(ParseError::InvalidSyntax);
             }
 
             Ok(option)
@@ -1041,13 +1042,13 @@ mod unstable {
 
     impl<A, B> FromStr for Or<A, B>
     where
-        A: FromStr<Err: Into<ParsingError>>,
-        B: FromStr<Err: Into<ParsingError>>,
+        A: FromStr<Err: Into<ParseError>>,
+        B: FromStr<Err: Into<ParseError>>,
     {
-        type Err = ParsingError;
+        type Err = ParseError;
 
         fn from_str(source: &str) -> Result<Self, Self::Err> {
-            use ParsingError::*;
+            use ParseError::*;
 
             match source.parse().map_err(Into::into) {
                 Ok(option) => Ok(Self::Left(option)),
@@ -1057,12 +1058,12 @@ mod unstable {
         }
     }
 
-    pub(super) enum ParsingError {
+    pub(super) enum ParseError {
         UndefinedOption,
         InvalidSyntax,
     }
 
-    impl From<()> for ParsingError {
+    impl From<()> for ParseError {
         fn from(_: ()) -> Self {
             Self::UndefinedOption
         }

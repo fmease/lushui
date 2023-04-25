@@ -28,4 +28,4 @@ use separation.Public-Abstract.private as p2
 
 p3: separation.Public-Abstract = separation.Public-Abstract.private
 
-use separation.further-separation.((Hidden.hidden as h) (Abstract.hidden as ho))
+use separation.further-separation.(Hidden.hidden as h, Abstract.hidden as ho)

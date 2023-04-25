@@ -73,7 +73,7 @@
                     "name": "keyword.other.lushui"
                 },
                 {
-                    "match": "(?<![\\w\\-])(data|let|module|use)(?![\\w\\-])",
+                    "match": "(?<![\\w\\-])(data|record|trait|let|module|use|given)(?![\\w\\-])",
                     "name": "storage.modifier.lushui"
                 },
                 {

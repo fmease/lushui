@@ -3,7 +3,7 @@ error[E035]: attempt to analyze a type
    │
  7 │       case A of
    · ╔═════╝
-10 │ ║         \else => false
+10 │ ║         let _ => false
    │ ╚══════════════════════╝
    │
   note: forbidden to uphold parametricity and type erasure

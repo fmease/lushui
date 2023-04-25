@@ -1,10 +1,10 @@
 ;;; TEST pass check
-;;; TEST compiler-args -Z lower-only -Z emit-lowered-ast --no-core
+;;; TEST compiler-args -Z lower-only -Z emit-lo-ast --no-core
 
 use foocoo.()
 
 use foo as bar
-use foo.bar.(self A.f (B as gg))
+use foo.bar.(self, A.f, B as gg)
 
 use alpha
 use alpha.beta
@@ -12,8 +12,11 @@ use alpha as a
 
 use foo.A as F
 
-use foo.((A as F0))
+use foo.(A as F0)
 
-use foo.((A as F1) (B as F2))
+use foo.(A as F1, B as F2)
 
-use topmost.foo.alpha.(gamma.delta.zeta.(foo bar) (xoo.moo.doo as XXX))
+use topmost.foo.alpha.(
+    gamma.delta.zeta.(foo, bar),
+    xoo.moo.doo as XXX
+    )

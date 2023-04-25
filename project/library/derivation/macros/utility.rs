@@ -3,31 +3,30 @@ pub(crate) use proc_macro2::TokenStream as TokenStream2;
 use quote::ToTokens;
 use syn::{
     parse::{Error, Parse},
-    Attribute, Fields,
+    AttrStyle, Attribute, Fields,
 };
 
 pub(crate) trait HelperAttribute: Parse {
     const NAME: &'static str;
 
-    fn obtain<Owner: ToTokens>(owner: &Owner, attrs: &[Attribute]) -> Result<Self, Error> {
-        // @Task throw an error if there are several helper attributes
-        let attribute = attrs
-            .iter()
-            .find(|attr| attr.path.is_ident(Self::NAME))
-            .ok_or_else(|| {
-                let message = format!("missing helper attribute `#[{}]`", Self::NAME);
-                Error::new_spanned(owner, message)
-            })?;
-
-        syn::parse(attribute.tokens.clone().into())
+    fn obtain<Owner: ToTokens>(owner: &Owner, attrs: &[Attribute]) -> syn::Result<Self> {
+        Self::obtain_optional(attrs)?.ok_or_else(|| {
+            Error::new_spanned(
+                owner,
+                format!("missing helper attribute `#[{}]`", Self::NAME),
+            )
+        })
     }
 
-    fn obtain_optional(attrs: &[Attribute]) -> Result<Option<Self>, Error> {
+    fn obtain_optional(attrs: &[Attribute]) -> syn::Result<Option<Self>> {
         // @Task throw an error if there are several helper attributes
         attrs
             .iter()
-            .find(|attr| attr.path.is_ident(Self::NAME))
-            .map(|attribute| syn::parse(attribute.tokens.clone().into()))
+            .find(|attr| attr.path().is_ident(Self::NAME) && matches!(attr.style, AttrStyle::Outer))
+            .map(|attribute| match &attribute.meta {
+                syn::Meta::List(list) => syn::parse2(list.tokens.clone()),
+                syn::Meta::Path(_) | syn::Meta::NameValue(_) => todo!(), // @Task
+            })
             .transpose()
     }
 }
@@ -36,7 +35,7 @@ pub(crate) trait SerializeExt {
     fn serialize(self) -> TokenStream1;
 }
 
-impl SerializeExt for Result<TokenStream2, Error> {
+impl SerializeExt for syn::Result<TokenStream2> {
     fn serialize(self) -> TokenStream1 {
         self.map_err(Error::into_compile_error)
             .unwrap_or_else(std::convert::identity)
@@ -44,7 +43,7 @@ impl SerializeExt for Result<TokenStream2, Error> {
     }
 }
 
-pub(crate) fn ensure_variant_is_fieldless(fields: &Fields, macro_name: &str) -> Result<(), Error> {
+pub(crate) fn ensure_variant_is_fieldless(fields: &Fields, macro_name: &str) -> syn::Result<()> {
     if let Fields::Named(_) | Fields::Unnamed(_) = fields {
         return Err(Error::new_spanned(
             fields,

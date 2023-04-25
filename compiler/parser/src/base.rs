@@ -1,8 +1,8 @@
 use diagnostics::{error::Result, Diagnostic, ErrorCode, Reporter};
-use lexer::token::{BareToken, IndentationError, Token, INDENTATION};
+use lexer::token::{BareToken, Token};
 use span::{SourceFileIndex, SourceMap, Span};
 use std::{fmt, mem};
-use utilities::{Conjunction, ListingExt};
+use utility::{Atom, Conjunction, ListingExt};
 
 /// The parser.
 pub(crate) struct Parser<'a> {
@@ -10,7 +10,7 @@ pub(crate) struct Parser<'a> {
     pub(crate) file: SourceFileIndex,
     index: usize,
     expectations: Vec<Expectation>,
-    contexts: Vec<Box<dyn FnOnce(Diagnostic) -> Diagnostic>>,
+    annotations: Vec<Annotation>,
     pub(crate) map: &'a SourceMap,
     pub(crate) reporter: &'a Reporter,
 }
@@ -27,45 +27,20 @@ impl<'a> Parser<'a> {
             file,
             index: 0,
             expectations: Vec::new(),
-            contexts: Vec::new(),
+            annotations: Vec::new(),
             map,
             reporter,
         }
     }
 
     pub(crate) fn error<T>(&mut self) -> Result<T> {
-        Err(self.unexpected_token_error().report(self.reporter))
-    }
-
-    pub(crate) fn error_with<T>(
-        &mut self,
-        builder: impl FnOnce(&mut Self, Diagnostic) -> Diagnostic,
-    ) -> Result<T> {
-        Err(self
-            .unexpected_token_error()
-            .with(|it| builder(self, it))
-            .report(self.reporter))
-    }
-
-    fn unexpected_token_error(&mut self) -> Diagnostic {
         let expectations = mem::take(&mut self.expectations);
-        let contexts = mem::take(&mut self.contexts);
+        let annotations = mem::take(&mut self.annotations);
 
-        assert!(!expectations.is_empty());
+        let error = error::unexpected_token(self.current(), &expectations, annotations)
+            .report(self.reporter);
 
-        let token = self.current();
-
-        // @Task for the actual token, also print its token "category", e.g.
-        // print `keyword ‘case’` instead of just `‘case’`. NB: Don't do that
-        // for token expectations!
-        Diagnostic::error()
-            .code(ErrorCode::E010)
-            .message(format!(
-                "found {token} but expected {}",
-                expectations.iter().list(Conjunction::Or),
-            ))
-            .with(|it| contexts.into_iter().fold(it, |it, context| context(it)))
-            .span(token, "unexpected token")
+        Err(error)
     }
 
     /// Register the given expectation.
@@ -81,24 +56,23 @@ impl<'a> Parser<'a> {
         self.expectations.push(expectation.into());
     }
 
-    /// Register the given diagnostic context.
+    /// Register the given diagnostic annotation.
     ///
-    /// Once we encounter an unexpected token, we report a diagnostic with all *relevant* contexts
-    /// added onto where existing contexts becomes irrelevant once we [advance] the cursor of the
+    /// Once we encounter an unexpected token, we report a diagnostic with all *relevant* annotations
+    /// added onto where existing annotations becomes irrelevant once we [advance] the cursor of the
     /// parser. Most often, this happens through [`Self::consume`].
     ///
     /// [advance]: Self::advance
-    pub(crate) fn context(&mut self, context: impl FnOnce(Diagnostic) -> Diagnostic + 'static) {
-        self.contexts.push(Box::new(context));
+    pub(crate) fn annotate(&mut self, annotation: Annotation) {
+        self.annotations.push(annotation);
     }
 
     /// Expect the current token to match the given name, [advance] on success and emit an error on failure.
     ///
     /// [advance]: Self::advance
     pub(crate) fn expect(&mut self, expectation: BareToken) -> Result<Span> {
-        let token = self.current();
-        if token.bare == expectation {
-            let span = token.span;
+        if self.token() == expectation {
+            let span = self.span();
             self.advance();
             Ok(span)
         } else {
@@ -112,8 +86,27 @@ impl<'a> Parser<'a> {
     /// Returns whether the token was found and skipped.
     #[must_use]
     pub(crate) fn consume(&mut self, expectation: BareToken) -> bool {
-        if self.current().bare == expectation {
+        if self.check(expectation) {
             self.advance();
+            true
+        } else {
+            false
+        }
+    }
+
+    // @Beacon @Task give this a better name
+    pub(crate) fn consume_span(&mut self, expectation: BareToken) -> Option<Span> {
+        if self.check(expectation) {
+            let span = self.span();
+            self.advance();
+            Some(span)
+        } else {
+            None
+        }
+    }
+
+    pub(crate) fn check(&mut self, expectation: BareToken) -> bool {
+        if self.token() == expectation {
             true
         } else {
             self.expected(expectation);
@@ -123,19 +116,19 @@ impl<'a> Parser<'a> {
 
     /// Step to the next token.
     ///
-    /// Clears any [expectations] and [contexts].
+    /// Clears any [expectations] and [annotations].
     /// Don't advance past [`EndOfInput`].
     ///
     /// [expectations]: Self::expected
-    /// [contexts]: Self::context
+    /// [annotations]: Self::annotate
     pub(crate) fn advance(&mut self) {
         self.index += 1;
         self.expectations.clear();
-        self.contexts.clear();
+        self.annotations.clear();
     }
 
     /// Obtain the current token.
-    pub(crate) fn current(&self) -> Token {
+    fn current(&self) -> Token {
         self.tokens[self.index]
     }
 
@@ -149,23 +142,33 @@ impl<'a> Parser<'a> {
         self.current().bare
     }
 
-    /// Look ahead by the given amount of tokens.
-    ///
-    /// # Panics
-    ///
-    /// Panics on out of bounds accesses.
-    pub(crate) fn look_ahead(&self, amount: usize) -> Token {
-        self.tokens[self.index + amount]
+    /// Obtain the nth succeeding token.
+    pub(crate) fn succeeding(&self, amount: usize) -> Option<&Token> {
+        self.tokens.get(self.index + amount)
     }
 
-    pub(crate) fn look_behind(&self, amount: usize) -> Option<Token> {
-        Some(self.tokens[self.index.checked_sub(amount)?])
+    pub(crate) fn look_ahead(&self, amount: usize) -> Option<BareToken> {
+        Some(self.succeeding(amount)?.bare)
+    }
+
+    pub(crate) fn look_behind(&self, amount: usize) -> Option<BareToken> {
+        Some(self.tokens[self.index.checked_sub(amount)?].bare)
     }
 }
 
 pub(crate) enum Expectation {
     Token(BareToken),
-    Category(&'static str),
+    Declaration,
+    Expression,
+    Statement,
+    Pattern,
+    Parameter,
+    Argument,
+    Word,
+    Identifier,
+    NumberLiteral,
+    TextLiteral,
+    Path,
 }
 
 impl From<BareToken> for Expectation {
@@ -174,75 +177,97 @@ impl From<BareToken> for Expectation {
     }
 }
 
-impl From<&'static str> for Expectation {
-    fn from(category: &'static str) -> Self {
-        Self::Category(category)
+impl fmt::Display for Expectation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Token(token) => return token.fmt(f),
+            Self::Declaration => "declaration",
+            Self::Expression => "expression",
+            Self::Statement => "statement",
+            Self::Pattern => "pattern",
+            Self::Parameter => "parameter",
+            Self::Argument => "argument",
+            Self::Word => "word",
+            Self::Identifier => "identifier",
+            Self::NumberLiteral => "number literal",
+            Self::TextLiteral => "text literal",
+            Self::Path => "path",
+        })
     }
 }
 
-impl fmt::Display for Expectation {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+pub(crate) enum Annotation {
+    LabelWhileParsing { span: Span, name: &'static str },
+    LabelApostrophe { span: Span },
+    SuggestWideArrow { span: Span },
+    SuggestThinArrowForPiType { span: Span },
+    SuggestBracketsAroundLetBindingPattern { span: Span, binder: Atom },
+}
+
+impl Annotation {
+    fn annotate(self, it: Diagnostic) -> Diagnostic {
         match self {
-            Self::Token(token) => write!(f, "{token}"),
-            Self::Category(name) => f.write_str(name),
+            Self::LabelWhileParsing { span, name } => {
+                it.label(span, format!("while parsing this {name} starting here"))
+            }
+            Self::LabelApostrophe { span } => it.label(
+                span,
+                "this apostrophe marks the start of an implicit argument",
+            ),
+            Self::SuggestWideArrow { span } => it.suggest(
+                span,
+                "consider replacing the thin arrow with a wide one",
+                "=>",
+            ),
+            Self::SuggestThinArrowForPiType { span } => it.suggest(
+                span,
+                "consider replacing the wide arrow with a \
+                 thin one to denote a function type",
+                "->",
+            ),
+            Self::SuggestBracketsAroundLetBindingPattern { span, binder } => {
+                // @Task use a multi-part suggestion once we have support for that
+                it.suggest(
+                    span,
+                    "surround the let-binding with round brackets",
+                    format!("(let {binder})"),
+                )
+            }
         }
     }
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Clone, Copy)]
 pub(crate) enum SkipLineBreaks {
     Yes,
     No,
 }
 
-pub(crate) trait LexerErrorExt {
-    fn into_diagnostic(self) -> Diagnostic;
-}
+mod error {
+    #[allow(clippy::wildcard_imports)] // private inline module
+    use super::*;
 
-impl LexerErrorExt for lexer::Error {
-    fn into_diagnostic(self) -> Diagnostic {
-        use lexer::BareError::*;
+    pub(super) fn unexpected_token(
+        token: Token,
+        expectations: &[Expectation],
+        annotations: Vec<Annotation>,
+    ) -> Diagnostic {
+        assert!(!expectations.is_empty());
 
-        match self.bare {
-            InvalidIndentation(difference, error) => Diagnostic::error()
-                .code(ErrorCode::E046)
-                .message(format!(
-                    "invalid indentation consisting of {} spaces",
-                    difference.0
-                ))
-                .unlabeled_span(self.span)
-                .note(match error {
-                    IndentationError::Misaligned => {
-                        format!("indentation needs to be a multiple of {}", INDENTATION.0)
-                    }
-                    IndentationError::TooDeep => format!(
-                        "indentation is greater than {} and therefore too deep",
-                        INDENTATION.0
-                    ),
-                }),
-            InvalidToken(token) => {
-                let message = format!("found invalid character U+{:04X} ‘{token}’", token as u32);
-
-                // @Task code
-                Diagnostic::error()
-                    .message(message)
-                    .span(self.span, "unexpected token")
-            }
-            UnbalancedBracket(bracket) => Diagnostic::error()
-                .code(ErrorCode::E044)
-                .message(format!("unbalanced {} bracket", bracket.kind))
-                .span(
-                    self.span,
-                    format!(
-                        "has no matching {} {} bracket",
-                        !bracket.orientation, bracket.kind
-                    ),
-                ),
-            // @Task improve message, mention closing it with quotes
-            UnterminatedTextLiteral => Diagnostic::error()
-                .code(ErrorCode::E047)
-                .message("unterminated text literal")
-                .unlabeled_span(self.span),
-        }
+        // @Task for the actual token, also print its token "category", e.g.
+        // print `keyword ‘case’` instead of just `‘case’`. NB: Don't do that
+        // for token expectations!
+        Diagnostic::error()
+            .code(ErrorCode::E010)
+            .message(format!(
+                "found {token} but expected {}",
+                expectations.iter().list(Conjunction::Or),
+            ))
+            .with(|it| {
+                annotations
+                    .into_iter()
+                    .fold(it, |it, annotation| annotation.annotate(it))
+            })
+            .span(token, "unexpected token")
     }
 }

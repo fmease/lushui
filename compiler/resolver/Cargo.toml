@@ -13,9 +13,9 @@ difference = "2.0.0"
 hir = { path = "../hir" }
 hir_format = { path = "../hir_format" }
 lexer = { path = "../lexer" }
-lowered_ast = { path = "../lowered_ast" }
+lo_ast = { path = "../lo_ast" }
 session = { path = "../session" }
 span = { path = "../span" }
 strsim = "0.10.0"
 unicode-width = "0.1.10"
-utilities = { path = "../utilities" }
+utility = { path = "../utility" }

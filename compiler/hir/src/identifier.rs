@@ -1,7 +1,7 @@
 use super::{Binding, Item};
 use span::{Span, Spanning};
-use std::{default::default, fmt};
-use utilities::{Atom, ComponentIndex};
+use std::fmt;
+use utility::{obtain, Atom, ComponentIndex};
 
 /// A name-resolved identifier.
 #[derive(Clone, Copy, Eq)]
@@ -19,14 +19,6 @@ impl Identifier {
         }
     }
 
-    // @Task make this test-only & maybe take an Atom
-    pub fn parameter(name: &str) -> Self {
-        Identifier::new(
-            Index::DeBruijnParameter,
-            ast::Identifier::new_unchecked(name.into(), default()),
-        )
-    }
-
     pub fn to_str(self) -> &'static str {
         self.source.to_str()
     }
@@ -36,7 +28,7 @@ impl Identifier {
     }
 
     pub fn to_item<T: From<Binding>>(self) -> Item<T> {
-        Item::new(default(), self.span(), Binding(self).into())
+        Item::common(self.span(), Binding(self).into())
     }
 
     // @Note bad name
@@ -83,6 +75,12 @@ impl Spanning for Identifier {
     }
 }
 
+impl span::binder::Binder for Identifier {
+    fn to_str(self) -> &'static str {
+        self.to_str()
+    }
+}
+
 impl fmt::Display for Identifier {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.source)
@@ -99,36 +97,30 @@ impl fmt::Debug for Identifier {
 pub enum Index {
     Declaration(DeclarationIndex),
     DeBruijn(DeBruijnIndex),
-    DeBruijnParameter,
+    Parameter,
 }
 
 impl Index {
     pub fn shift(self, amount: usize) -> Self {
         match self {
             Self::DeBruijn(index) => DeBruijnIndex(index.0 + amount).into(),
-            Self::Declaration(_) | Self::DeBruijnParameter => self,
+            index => index,
         }
     }
 
     pub fn unshift(self) -> Self {
         match self {
             Self::DeBruijn(index) => DeBruijnIndex(index.0.saturating_sub(1)).into(),
-            Self::Declaration(_) | Self::DeBruijnParameter => self,
+            index => index,
         }
     }
 
     pub fn declaration(self) -> Option<DeclarationIndex> {
-        match self {
-            Self::Declaration(index) => Some(index),
-            _ => None,
-        }
+        obtain!(self, Self::Declaration(index) => index)
     }
 
     pub fn de_bruijn(self) -> Option<DeBruijnIndex> {
-        match self {
-            Self::DeBruijn(index) => Some(index),
-            _ => None,
-        }
+        obtain!(self, Self::DeBruijn(index) => index)
     }
 }
 
@@ -147,7 +139,7 @@ impl fmt::Debug for Index {
         match self {
             Self::Declaration(index) => write!(f, "{index:?}"),
             Self::DeBruijn(index) => write!(f, "{index:?}"),
-            Self::DeBruijnParameter => write!(f, "P"),
+            Self::Parameter => write!(f, "P"),
         }
     }
 }
@@ -173,7 +165,7 @@ impl DeclarationIndex {
 
 impl fmt::Debug for DeclarationIndex {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}{:?}", self.component(), self.local_unchecked(),)
+        write!(f, "{:?}{:?}", self.component(), self.local_unchecked())
     }
 }
 

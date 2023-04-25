@@ -1,10 +1,8 @@
 //! The front-end concerned with lexing, parsing and lowering.
-#![feature(default_free_fn)]
-
 use diagnostics::error::Result;
 use session::Session;
 use span::SourceFileIndex;
-use std::default::default;
+use utility::default;
 
 /// Lex source code into an array of tokens
 ///

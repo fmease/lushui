@@ -10,7 +10,7 @@ diagnostics = { path = "../diagnostics" }
 hir = { path = "../hir" }
 hir_format = { path = "../hir_format" }
 session = { path = "../session" }
-utilities = { path = "../utilities" }
+utility = { path = "../utility" }
 
 [dependencies.inkwell]
 git = "https://github.com/TheDan64/inkwell"

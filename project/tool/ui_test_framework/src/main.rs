@@ -1,11 +1,4 @@
-#![feature(
-    default_free_fn,
-    const_option,
-    lazy_cell,
-    let_chains,
-    str_split_remainder,
-    drain_filter
-)]
+#![feature(const_option, lazy_cell, let_chains, str_split_remainder, extract_if)]
 
 use colored::Colorize;
 use configuration::{Configuration, Mode, TestTag, Timeout};
@@ -22,7 +15,7 @@ use std::{
     time::{Duration, Instant},
 };
 use summary::{TestSuiteStatistics, TestSuiteSummary};
-use utilities::pluralize;
+use utility::pluralize;
 
 mod cli;
 mod configuration;
@@ -172,7 +165,7 @@ fn try_main() -> Result<(), ()> {
 
     if !failed_tests.is_empty() {
         let invalid_tests: BTreeSet<_> = failed_tests
-            .drain_filter(|test| {
+            .extract_if(|test| {
                 matches!(
                     test.failure,
                     Failure::InvalidTest { .. } | Failure::InvalidConfiguration(_)

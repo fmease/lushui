@@ -1,5 +1,5 @@
 //! The LLVM-IR generator.
-#![feature(default_free_fn, let_chains, io_error_other)]
+#![feature(let_chains, io_error_other)]
 #![allow(clippy::match_same_arms)] // @Temporary
 
 use diagnostics::{error::Result, Diagnostic};
@@ -16,12 +16,11 @@ use inkwell::{
 use session::{Session, OUTPUT_FOLDER_NAME};
 use std::{
     cell::RefCell,
-    default::default,
     io::Write,
     path::{Path, PathBuf},
     process::{Command, Stdio},
 };
-use utilities::{FormatError, HashMap, Str, PROGRAM_ENTRY};
+use utility::{default, FormatError, HashMap, Str, PROGRAM_ENTRY};
 
 pub fn compile_and_link(
     options: Options,
@@ -43,7 +42,7 @@ pub fn compile_and_link(
             .report(session.reporter()));
     }
 
-    if let Err(error) = link(module, session) {
+    if let Err(error) = link(&module, session) {
         return Err(Diagnostic::error()
             .message("could not link object files")
             .with(|it| match error {
@@ -88,7 +87,7 @@ fn compile<'ctx>(
 
 // @Task support linkers other than clang
 //       (e.g. "`cc`", `gcc` (requires the use of `llc`))
-fn link(module: inkwell::module::Module<'_>, session: &Session<'_>) -> Result<(), LinkingError> {
+fn link(module: &inkwell::module::Module<'_>, session: &Session<'_>) -> Result<(), LinkingError> {
     let buffer = module.write_bitcode_to_memory();
     let name = session.component().name().to_str();
 
@@ -189,7 +188,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
                 let is_program_entry = function.binder.bare() == PROGRAM_ENTRY
                     && self.session.parent_of(index).unwrap() == self.session.component().root();
 
-                let classification = function.expression.as_ref().map(|expression| {
+                let classification = function.body.as_ref().map(|expression| {
                     let classification = if is_program_entry {
                         Thunk
                     } else {
@@ -200,7 +199,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
 
                 match classification {
                     Some((Constant, expression)) => {
-                        let type_ = self.translate_type(&function.type_annotation);
+                        let type_ = self.translate_type(&function.type_);
                         let value = self
                             .module
                             .add_global(type_, None, self.name(index).as_ref());
@@ -221,9 +220,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
                             self.name(index)
                         };
 
-                        let type_ = self
-                            .translate_type(&function.type_annotation)
-                            .fn_type(&[], false);
+                        let type_ = self.translate_type(&function.type_).fn_type(&[], false);
 
                         let thunk = self.module.add_function(
                             name.as_ref(),
@@ -248,7 +245,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
 
                         let function_value = self.module.add_function(
                             self.name(index).as_ref(),
-                            self.translate_unary_function_type(&function.type_annotation),
+                            self.translate_unary_function_type(&function.type_),
                             Some(Linkage::Internal),
                         );
 
@@ -265,7 +262,10 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
                         );
                     }
                     None => {
-                        let hir::EntityKind::IntrinsicFunction { function: intrinsic, .. } = self.session[index].kind
+                        let hir::EntityKind::IntrinsicFunction {
+                            function: intrinsic,
+                            ..
+                        } = self.session[index].kind
                         else {
                             unreachable!();
                         };
@@ -274,7 +274,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
 
                         let function_value = self.module.add_function(
                             intrinsic.name(),
-                            self.translate_unary_function_type(&function.type_annotation),
+                            self.translate_unary_function_type(&function.type_),
                             None,
                         );
 
@@ -318,7 +318,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
                     return;
                 }
 
-                let expression = function.expression.as_ref().unwrap();
+                let expression = function.body.as_ref().unwrap();
 
                 match self.bindings.borrow()[&index] {
                     Entity::Constant { .. } | Entity::Intrinsic { .. } => {}
@@ -415,7 +415,11 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
 
                 let value = match callee.0.index {
                     Declaration(index) => {
-                        let (Entity::UnaryFunction { value: function, .. } | Entity::Intrinsic { value: function }) = self.bindings.borrow()[&index] else {
+                        let (Entity::UnaryFunction {
+                            value: function, ..
+                        }
+                        | Entity::Intrinsic { value: function }) = self.bindings.borrow()[&index]
+                        else {
                             unreachable!();
                         };
 
@@ -426,7 +430,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
                             .unwrap()
                     }
                     DeBruijn(_) => todo!("compiling application with local callee"),
-                    DeBruijnParameter => unreachable!(),
+                    Parameter => unreachable!(),
                 };
 
                 Some(value)
@@ -458,7 +462,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
                     }
                     DeBruijn(index) => Some(substitutions[index.0]),
 
-                    DeBruijnParameter => unreachable!(),
+                    Parameter => unreachable!(),
                 }
             }
             Lambda(_) => todo!("compiling lambdas"),
@@ -500,7 +504,8 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
                         use hir::special::{Binding, NumericType::*, Type::*};
 
                         // @Task don't unwrap
-                        let Binding::Type(type_) = self.session.specials().get(index).unwrap() else {
+                        let Binding::Type(type_) = self.session.specials().get(index).unwrap()
+                        else {
                             unreachable!();
                         };
 
@@ -517,7 +522,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
                         }
                     }
                     DeBruijn(_) => todo!(),
-                    DeBruijnParameter => unreachable!(),
+                    Parameter => unreachable!(),
                 }
             }
             Lambda(_) => todo!(),

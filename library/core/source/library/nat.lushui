@@ -1,11 +1,10 @@
 ;; Natural numbers and related functions.
 module
 
-use topmost.type.Type
-use topmost.(option.Option bool.Bool text.Text)
+use topmost.(option.Option, bool.Bool, text.Text)
 
 @public @intrinsic
-data Nat: Type
+data Nat
 
 @public
 use add as +
@@ -76,7 +75,7 @@ greater-equal: Nat -> Nat -> Bool
 @public @intrinsic
 display: Nat -> Text
 
-use topmost.(bool ordering)
+use topmost.(bool, ordering)
 
 @public
 compare (n: Nat) (m: Nat): ordering.Ordering =

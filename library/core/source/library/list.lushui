@@ -1,12 +1,10 @@
 ;; Homogeneous list types and related functions.
 module
 
-use topmost.type.Type
-
 @public @known
-data List (A: Type): Type of
-    empty (A: Type): List A
-    prepend (A: Type): A -> List A -> List A
+data List A of
+    empty
+    prepend (head: A) (tail: List A)
 
 @public
-use List.(empty prepend)
+use List.(empty, prepend)

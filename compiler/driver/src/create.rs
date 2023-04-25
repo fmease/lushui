@@ -4,7 +4,7 @@ use diagnostics::{error::Result, Diagnostic, Reporter};
 use lexer::word::Word;
 use session::package::ManifestPath;
 use std::{fs, io, path::PathBuf};
-use utilities::{Atom, FormatError, FILE_EXTENSION};
+use utility::{Atom, FormatError, FILE_EXTENSION};
 
 const SOURCE_FOLDER_NAME: &str = "source";
 const LIBRARY_FILE_STEM: &str = "library";
@@ -81,7 +81,7 @@ fn create_package_manifest(
     {
         write!(sink, "name: ")?;
 
-        if let Atom::false_ | Atom::true_ = name.into_inner() {
+        if let Atom::FALSE | Atom::TRUE = name.into_inner() {
             write!(sink, r#""{name}""#)?;
         } else {
             write!(sink, "{name}")?;
@@ -113,7 +113,7 @@ fn create_package_manifest(
     }
 
     if options.executable {
-        let executable_name = if name.into_inner() != Atom::main {
+        let executable_name = if name.into_inner() != Atom::MAIN {
             "main"
         } else {
             "main_"

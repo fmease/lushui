@@ -1,7 +1,7 @@
 //! Error handling mechanisms.
 
 use crate::{reporter::ErasedReportedError, Diagnostic};
-use std::default::default;
+use utility::default;
 
 pub type Result<T = (), E = ErasedReportedError> = std::result::Result<T, E>;
 
@@ -148,6 +148,7 @@ impl<Bare: PossiblyErroneous, Attributes: Default> PossiblyErroneous
 }
 
 /// An error handler.
-pub trait Handler {
-    fn handle<T: PossiblyErroneous>(self, diagnostic: Diagnostic) -> T;
+pub trait Handler: Sized {
+    #[must_use]
+    fn embed<T: PossiblyErroneous>(self, diagnostic: Diagnostic) -> T;
 }

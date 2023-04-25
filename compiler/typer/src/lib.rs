@@ -1,10 +1,6 @@
 //! The type checker.
-#![feature(default_free_fn)]
+// @Task Where possible, continue type checking on errors
 
-// @Beacon @Task introduce an Error variant to hir::{Expression, Declaration}
-// to be able to continue type checking on errors
-
-use ast::Explicitness;
 use diagnostics::{
     error::{Handler, Health, Result, Stain},
     reporter::ErasedReportedError,
@@ -21,8 +17,7 @@ use session::{
     component::{IdentifierExt, LocalDeclarationIndexExt},
     Session,
 };
-use std::default::default;
-use utilities::{displayed, pluralize, QuoteExt};
+use utility::{displayed, pluralize, OwnedOrBorrowed::*, QuoteExt};
 
 pub mod interpreter;
 
@@ -79,13 +74,13 @@ impl<'sess, 'ctx> Typer<'sess, 'ctx> {
                     bare: if declaration.attributes.has(AttributeName::Intrinsic) {
                         BareDefinition::IntrinsicFunction {
                             binder: function.binder,
-                            type_: function.type_annotation.clone(),
+                            type_: function.type_.clone(),
                         }
                     } else {
                         BareDefinition::Function {
                             binder: function.binder,
-                            type_: function.type_annotation.clone(),
-                            value: Some(function.expression.clone().unwrap()),
+                            type_: function.type_.clone(),
+                            value: Some(function.body.clone().unwrap()),
                         }
                     },
                 })?;
@@ -96,7 +91,7 @@ impl<'sess, 'ctx> Typer<'sess, 'ctx> {
                     attributes: declaration.attributes.clone(),
                     bare: BareDefinition::Data {
                         binder: type_.binder,
-                        type_: type_.type_annotation.clone(),
+                        type_: type_.type_.clone(),
                     },
                 })?;
 
@@ -123,7 +118,7 @@ impl<'sess, 'ctx> Typer<'sess, 'ctx> {
                     attributes: declaration.attributes.clone(),
                     bare: BareDefinition::Constructor {
                         binder: constructor.binder,
-                        type_: constructor.type_annotation.clone(),
+                        type_: constructor.type_.clone(),
                         owner_data_type,
                     },
                 })?;
@@ -161,17 +156,17 @@ impl<'sess, 'ctx> Typer<'sess, 'ctx> {
             } => {
                 let value = value.unwrap();
 
-                if let Err(error) = self.it_is_a_type(type_.clone(), &FunctionScope::Module) {
+                if let Err(error) = self.it_is_a_type(&type_, &FunctionScope::Module) {
                     return self.handle_definition_error(error, &type_, None, definition, |_| ());
                 };
 
                 let type_ = self.interpreter().evaluate_expression(
-                    type_,
+                    &type_,
                     interpreter::Context::new(&FunctionScope::Module),
                 )?;
 
                 let inferred_type =
-                    match self.infer_type_of_expression(value.clone(), &FunctionScope::Module) {
+                    match self.infer_type_of_expression(&value, &FunctionScope::Module) {
                         Ok(type_) => type_,
                         Err(error) => {
                             let attributes = definition.attributes.clone();
@@ -197,7 +192,7 @@ impl<'sess, 'ctx> Typer<'sess, 'ctx> {
                     };
 
                 if let Err(error) =
-                    self.it_is_actual(type_.clone(), inferred_type.clone(), &FunctionScope::Module)
+                    self.it_is_actual(&type_, &inferred_type, &FunctionScope::Module)
                 {
                     return self.handle_definition_error(
                         error,
@@ -219,18 +214,18 @@ impl<'sess, 'ctx> Typer<'sess, 'ctx> {
                 });
             }
             Data { binder, type_ } => {
-                if let Err(error) = self.it_is_a_type(type_.clone(), &FunctionScope::Module) {
+                if let Err(error) = self.it_is_a_type(&type_, &FunctionScope::Module) {
                     return self.handle_definition_error(error, &type_, None, definition, |_| ());
                 };
 
                 let type_ = self.interpreter().evaluate_expression(
-                    type_,
+                    &type_,
                     interpreter::Context::new(&FunctionScope::Module),
                 )?;
 
                 self.assert_constructor_is_instance_of_type(
-                    type_.clone(),
-                    self.session.require_special(Type::Type, None)?,
+                    &type_,
+                    &self.session.require_special(Type::Type, None)?.to_item(),
                 )?;
 
                 self.carry_out_definition(Definition {
@@ -243,16 +238,16 @@ impl<'sess, 'ctx> Typer<'sess, 'ctx> {
                 type_,
                 owner_data_type: data,
             } => {
-                if let Err(error) = self.it_is_a_type(type_.clone(), &FunctionScope::Module) {
+                if let Err(error) = self.it_is_a_type(&type_, &FunctionScope::Module) {
                     return self.handle_definition_error(error, &type_, None, definition, |_| ());
                 };
 
                 let type_ = self.interpreter().evaluate_expression(
-                    type_,
+                    &type_,
                     interpreter::Context::new(&FunctionScope::Module),
                 )?;
 
-                self.assert_constructor_is_instance_of_type(type_.clone(), data.to_item())?;
+                self.assert_constructor_is_instance_of_type(&type_, &data.to_item())?;
 
                 self.carry_out_definition(Definition {
                     attributes: definition.attributes,
@@ -264,12 +259,12 @@ impl<'sess, 'ctx> Typer<'sess, 'ctx> {
                 });
             }
             IntrinsicFunction { binder, type_ } => {
-                if let Err(error) = self.it_is_a_type(type_.clone(), &FunctionScope::Module) {
+                if let Err(error) = self.it_is_a_type(&type_, &FunctionScope::Module) {
                     return self.handle_definition_error(error, &type_, None, definition, |_| ());
                 };
 
                 let type_ = self.interpreter().evaluate_expression(
-                    type_,
+                    &type_,
                     interpreter::Context::new(&FunctionScope::Module),
                 )?;
 
@@ -343,7 +338,9 @@ impl<'sess, 'ctx> Typer<'sess, 'ctx> {
                     .specials()
                     .get(index.global(self.session))
                     .unwrap();
-                let special::Binding::Function(function) = function else { unreachable!() };
+                let special::Binding::Function(function) = function else {
+                    unreachable!()
+                };
 
                 self.session[index].kind = EntityKind::IntrinsicFunction { function, type_ };
             }
@@ -430,15 +427,15 @@ expected type ‘{}’
         // this means more boilerplate methods (either duplication or as in resolver: every FunctionScope method takes
         // a component: &Component parameter)
         &self,
-        expression: Expression,
+        expression: &Expression,
         scope: &FunctionScope<'_>,
     ) -> Result<Expression, Error> {
         use hir::{BareExpression::*, Substitution::*};
 
-        Ok(match expression.bare {
+        Ok(match &expression.bare {
             // @Task explanation why we need to special-case Type here!
             Binding(binding) if self.session.specials().is(binding.0, Type::Type) => {
-                self.session.require_special(Type::Type, None)?
+                self.session.require_special(Type::Type, None)?.to_item()
             }
             Binding(binding) => self
                 .interpreter()
@@ -446,51 +443,51 @@ expected type ‘{}’
                 .ok_or(OutOfOrderBinding)?,
             Number(number) => self
                 .session
-                .require_special(number.type_(), Some(expression.span))?,
+                .require_special(number.type_(), Some(expression.span))?
+                .to_item(),
             Text(_) => self
                 .session
-                .require_special(Type::Text, Some(expression.span))?,
+                .require_special(Type::Text, Some(expression.span))?
+                .to_item(),
             PiType(literal) => {
                 // ensure domain and codomain are are well-typed
                 // @Question why do we need to this? shouldn't this be already handled if
                 // `expression` (parameter of `infer_type_of_expression`) has been normalized?
-                self.it_is_a_type(literal.domain.clone(), scope)?;
+                self.it_is_a_type(&literal.domain, scope)?;
 
-                if literal.binder.is_some() {
-                    self.it_is_a_type(
-                        literal.codomain.clone(),
-                        &scope.extend_with_parameter(literal.domain.clone()),
-                    )?;
+                let scope = if literal.binder.is_some() {
+                    Owned(scope.extend_with_parameter(&literal.domain))
                 } else {
-                    self.it_is_a_type(literal.codomain.clone(), scope)?;
-                }
+                    Borrowed(scope)
+                };
 
-                self.session.require_special(Type::Type, None)?
+                self.it_is_a_type(&literal.codomain, scope.as_ref())?;
+
+                self.session.require_special(Type::Type, None)?.to_item()
             }
             Lambda(lambda) => {
-                let parameter_type: Expression = lambda
+                let domain = lambda
                     .domain
-                    .clone()
+                    .as_ref()
                     .ok_or_else(|| missing_annotation_error().report(self.session.reporter()))?;
 
-                self.it_is_a_type(parameter_type.clone(), scope)?;
+                self.it_is_a_type(domain, scope)?;
 
-                let scope = scope.extend_with_parameter(parameter_type.clone());
-                let inferred_body_type =
-                    self.infer_type_of_expression(lambda.body.clone(), &scope)?;
+                let scope = scope.extend_with_parameter(domain);
+                let inferred_body_type = self.infer_type_of_expression(&lambda.body, &scope)?;
 
-                if let Some(body_type_annotation) = lambda.codomain.clone() {
-                    self.it_is_a_type(body_type_annotation.clone(), &scope)?;
-                    self.it_is_actual(body_type_annotation, inferred_body_type.clone(), &scope)?;
+                if let Some(codomain) = &lambda.codomain {
+                    self.it_is_a_type(codomain, &scope)?;
+                    self.it_is_actual(codomain, &inferred_body_type, &scope)?;
                 }
 
                 Expression::new(
-                    expression.attributes,
+                    expression.attributes.clone(),
                     expression.span,
                     hir::PiType {
-                        explicitness: Explicitness::Explicit,
-                        binder: Some(lambda.binder),
-                        domain: parameter_type,
+                        kind: hir::ParameterKind::Explicit,
+                        binder: lambda.binder,
+                        domain: domain.clone(),
                         codomain: inferred_body_type,
                     }
                     .into(),
@@ -499,15 +496,14 @@ expected type ‘{}’
             Application(application) => {
                 // @Note this is an example where we normalize after an infer_type_of_expression which means infer_type_of_expression
                 // returns possibly non-normalized expressions, can we do better?
-                let type_of_callee =
-                    self.infer_type_of_expression(application.callee.clone(), scope)?;
+                let type_of_callee = self.infer_type_of_expression(&application.callee, scope)?;
                 let type_of_callee = self
                     .interpreter()
-                    .evaluate_expression(type_of_callee, interpreter::Context::new(scope))?;
+                    .evaluate_expression(&type_of_callee, interpreter::Context::new(scope))?;
 
                 if let PiType(pi) = &type_of_callee.bare {
                     let argument_type =
-                        self.infer_type_of_expression(application.argument.clone(), scope)?;
+                        self.infer_type_of_expression(&application.argument, scope)?;
 
                     // @Beacon @Beacon @Beacon @Task re-introduce `lazy` with `@lazy`
                     // let argument_type = if pi.laziness.is_some() {
@@ -528,7 +524,7 @@ expected type ‘{}’
                     //     argument_type
                     // };
 
-                    self.it_is_actual(pi.domain.clone(), argument_type, scope)
+                    self.it_is_actual(&pi.domain, &argument_type, scope)
                         // @Bug this error handling might *steal* the error from other handlers further
                         // down the call chain
                         .map_err(|error| match error {
@@ -551,9 +547,7 @@ expected type ‘{}’
                         })?;
 
                     match pi.binder {
-                        Some(_) => Expression::new(
-                            default(),
-                            default(),
+                        Some(_) => Expression::bare(
                             hir::Substituted {
                                 substitution: Use(Box::new(Shift(0)), application.argument.clone()),
                                 expression: pi.codomain.clone(),
@@ -580,19 +574,15 @@ expected type ‘_ -> _’
                 }
             }
             Substituted(substituted) => {
-                let expression = substituted
-                    .expression
-                    .clone()
-                    .substitute(substituted.substitution.clone());
-                self.infer_type_of_expression(expression, scope)?
+                let expression = substituted.expression.substitute(&substituted.substitution);
+                self.infer_type_of_expression(&expression, scope)?
             }
             CaseAnalysis(analysis) => {
-                let subject_type =
-                    self.infer_type_of_expression(analysis.scrutinee.clone(), scope)?;
-                // to get rid of Substitutions
+                let subject_type = self.infer_type_of_expression(&analysis.scrutinee, scope)?;
+                // to force substitutions
                 let subject_type = self
                     .interpreter()
-                    .evaluate_expression(subject_type, interpreter::Context::new(scope))?;
+                    .evaluate_expression(&subject_type, interpreter::Context::new(scope))?;
 
                 // @Task verify that
                 // * patterns are of correct type (i.e. type_ is an ADT and the constructors are the valid ones)
@@ -602,7 +592,7 @@ expected type ‘_ -> _’
                 match &subject_type.bare {
                     Binding(_) => {}
                     Application(_application) => todo!("polymorphic types in patterns"),
-                    _ if self.is_a_type(subject_type.clone(), scope)? => {
+                    _ if self.is_a_type(&subject_type, scope)? => {
                         return Err(Diagnostic::error()
                             .code(ErrorCode::E035)
                             .message("attempt to analyze a type")
@@ -631,8 +621,9 @@ expected type ‘_ -> _’
                         Number(number) => {
                             let number_type = self
                                 .session
-                                .require_special(number.type_(), Some(case.pattern.span))?;
-                            self.it_is_actual(subject_type.clone(), number_type, scope)
+                                .require_special(number.type_(), Some(case.pattern.span))?
+                                .to_item();
+                            self.it_is_actual(&subject_type, &number_type, scope)
                                 .map_err(|error| {
                                     self.handle_case_analysis_type_mismatch(
                                         error,
@@ -644,8 +635,9 @@ expected type ‘_ -> _’
                         Text(_) => {
                             let text_type = self
                                 .session
-                                .require_special(Type::Text, Some(case.pattern.span))?;
-                            self.it_is_actual(subject_type.clone(), text_type, scope)
+                                .require_special(Type::Text, Some(case.pattern.span))?
+                                .to_item();
+                            self.it_is_actual(&subject_type, &text_type, scope)
                                 .map_err(|error| {
                                     self.handle_case_analysis_type_mismatch(
                                         error,
@@ -658,23 +650,19 @@ expected type ‘_ -> _’
                             let constructor_type =
                                 self.interpreter().look_up_type(binding.0, scope).unwrap();
 
-                            self.it_is_actual(
-                                subject_type.clone(),
-                                constructor_type.clone(),
-                                scope,
-                            )
-                            .map_err(|error| {
-                                self.handle_case_analysis_type_mismatch(
-                                    error,
-                                    &case.pattern,
-                                    &analysis.scrutinee,
-                                )
-                            })?;
+                            self.it_is_actual(&subject_type, &constructor_type, scope)
+                                .map_err(|error| {
+                                    self.handle_case_analysis_type_mismatch(
+                                        error,
+                                        &case.pattern,
+                                        &analysis.scrutinee,
+                                    )
+                                })?;
                         }
-                        Binder(_) => {
+                        LetBinding(_) => {
                             // @Temporary @Beacon @Bug error prone (once we try to impl deappl)
                             // @Update @Note don't push the type of subject but the type of the binder
-                            binder_types.push(subject_type.clone());
+                            binder_types.push(&subject_type);
                         }
                         // @Task
                         Application(application) => {
@@ -691,14 +679,13 @@ expected type ‘_ -> _’
                                     todo!();
                                 }
                                 // @Task make error less fatal (keep processing next cases (match arms))
-                                (Binder(binder), _) => {
+                                (LetBinding(binder), _) => {
                                     return Err(Diagnostic::error()
                                         .code(ErrorCode::E034)
                                         .message(format!(
-                                            "binder ‘{}’ used in callee position inside pattern",
-                                            binder.0
+                                            "binder ‘{binder}’ used in callee position inside pattern",
                                         ))
-                                        .unlabeled_span(binder.0)
+                                        .unlabeled_span(binder)
                                         .help("consider referring to a concrete binding")
                                         .report(self.session.reporter())
                                         .into());
@@ -711,13 +698,13 @@ expected type ‘_ -> _’
                     }
 
                     let body_type = self.infer_type_of_expression(
-                        case.body.clone(),
+                        &case.body,
                         &scope.extend_with_pattern_binders(binder_types),
                     )?;
 
                     match type_of_previous_body {
                         Some(ref previous_type) => {
-                            self.it_is_actual(previous_type.clone(), body_type, scope)?;
+                            self.it_is_actual(previous_type, &body_type, scope)?;
                         }
                         None => {
                             type_of_previous_body = Some(body_type);
@@ -728,12 +715,15 @@ expected type ‘_ -> _’
                 //  @Temporary unhandled case
                 type_of_previous_body.expect("caseless case analyses")
             }
-            // @Beacon @Task
-            IntrinsicApplication(_) | Projection(_) => todo!(),
+            // @Task
+            IntrinsicApplication(_) => todo!("inferring the type of intrinsic applications"),
+            // @Task
+            Projection(_) => todo!("inferring the type of projections"),
             IO(_) => self
                 .session
-                .require_special(Type::IO, Some(expression.span))?,
-            Error(_) => expression,
+                .require_special(Type::IO, Some(expression.span))?
+                .to_item(),
+            Error(_) => expression.clone(),
         })
     }
 
@@ -764,20 +754,24 @@ but got type ‘{}’",
     }
 
     /// Assert that an expression is of type `Type`.
-    fn it_is_a_type(&self, expression: Expression, scope: &FunctionScope<'_>) -> Result<(), Error> {
+    fn it_is_a_type(
+        &self,
+        expression: &Expression,
+        scope: &FunctionScope<'_>,
+    ) -> Result<(), Error> {
         let type_ = self.infer_type_of_expression(expression, scope)?;
         self.it_is_actual(
-            self.session.require_special(Type::Type, None)?,
-            type_,
+            &self.session.require_special(Type::Type, None)?.to_item(),
+            &type_,
             scope,
         )
     }
 
-    fn is_a_type(&self, expression: Expression, scope: &FunctionScope<'_>) -> Result<bool, Error> {
+    fn is_a_type(&self, expression: &Expression, scope: &FunctionScope<'_>) -> Result<bool, Error> {
         let type_ = self.infer_type_of_expression(expression, scope)?;
         self.is_actual(
-            self.session.require_special(Type::Type, None)?,
-            type_,
+            &self.session.require_special(Type::Type, None)?.to_item(),
+            &type_,
             scope,
         )
         .map_err(Into::into)
@@ -790,8 +784,8 @@ but got type ‘{}’",
     // @Update this happens with Form::Normal, too. what a bummer
     fn it_is_actual(
         &self,
-        expected: Expression,
-        actual: Expression,
+        expected: &Expression,
+        actual: &Expression,
         scope: &FunctionScope<'_>,
     ) -> Result<(), Error> {
         let context = interpreter::Context::new(scope);
@@ -807,8 +801,8 @@ but got type ‘{}’",
 
     fn is_actual(
         &self,
-        expected: Expression,
-        actual: Expression,
+        expected: &Expression,
+        actual: &Expression,
         scope: &FunctionScope<'_>,
     ) -> Result<bool> {
         let context = interpreter::Context::new(scope);
@@ -816,26 +810,6 @@ but got type ‘{}’",
         let actual = self.interpreter().evaluate_expression(actual, context)?;
 
         self.interpreter().equals(&expected, &actual, scope)
-    }
-
-    // @Question @Bug returns are type that might depend on parameters which we don't supply!!
-    // gets R in A -> B -> C -> R plus an environment b.c. R could depend on outer stuff
-    // @Note this function assumes that the expression has already been normalized!
-    #[allow(clippy::only_used_in_recursion)] // @Temporary
-    fn result_type(&self, expression: Expression, scope: &FunctionScope<'_>) -> Expression {
-        use hir::BareExpression::*;
-
-        match expression.bare {
-            PiType(literal) => {
-                if literal.binder.is_some() {
-                    let scope = scope.extend_with_parameter(literal.domain.clone());
-                    self.result_type(literal.codomain.clone(), &scope)
-                } else {
-                    self.result_type(literal.codomain.clone(), scope)
-                }
-            }
-            _ => expression,
-        }
     }
 
     /// Instance checking.
@@ -850,15 +824,15 @@ but got type ‘{}’",
     /// feature-gate them.
     fn assert_constructor_is_instance_of_type(
         &self,
-        constructor: Expression,
-        type_: Expression,
+        constructor: &Expression,
+        type_: &Expression,
     ) -> Result {
-        let result_type = self.result_type(constructor, &FunctionScope::Module);
-        let callee = result_type.clone().callee();
+        let codomain = constructor.innermost_codomain();
+        let callee = codomain.innermost_callee();
 
         if self
             .interpreter()
-            .equals(&type_, &callee, &FunctionScope::Module)?
+            .equals(type_, callee, &FunctionScope::Module)?
         {
             Ok(())
         } else {
@@ -866,10 +840,10 @@ but got type ‘{}’",
                 .code(ErrorCode::E033)
                 .message(format!(
                     "‘{}’ is not an instance of ‘{}’",
-                    self.display(&result_type),
-                    self.display(&type_),
+                    self.display(&codomain),
+                    self.display(type_),
                 ))
-                .unlabeled_span(result_type.span)
+                .unlabeled_span(codomain.span)
                 .report(self.session.reporter()))
         }
     }
@@ -880,27 +854,53 @@ but got type ‘{}’",
 }
 
 impl Handler for &mut Typer<'_, '_> {
-    fn handle<T: diagnostics::error::PossiblyErroneous>(self, diagnostic: Diagnostic) -> T {
+    fn embed<T: diagnostics::error::PossiblyErroneous>(self, diagnostic: Diagnostic) -> T {
         let error = diagnostic.report(self.session.reporter());
         self.health.taint(error);
         T::error(error)
     }
 }
 
-trait CalleeExt {
-    /// The callee of an expression.
+trait ExpressionExt {
+    /// The innermost codomain of an expression.
+    ///
+    /// # Example
+    ///
+    /// The `R` in `A -> B -> C -> R`.
+    fn innermost_codomain(&self) -> Expression;
+
+    /// The innermost callee of an expression.
     ///
     /// # Example
     ///
     /// The `f` in `f a b c`.
-    fn callee(self) -> Expression;
+    fn innermost_callee(&self) -> &Expression;
 }
 
-impl CalleeExt for Expression {
-    fn callee(mut self) -> Expression {
+impl ExpressionExt for Expression {
+    fn innermost_codomain(&self) -> Expression {
+        fn innermost_codomain(expression: &Expression, scope: &FunctionScope<'_>) -> Expression {
+            match &expression.bare {
+                hir::BareExpression::PiType(pi) => {
+                    let scope = if pi.binder.is_some() {
+                        Owned(scope.extend_with_parameter(&pi.domain))
+                    } else {
+                        Borrowed(scope)
+                    };
+
+                    innermost_codomain(&pi.codomain, scope.as_ref())
+                }
+                _ => expression.clone(),
+            }
+        }
+
+        innermost_codomain(self, &FunctionScope::Module)
+    }
+
+    fn innermost_callee(mut self: &Self) -> &Expression {
         loop {
-            self = match self.bare {
-                hir::BareExpression::Application(application) => application.callee.clone(),
+            self = match &self.bare {
+                hir::BareExpression::Application(application) => &application.callee,
                 _ => return self,
             }
         }

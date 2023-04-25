@@ -1,5 +1,5 @@
 use crate::{Span, Spanning};
-use std::default::default;
+use utility::default;
 
 /// Something with a source location and attributes.
 #[derive(Clone, PartialEq, Eq)]
@@ -18,6 +18,13 @@ impl<Bare, Attributes> Item<Bare, Attributes> {
         }
     }
 
+    pub fn common(span: Span, bare: Bare) -> Self
+    where
+        Attributes: Default,
+    {
+        Self::new(default(), span, bare)
+    }
+
     pub fn bare(bare: Bare) -> Self
     where
         Attributes: Default,
@@ -30,6 +37,10 @@ impl<Bare, Attributes> Item<Bare, Attributes> {
             bare: mapper(self.bare),
             ..self
         }
+    }
+
+    pub fn remap<U>(self, bare: U) -> Item<U, Attributes> {
+        Item { bare, ..self }
     }
 }
 

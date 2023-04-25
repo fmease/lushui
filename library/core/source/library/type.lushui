@@ -3,4 +3,4 @@ module
 
 ;; The type of types.
 @public @intrinsic
-data Type: Type
+data Type

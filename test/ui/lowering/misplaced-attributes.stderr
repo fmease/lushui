@@ -32,8 +32,8 @@ error[E013]: attribute ‘intrinsic’ is ascribed to a use-declaration
   │
   ├─ ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:9:1
   │
-9 │ use something.substantial.(root0 root1)
-  │ ─────────────────────────────────────── incompatible item
+9 │ use something.substantial.(root0, root1)
+  │ ──────────────────────────────────────── incompatible item
   │
  note: attribute ‘intrinsic’ can only be ascribed to function or data declarations
 
@@ -45,8 +45,8 @@ error[E013]: attribute ‘abstract’ is ascribed to a use-declaration
   │
   ├─ ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:9:1
   │
-9 │ use something.substantial.(root0 root1)
-  │ ─────────────────────────────────────── incompatible item
+9 │ use something.substantial.(root0, root1)
+  │ ──────────────────────────────────────── incompatible item
   │
  note: attribute ‘abstract’ can only be ascribed to data declarations
 
@@ -58,8 +58,8 @@ error[E013]: attribute ‘location’ is ascribed to a use-declaration
   │
   ├─ ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:9:1
   │
-9 │ use something.substantial.(root0 root1)
-  │ ─────────────────────────────────────── incompatible item
+9 │ use something.substantial.(root0, root1)
+  │ ──────────────────────────────────────── incompatible item
   │
  note: attribute ‘location’ can only be ascribed to out-of-line module declarations
 
@@ -78,7 +78,7 @@ error[E013]: attribute ‘include’ is ascribed to a function declaration
    │
   note: attribute ‘include’ can only be ascribed to text literals
 
-error[E013]: attribute ‘intrinsic’ is ascribed to a path expression
+error[E013]: attribute ‘intrinsic’ is ascribed to a path
    ┌─ ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:13:5
    │
 13 │     @intrinsic make-binding @(public super) resource
@@ -91,7 +91,7 @@ error[E013]: attribute ‘intrinsic’ is ascribed to a path expression
    │
   note: attribute ‘intrinsic’ can only be ascribed to function or data declarations
 
-error[E013]: attribute ‘public’ is ascribed to a path expression
+error[E013]: attribute ‘public’ is ascribed to a path
    ┌─ ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:13:29
    │
 13 │     @intrinsic make-binding @(public super) resource
@@ -117,19 +117,7 @@ error[E013]: attribute ‘public’ is ascribed to a constructor declaration
    │
   note: attribute ‘public’ can only be ascribed to declarations except constructors and module headers
 
-error[E015]: the declaration ‘manifest’ does not have a type annotation
-   ┌─ ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:16:21
-   │
-16 │     @public manifest
-   │                    ⟫⟪ missing mandatory type annotation
-   │
-  help: annotate the declaration with a type
-   ┌─ ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:16:21
-   │
-16 │     @public manifest: Type
-   │                     ~~~~~~
-
-error[E013]: attribute ‘static’ is ascribed to a path pattern
+error[E013]: attribute ‘static’ is ascribed to a path
    ┌─ ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:20:9
    │
 20 │         @static box => it
@@ -142,5 +130,5 @@ error[E013]: attribute ‘static’ is ascribed to a path pattern
    │
   note: attribute ‘static’ can only be ascribed to expressions
 
-error: aborting due to 11 previous errors
+error: aborting due to 10 previous errors
 

@@ -1,6 +1,6 @@
 use lexer::word::Word;
 use std::{path::Path, sync::LazyLock};
-use utilities::{
+use utility::{
     path::{CanonicalPath, CanonicalPathBuf},
     ComponentIndex, HashMap,
 };

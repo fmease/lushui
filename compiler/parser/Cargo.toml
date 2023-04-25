@@ -10,7 +10,7 @@ ast = { path = "../ast" }
 diagnostics = { path = "../diagnostics" }
 lexer = { path = "../lexer" }
 span = { path = "../span" }
-utilities = { path = "../utilities" }
+utility = { path = "../utility" }
 
 [dev-dependencies]
 colored = "2.0.0"

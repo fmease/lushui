@@ -23,9 +23,9 @@ error[E021]: the binding ‘void’ is not defined in module ‘topmost.namespac
    │                 ════
 
 error[E021]: the binding ‘emptiness’ is not defined in module ‘topmost.namespaced’
-   ┌─ ${TEST_FOLDER}/name-resolution/exposure/undefined-reach.lushui:19:22
+   ┌─ ${TEST_FOLDER}/name-resolution/exposure/undefined-reach.lushui:23:22
    │
-19 │ @(public self.indir2.emptiness)
+23 │ @(public self.indir2.emptiness)
    │                      ═════════
 
 error: aborting due to 5 previous errors

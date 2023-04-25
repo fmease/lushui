@@ -1,5 +1,5 @@
 [package]
-name = "utilities"
+name = "utility"
 version = "0.0.0"
 edition = "2021"
 publish = false

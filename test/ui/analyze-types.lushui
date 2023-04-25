@@ -1,10 +1,10 @@
 use extern.core.(
-    type.Type
-    bool.(false true Bool)
+    type.Type,
+    bool.(false, true, Bool),
     )
 
 is-nat32-or-nat64 (A: Type -> Type): Bool =
     case A of
         extern.core.nat32.Nat32 => true
         extern.core.nat64.Nat64 => true
-        \else => false
+        let _ => false

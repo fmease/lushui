@@ -1,7 +1,7 @@
 ;;; @Task test more branches
 
 use extern.core
-use core.(type.Type nat.Nat)
+use core.(type.Type, nat.Nat)
 
 a: Nat = tree-sinner
 
@@ -21,8 +21,8 @@ func (A: Type) (alpha: A) (beta: A) (gamma-blocker: A): bet =
 
 Base (Alpha: Type): Type =
     case 0 of
-        Alppa \omega 0 => onega ;;; @Bug fatal
+        Alppa (let omega) 0 => onega ;;; @Bug fatal
 
 Base_: Type =
     case 0 of
-        \omega 0 => onega
+        (let omega) 0 => onega

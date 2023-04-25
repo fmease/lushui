@@ -1,5 +1,5 @@
 //! An LSP language server for the Lushui programming language.
-#![feature(default_free_fn, let_chains)]
+#![feature(let_chains)]
 #![allow(unused_crate_dependencies, dead_code, unused_imports, unused_variables)]
 
 use self::diagnostics::DiagnosticExt;
@@ -19,7 +19,6 @@ use session::{
 };
 use std::{
     collections::BTreeSet,
-    default::default,
     mem,
     path::Path,
     sync::{Arc, RwLock},
@@ -34,8 +33,7 @@ use tower_lsp::{
     },
     Client,
 };
-use utilities::path::CanonicalPath;
-use utilities::{ComponentIndex, FormatError, HashMap, PROGRAM_ENTRY};
+use utility::{default, path::CanonicalPath, ComponentIndex, FormatError, HashMap, PROGRAM_ENTRY};
 
 mod diagnostics;
 mod span;
@@ -274,6 +272,7 @@ fn check_file(
 }
 
 // @Task keep going even with errors!
+#[allow(clippy::needless_pass_by_value)] // by design
 fn build_unit(unit: BuildUnit, session: &mut Session<'_>) -> Result<hir::Declaration> {
     // let content = component.content.take();
     // @Beacon @Beacon @Beacon @Temporary
@@ -360,17 +359,17 @@ impl FindBinding for hir::Declaration {
 
         match &self.bare {
             Function(function) => {
-                if function.type_annotation.span.contains(byte_index) {
-                    function.type_annotation.find_binding(byte_index)
-                } else if let Some(expression) = &function.expression && expression.span.contains(byte_index) {
+                if function.type_.span.contains(byte_index) {
+                    function.type_.find_binding(byte_index)
+                } else if let Some(expression) = &function.body && expression.span.contains(byte_index) {
                     expression.find_binding(byte_index)
                 } else {
                     None
                 }
             }
             Data(type_) => {
-                if type_.type_annotation.span.contains(byte_index) {
-                    type_.type_annotation.find_binding(byte_index)
+                if type_.type_.span.contains(byte_index) {
+                    type_.type_.find_binding(byte_index)
                 } else if let Some(constructors) = &type_.constructors {
                     let index = constructors.binary_search_by(|constructor| byte_index.relate(constructor.span).reverse()).ok()?;
                     constructors[index].find_binding(byte_index)
@@ -379,8 +378,8 @@ impl FindBinding for hir::Declaration {
                 }
             }
             Constructor(constructor) => {
-                if constructor.type_annotation.span.contains(byte_index) {
-                    constructor.type_annotation.find_binding(byte_index)
+                if constructor.type_.span.contains(byte_index) {
+                    constructor.type_.find_binding(byte_index)
                 } else {
                     None
                 }

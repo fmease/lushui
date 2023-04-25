@@ -1,5 +1,5 @@
 //! The definition of the textual representation of the [HIR](hir).
-#![feature(default_free_fn, associated_type_defaults)]
+#![feature(associated_type_defaults)]
 
 use colored::Colorize;
 use joinery::JoinableIterator;
@@ -9,7 +9,7 @@ use session::{
     Session,
 };
 use std::{collections::VecDeque, fmt};
-use utilities::Atom;
+use utility::Atom;
 
 #[cfg(test)]
 mod test;
@@ -38,16 +38,16 @@ fn write_declaration(
     match &declaration.bare {
         Function(function) => {
             write!(f, "{}: ", function.binder)?;
-            function.type_annotation.write(session, f)?;
-            if let Some(expression) = &function.expression {
-                write!(f, " = ")?;
-                expression.write(session, f)?;
+            function.type_.write(session, f)?;
+            if let Some(body) = &function.body {
+                f.write_str(" = ")?;
+                body.write(session, f)?;
             }
             writeln!(f)
         }
         Data(type_) => {
             write!(f, "data {}: ", type_.binder)?;
-            type_.type_annotation.write(session, f)?;
+            type_.type_.write(session, f)?;
 
             if let Some(constructors) = &type_.constructors {
                 writeln!(f, " of")?;
@@ -57,13 +57,15 @@ fn write_declaration(
                     write!(f, "{}", " ".repeat(depth * INDENTATION.0))?;
                     constructor.write(session, f)?;
                 }
+            } else {
+                writeln!(f)?;
             }
 
             Ok(())
         }
         Constructor(constructor) => {
             write!(f, "{}: ", constructor.binder)?;
-            constructor.type_annotation.write(session, f)?;
+            constructor.type_.write(session, f)?;
             writeln!(f)
         }
         Module(module) => {
@@ -79,7 +81,7 @@ fn write_declaration(
             Some(binder) => writeln!(f, "use {} as {binder}", use_.target),
             None => writeln!(f, "use {}", use_.target),
         },
-        Error(_) => writeln!(f, "?(error)"),
+        Error(_) => writeln!(f, "⟨error⟩"),
     }
 }
 
@@ -120,45 +122,72 @@ fn write_pi_type_literal_or_lower(
     // for further details.
     match &expression.bare {
         PiType(pi) => {
-            write!(f, "{}", pi.explicitness)?;
-
-            // @Note fragile
-            let domain_needs_brackets = pi.binder.is_some();
-
-            if domain_needs_brackets {
-                write!(f, "(")?;
-
-                if let Some(parameter) = &pi.binder {
-                    write!(f, "{parameter}: ")?;
-                }
-
-                pi.domain.write(session, f)?;
-                write!(f, ")")?;
-            } else {
+            if pi.binder.is_none() && pi.kind == hir::ParameterKind::Explicit {
                 write_application_or_lower(&pi.domain, session, f)?;
+            } else {
+                f.write_str("For ")?;
+
+                if pi.kind == hir::ParameterKind::Implicit {
+                    f.write_str("'")?;
+                }
+                if pi.kind == hir::ParameterKind::Context {
+                    f.write_str("[")?;
+
+                    if let Some(binder) = pi.binder {
+                        write!(f, "{binder}: ")?;
+                    }
+
+                    pi.domain.write(session, f)?;
+                    f.write_str("]")?;
+                } else {
+                    let binder = pi.binder.map_or(Atom::UNDERSCORE, hir::Identifier::bare);
+
+                    write!(f, "({binder}: ")?;
+                    pi.domain.write(session, f)?;
+                    f.write_str(")")?;
+                }
             }
-            write!(f, " -> ")?;
+
+            f.write_str(" -> ")?;
             write_pi_type_literal_or_lower(&pi.codomain, session, f)
         }
         Lambda(lambda) => {
-            write!(f, r"\{}", lambda.explicitness)?;
-            let parameter_needs_brackets = lambda.domain.is_some();
+            f.write_str("for ")?;
 
-            if parameter_needs_brackets {
-                write!(f, "(")?;
-                write!(f, "{}", lambda.binder)?;
-                if let Some(annotation) = &lambda.domain {
-                    write!(f, ": ")?;
-                    annotation.write(session, f)?;
+            if lambda.kind == hir::ParameterKind::Implicit {
+                f.write_str("'")?;
+            }
+            if lambda.kind == hir::ParameterKind::Context {
+                f.write_str("[")?;
+
+                if let Some(binder) = lambda.binder {
+                    write!(f, "{binder}: ")?;
                 }
-                write!(f, ")")?;
+
+                // Although it's not statically guaranteed, the domain of context parameters has exist.
+                // Let's not unwrap though for robustness.
+                if let Some(domain) = &lambda.domain {
+                    domain.write(session, f)?;
+                }
+
+                f.write_str("]")?;
             } else {
-                write!(f, "{}", lambda.binder)?;
+                let binder = lambda
+                    .binder
+                    .map_or(Atom::UNDERSCORE, hir::Identifier::bare);
+
+                if let Some(domain) = &lambda.domain {
+                    write!(f, "({binder}: ")?;
+                    domain.write(session, f)?;
+                    f.write_str(")")?;
+                } else {
+                    write!(f, "{binder}")?;
+                }
             }
 
-            if let Some(annotation) = &lambda.codomain {
+            if let Some(codomain) = &lambda.codomain {
                 write!(f, ": ")?;
-                annotation.write(session, f)?;
+                codomain.write(session, f)?;
             }
 
             write!(f, " => ")?;
@@ -191,8 +220,19 @@ fn write_application_or_lower(
     match &expression.bare {
         Application(application) => {
             write_application_or_lower(&application.callee, session, f)?;
-            write!(f, " {}", application.explicitness)?;
-            write_lower_expression(&application.argument, session, f)
+
+            f.write_str(" ")?;
+
+            if application.kind == hir::ParameterKind::Implicit {
+                f.write_str("'")?;
+            }
+            if application.kind == hir::ParameterKind::Context {
+                f.write_str("[")?;
+                application.argument.write(session, f)?;
+                f.write_str("]")
+            } else {
+                write_lower_expression(&application.argument, session, f)
+            }
         }
         IntrinsicApplication(application) => {
             write!(f, "{}", application.callee)?;
@@ -223,25 +263,27 @@ fn write_lower_expression(
         Number(literal) => write!(f, "{literal}"),
         Text(literal) => write!(f, "{literal}"),
         Binding(binding) => write!(f, "{}", session.binder_to_path(binding.0)),
-        // @Beacon @Temporary @Task just write out the path
-        Projection(_projection) => write!(f, "?(projection)"),
+        Projection(projection) => {
+            write_lower_expression(&projection.basis, session, f)?;
+            write!(f, "::{}", projection.field)
+        }
         IO(io) => {
             // @Temporary format
-            write!(f, "?(io {}", io.index)?;
+            write!(f, "⟨io {}", io.index)?;
             for argument in &io.arguments {
-                write!(f, " ")?;
+                f.write_str(" ")?;
                 argument.write(session, f)?;
             }
-            write!(f, ")")
+            f.write_str("⟩")
         }
         Substituted(substituted) => {
-            write!(f, "?(substituted ",)?;
+            f.write_str("⟨subst ")?;
             substituted.substitution.write(session, f)?;
-            write!(f, " ")?;
+            f.write_str(" ")?;
             substituted.expression.write(session, f)?;
-            write!(f, ")")
+            f.write_str("⟩")
         }
-        Error(_) => write!(f, "?(error)"),
+        Error(_) => write!(f, "⟨error⟩"),
         _ => {
             write!(f, "(")?;
             expression.write(session, f)?;
@@ -259,7 +301,7 @@ impl Display for hir::Pattern {
             Number(number) => write!(f, "{number}"),
             Text(text) => write!(f, "{text}"),
             Binding(binding) => write!(f, "{}", session.binder_to_path(binding.0)),
-            Binder(binder) => write!(f, "\\{}", binder.0),
+            LetBinding(binder) => write!(f, "(let {binder})"),
             Application(application) => {
                 write!(f, "(")?;
                 application.callee.write(session, f)?;
@@ -267,7 +309,7 @@ impl Display for hir::Pattern {
                 application.argument.write(session, f)?;
                 write!(f, ")")
             }
-            Error(_) => write!(f, "?(error)"),
+            Error(_) => write!(f, "⟨error⟩"),
         }
     }
 }
@@ -316,11 +358,11 @@ impl Display for hir::ValueView {
     fn write(&self, session: &Session<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Reducible(expression) => {
-                write!(f, "?(reducible ")?;
+                write!(f, "⟨reducible ")?;
                 expression.write(session, f)?;
-                write!(f, ")")
+                write!(f, "⟩")
             }
-            Self::Neutral => write!(f, "?(neutral)"),
+            Self::Neutral => write!(f, "⟨neutral⟩"),
         }
     }
 }
@@ -355,7 +397,7 @@ impl Display for hir::EntityKind {
             Function { type_, expression } => {
                 match expression {
                     Some(expression) => expression.write(session, f),
-                    None => write!(f, "?(none)"),
+                    None => write!(f, "⟨none⟩"),
                 }?;
 
                 write!(f, " : ")?;
@@ -427,7 +469,7 @@ impl SessionExt for Session<'_> {
 
         match binder.index {
             Declaration(index) => self.index_to_path(index),
-            DeBruijn(_) | DeBruijnParameter => binder.to_string(),
+            DeBruijn(_) | Parameter => binder.to_string(),
         }
     }
 

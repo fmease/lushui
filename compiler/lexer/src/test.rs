@@ -10,7 +10,7 @@ use crate::{
     Error, Outcome, Token,
 };
 use span::span;
-use utilities::difference;
+use utility::difference;
 
 fn lex(source: &'static str) -> Outcome {
     super::lex_string(source.to_owned())

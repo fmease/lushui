@@ -43,22 +43,65 @@ It's planned to support
 * abstract definitions by default (bindings in types that don't reduce / aren't normalized outside of their defining module / defined reach)
 * the option to compile with LLVM or Cranelift
 
-=== Example
+=== Examples
 
 ```lushui
+
 @public @transparent
-data Option (A: Type): Type of
-    none 'A: Option A
-    some 'A: A -> Option A
+data Option A of
+    none
+    some (_: A)
+
+use Option.(none, some)
 
 @public
-map 'A 'B (o: Option A) (f: A -> B): B =
-    case o of
-        Option.none => Option.none
-        Option.some \x => Option.some (f x)
+map 'A 'B (x: Option A) (f: A -> B): B =
+    case x of
+        none => none
+        some (let x) => some (f x)
+
+use extern.core.(type.Type, nat.(Nat, +, *))
+
+process (n: Option Nat): Option Nat =
+    map n for n => + n 1
+
+
+@public @transparent
+data Vector A: For (n: Nat) -> Type of
+    empty: Vector 0 A
+    prepend '(n: Nat)
+        (head: A)
+        (tail: Vector n A):
+            Vector (+ n 1) A
+
+
+trait Monoid A of
+    empty: A
+    append: A -> A -> A
+
+given sum: Monoid Nat of
+    empty = 0
+    append = +
+
+given product: Monoid Nat of
+    empty = 1
+    append = *
+
+duplicate 'A [Monoid A] (a: A): A =
+    Monoid.append a a
+
+
+use extern.core.text.Text
+
+record Person of
+    name: Text
+    age: Nat
+
+jane: Person = {name = "Jane", age = 38}
+name: Text = jane::name
 ```
 
-For more, check out the source files found in `./test/ui/tests`.
+For more, check out the source files found in `test/ui`.
 
 == Contributing
 
@@ -120,7 +163,7 @@ Use the following command (Unix-like systems only) to run all test suites:
 ./test/run
 ----
 
-If you want to restrict yourself to UI tests, execute `./test/ui/run`.
+If you want to restrict yourself to UI tests, execute `./test/run ui`.
 
 == Tooling
 

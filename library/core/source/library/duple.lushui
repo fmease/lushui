@@ -1,11 +1,9 @@
 ;; Canonical 2-tuple types (heterogeneous lists of size two) and related functions.
 module
 
-use topmost.type.Type
+;; @Task get rid of this (in favor of Tuple)
 
 @public
-data Duple (A: Type) (B: Type): Type of
-    duple (A: Type) (B: Type): A -> B -> Duple A B
-
-@public
-use Duple.duple
+record Duple A B of
+    ;;; first: A
+    ;;; second: B

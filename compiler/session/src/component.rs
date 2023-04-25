@@ -2,8 +2,8 @@ use crate::{ComponentOutline, Session};
 use hir::{DeclarationIndex, Entity, LocalDeclarationIndex};
 use index_map::IndexMap;
 use lexer::word::Word;
-use std::{default::default, sync::Arc};
-use utilities::{ComponentIndex, HashMap};
+use std::sync::Arc;
+use utility::{default, ComponentIndex, HashMap};
 
 /// A sealed container of modules regarded as one unit.
 pub struct Component {

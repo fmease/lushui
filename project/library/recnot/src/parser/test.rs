@@ -5,11 +5,8 @@
 use super::{Record, Value};
 use diagnostics::{error::Result, Reporter};
 use span::{span, FileName, SourceMap, WeaklySpanned};
-use std::{
-    default::default,
-    sync::{Arc, RwLock},
-};
-use utilities::difference;
+use std::sync::{Arc, RwLock};
+use utility::{default, difference};
 
 fn parse(source: &str) -> Result<Value> {
     let map: Arc<RwLock<SourceMap>> = default();
@@ -36,9 +33,9 @@ fn assert_eq(actual: Result<Value>, expected: Value) {
 }
 
 #[allow(unused_imports)]
-use utilities::no_std_assert as assert_eq;
+use utility::no_std_assert as assert_eq;
 #[allow(unused_imports)]
-use utilities::no_std_assert as assert_ne;
+use utility::no_std_assert as assert_ne;
 
 #[test]
 fn empty() {

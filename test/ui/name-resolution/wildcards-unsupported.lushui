@@ -1,0 +1,6 @@
+meaning: ?Hole = ?hole
+
+careless: _ = _
+
+main: Unit = case scrutinee of
+    Container _ ?unknown => scrutinee

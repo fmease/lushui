@@ -6,7 +6,7 @@ use clap::{
 use derivation::Elements;
 use diagnostics::{Diagnostic, Reporter};
 use std::{ffi::OsStr, num::NonZeroUsize, path::PathBuf, time::Duration};
-use utilities::FormatError;
+use utility::FormatError;
 
 pub(crate) fn arguments() -> Result<Arguments, ()> {
     let available_parallelism =

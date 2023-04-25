@@ -14,16 +14,17 @@ main: Untyped =
         some.path.to.Bool.false => "foo"
         super.Xoo => "bar"
         topmost.Xan => 22222
-        \a => 233
+        let a => 233
         "ban" => 111
         (foo) => 0
         (((foo))) => 1
-        23 \x => 22
+        23 (let x) => 22
         344 w2w 2 => 1
 
 use extern.core.(
-    nat.Nat
-    bool.Bool.(self false true))
+    nat.Nat,
+    bool.Bool.(self, false, true),
+    )
 
 invert (b: Bool): Bool =
     case b of
@@ -32,5 +33,5 @@ invert (b: Bool): Bool =
 
 invert2 (b: Bool): Bool = case b of
     false => true
-    \xoodle => false
+    let doodle => false
 

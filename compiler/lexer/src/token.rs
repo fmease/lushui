@@ -3,7 +3,7 @@
 use derivation::Str;
 use span::Spanned;
 use std::{cmp::Ordering, fmt};
-use utilities::{quoted, Atom};
+use utility::{quoted, Atom};
 use BareToken::*;
 
 pub type Token = Spanned<BareToken>;
@@ -24,31 +24,34 @@ pub enum BareToken {
     Data,
     Do,
     Extern,
-    /// `For`
-    ForUpper,
     /// `for`
     ForLower,
+    /// `For`
+    ForUpper,
+    Given,
     In,
     Let,
     Module,
     Of,
-    /// `_`
-    Underscore,
+    Record,
     /// `self`
     Self_,
     Super,
     Topmost,
+    Trait,
+    /// `_`
+    Underscore,
     Use,
     //
     // Reserved Symbols
     //
     At,
-    Backslash,
     Colon,
     Dot,
     Equals,
     DoubleAsterisk,
     DoubleColon,
+    DoubleColonEquals,
     QuestionMark,
     /// `<-`
     ThinArrowLeft,
@@ -60,6 +63,7 @@ pub enum BareToken {
     // Punctuation
     //
     Apostrophe,
+    Comma,
     ClosingCurlyBracket,
     ClosingRoundBracket,
     ClosingSquareBracket,
@@ -103,28 +107,30 @@ impl fmt::Display for BareToken {
             Data => quoted!("data"),
             Do => quoted!("do"),
             Extern => quoted!("extern"),
-            ForUpper => quoted!("For"),
             ForLower => quoted!("for"),
+            ForUpper => quoted!("For"),
+            Given => quoted!("given"),
             In => quoted!("in"),
             Let => quoted!("let"),
             Module => quoted!("module"),
             Of => quoted!("of"),
+            Record => quoted!("record"),
             Self_ => quoted!("self"),
             Super => quoted!("super"),
             Topmost => quoted!("topmost"),
+            Trait => quoted!("trait"),
             Underscore => quoted!("_"),
             Use => quoted!("use"),
             //
             // Reserved Symbols
             At => quoted!("@"),
-            Backslash => quoted!(r"\"),
             Colon => quoted!(":"),
             Dot => quoted!("."),
             DoubleAsterisk => quoted!("**"),
             DoubleColon => quoted!("::"),
+            DoubleColonEquals => quoted!("::="),
             Equals => quoted!("="),
             QuestionMark => quoted!("?"),
-            Semicolon => quoted!(";"),
             ThinArrowLeft => quoted!("<-"),
             ThinArrowRight => quoted!("->"),
             WideArrowRight => quoted!("=>"),
@@ -132,12 +138,14 @@ impl fmt::Display for BareToken {
             // Punctuation
             //
             Apostrophe => quoted!("'"),
+            Comma => quoted!(","),
             ClosingCurlyBracket => quoted!("}"),
             ClosingRoundBracket => quoted!(")"),
             ClosingSquareBracket => quoted!("]"),
             OpeningCurlyBracket => quoted!("{"),
             OpeningRoundBracket => quoted!("("),
             OpeningSquareBracket => quoted!("["),
+            Semicolon => quoted!(";"),
             //
             // Other Tokens
             //
@@ -262,12 +270,12 @@ impl<S: Into<Spaces>> std::ops::SubAssign<S> for Spaces {
 //       3 lines in the lexer. the actual logic is the TryFrom impl, smh.
 //       inline it into the lexer.
 #[derive(Clone, Copy)]
-pub struct Indentation(pub usize);
+pub(crate) struct Indentation(pub(crate) usize);
 
 impl Indentation {
-    pub const UNIT: Self = Self(1);
+    pub(crate) const UNIT: Self = Self(1);
 
-    pub const fn to_spaces(self) -> Spaces {
+    pub(crate) const fn to_spaces(self) -> Spaces {
         const INDENTATION_IN_SPACES: usize = 4;
 
         Spaces(self.0 * INDENTATION_IN_SPACES)

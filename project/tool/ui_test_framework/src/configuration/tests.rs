@@ -4,7 +4,7 @@ use crate::{
     TestType::{self, *},
 };
 use span::{span, FileName, SourceMap, Spanned};
-use std::default::default;
+use utility::default;
 
 fn parse_configuration<'m>(
     source: &'static str,

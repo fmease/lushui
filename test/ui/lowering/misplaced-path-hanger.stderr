@@ -1,16 +1,16 @@
 error[E026]: path ‘super’ not allowed in this position
-  ┌─ ${TEST_FOLDER}/lowering/invalid-super-or-topmost-in-use-declaration.lushui:1:14
+  ┌─ ${TEST_FOLDER}/lowering/misplaced-path-hanger.lushui:1:14
   │
-1 │ use foo.bar.(super.ban topmost self)
+1 │ use foo.bar.(super.ban, topmost, self)
   │              ═════
   │
  help: consider moving this path to a separate use-declaration
 
 error[E026]: path ‘topmost’ not allowed in this position
-  ┌─ ${TEST_FOLDER}/lowering/invalid-super-or-topmost-in-use-declaration.lushui:1:24
+  ┌─ ${TEST_FOLDER}/lowering/misplaced-path-hanger.lushui:1:25
   │
-1 │ use foo.bar.(super.ban topmost self)
-  │                        ═══════
+1 │ use foo.bar.(super.ban, topmost, self)
+  │                         ═══════
   │
  help: consider moving this path to a separate use-declaration
 

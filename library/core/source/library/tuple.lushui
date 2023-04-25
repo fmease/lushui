@@ -5,10 +5,10 @@ use topmost.type.Type
 use topmost.list.List
 
 @public @known
-data Tuple (L: List Type): Type of
-    empty: Tuple List.[(Type)]
-    prepend (A: Type) (L: List Type):
+data Tuple: For (L: List Type) -> Type of
+    empty: Tuple List.((Type),)
+    prepend 'A '(L: List Type):
         A -> Tuple L -> Tuple (List.prepend Type A L)
 
 @public
-use Tuple.(empty prepend)
+use Tuple.(empty, prepend)

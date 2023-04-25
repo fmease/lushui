@@ -1,5 +1,5 @@
 //! The package and component resolver.
-#![feature(default_free_fn, let_chains, try_trait_v2)]
+#![feature(let_chains, try_trait_v2)]
 
 use diagnostics::{
     error::{Health, Outcome, Result},
@@ -17,14 +17,13 @@ use session::{
 };
 use span::{SourceMap, Spanned, WeaklySpanned};
 use std::{
-    default::default,
     ops::{Index, IndexMut},
     path::{Path, PathBuf},
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
-use utilities::{
-    cycle::find_cycles_by_key, path::CanonicalPathBuf, pluralize, ComponentIndex, Conjunction,
-    FormatError, HashMap, ListingExt, QuoteExt, FILE_EXTENSION,
+use utility::{
+    cycle::find_cycles_by_key, default, path::CanonicalPathBuf, pluralize, ComponentIndex,
+    Conjunction, FormatError, HashMap, ListingExt, QuoteExt, FILE_EXTENSION,
 };
 
 mod error;
@@ -45,7 +44,7 @@ pub fn find_package(path: &Path) -> Option<&Path> {
 /// Resolve all components and package dependencies of a package given the path to its folder without building anything.
 pub fn resolve_package(
     path: &Path,
-    filter: ComponentFilter,
+    filter: &ComponentFilter,
     map: &Arc<RwLock<SourceMap>>,
     reporter: Reporter,
 ) -> Result<(IndexMap<ComponentIndex, BuildUnit>, Context)> {
@@ -110,7 +109,7 @@ impl BuildQueue {
 }
 
 impl BuildQueue {
-    fn resolve_package(&mut self, folder: &Path, filter: ComponentFilter) -> Result {
+    fn resolve_package(&mut self, folder: &Path, filter: &ComponentFilter) -> Result {
         let manifest_path = folder.join(ManifestPath::FILE_NAME);
         let manifest = self.map().load(&manifest_path, None);
         let manifest = match manifest {
@@ -146,6 +145,8 @@ impl BuildQueue {
         //       that are (local component) dependencies of the
         //       filtered / included components.
         if let Some(component_worklist) = manifest.components {
+            // @Task don't use a HashMap here, @Bug this leads to non-determistic
+            // ordering of diagnostics in case of cycle errors.
             let mut component_worklist: HashMap<_, _> = component_worklist
                 .bare
                 .into_iter()
@@ -264,7 +265,7 @@ impl BuildQueue {
     fn resolve_file(
         &mut self,
         file_path: &Path,
-        _content: Option<Arc<String>>,
+        _: Option<Arc<String>>,
         type_: ComponentType,
         no_core: bool,
     ) -> Result {
@@ -735,7 +736,7 @@ impl ComponentFilter {
 }
 
 fn parse_component_name_from_file_path(path: &Path, reporter: &Reporter) -> Result<Word> {
-    if !utilities::has_file_extension(path, FILE_EXTENSION) {
+    if !utility::has_file_extension(path, FILE_EXTENSION) {
         Diagnostic::warning()
             .message(format!(
                 "the source file does not have the file extension ‘{FILE_EXTENSION}’"

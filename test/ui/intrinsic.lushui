@@ -1,14 +1,22 @@
 ;;; TEST pass run
 
 use extern.core.(
-    nat.(self Nat)
-    bool.Bool
-    duple.(Duple duple))
+    type.Type,
+    nat.(self, Nat),
+    bool.Bool,
+    list.List,
+    tuple.Tuple,
+    )
 
-combine: Nat -> Nat -> Nat = nat.add
+combine: Nat -> Nat -> Nat = nat.+
 successor: Nat -> Nat = combine 1
 
-p: Bool = nat.equal 50 (nat.add 10 40)
-q: Bool = nat.equal 1 0
+p: Bool = nat.== 50 (nat.add 10 40)
+q: Bool = nat.== 1 0
 
-main: Duple Nat Nat = duple Nat Nat (nat.add 3 6) (successor 338389220489284293)
+main: Tuple List.((Type), Nat, Nat) = Tuple.(
+    (Nat),
+    nat.+ 3 6,
+    (Nat),
+    successor 338389220489284293,
+    )

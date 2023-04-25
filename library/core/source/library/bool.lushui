@@ -1,15 +1,13 @@
 ;; The canonical Boolean type and related functions.
 module
 
-use topmost.type.Type
-
 @public @known
-data Bool: Type of
-    false: Bool
-    true: Bool
+data Bool of
+    false
+    true
 
 @public
-use Bool.(false true)
+use Bool.(false, true)
 
 @public
 not (b: Bool): Bool =
@@ -17,18 +15,18 @@ not (b: Bool): Bool =
         false => true
         true => false
 
-use topmost.unit.(Unit Thunk (force as !))
+use topmost.unit.(Unit, Thunk, force)
 
 ;;; @Task uncomment once `@lazy` is implemented
 ;;; @public
-;;; if (A: Type)
+;;; if 'A
 ;;;     (condition: Bool)
 ;;;     @lazy (consequent: Thunk A)
 ;;;     @lazy (alternate: Thunk A): A
 ;;;     =
 ;;;     case condition of
-;;;         false => ! A alternate
-;;;         true => ! A consequent
+;;;         false => force 'A alternate
+;;;         true => force 'A consequent
 
 ;;; ;;; @Question or `&&`?
 ;;; @public

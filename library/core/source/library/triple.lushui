@@ -1,11 +1,10 @@
 ;; Canonical 3-tuple types (heterogeneous lists of size three) and related functions.
 module
 
-use topmost.type.Type
+;; @Task get rid of this (in favor of Tuple)
 
 @public
-data Triple (A: Type) (B: Type) (C: Type): Type of
-    triple (A: Type) (B: Type) (C: Type): A -> B -> C -> Triple A B C
-
-@public
-use Triple.triple
+record Triple A B C of
+    ;;; first: A
+    ;;; second: B
+    ;;; third: C

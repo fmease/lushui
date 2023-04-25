@@ -1,8 +1,8 @@
 error: sequence literals without explicit type are not supported yet
-   ┌─ ${TEST_FOLDER}/name-resolution/sequence-literals-unsupported.lushui:12:9
+   ┌─ ${TEST_FOLDER}/name-resolution/sequence-literals-unsupported.lushui:13:9
    │
-12 │         [\x \y Text."X"] => bottom
-   │         ════════════════
+13 │         (let x, let y, Text."X") => bottom
+   │         ════════════════════════
    │
   help: consider prefixing the literal with a path to a type followed by a ‘.’
 

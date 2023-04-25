@@ -1,22 +1,24 @@
 //! The high-level intermediate representation.
-#![feature(decl_macro, default_free_fn)]
+#![feature(decl_macro)]
 
-use ast::Explicitness;
 use diagnostics::{error::PossiblyErroneous, reporter::ErasedReportedError};
-pub use entity::{Entity, EntityKind};
-pub use identifier::{DeBruijnIndex, DeclarationIndex, Identifier, Index, LocalDeclarationIndex};
 use joinery::JoinableIterator;
-pub use lowered_ast::{attribute, Attribute, AttributeName, Attributes, BareAttribute, Item};
 use span::SourceFileIndex;
 use special::NumericType;
 use std::{
     fmt,
     sync::{Arc, Mutex},
 };
-use utilities::{obtain, Int, Nat};
+use utility::{obtain, Int, Nat};
+
+pub use ast::ParameterKind;
+pub use entity::{Entity, EntityKind};
+pub use identifier::{DeBruijnIndex, DeclarationIndex, Identifier, Index, LocalDeclarationIndex};
+pub use lo_ast::{attribute, Attribute, AttributeName, Attributes, BareAttribute, Item};
 
 mod entity;
 mod identifier;
+
 // @Task get rid of this smh.
 pub mod interfaceable;
 pub mod special;
@@ -47,8 +49,8 @@ impl PossiblyErroneous for BareDeclaration {
 
 pub struct Function {
     pub binder: Identifier,
-    pub type_annotation: Expression,
-    pub expression: Option<Expression>,
+    pub type_: Expression,
+    pub body: Option<Expression>,
 }
 
 impl From<Function> for BareDeclaration {
@@ -59,7 +61,7 @@ impl From<Function> for BareDeclaration {
 
 pub struct Data {
     pub binder: Identifier,
-    pub type_annotation: Expression,
+    pub type_: Expression,
     pub constructors: Option<Vec<Declaration>>,
 }
 
@@ -71,7 +73,7 @@ impl From<Data> for BareDeclaration {
 
 pub struct Constructor {
     pub binder: Identifier,
-    pub type_annotation: Expression,
+    pub type_: Expression,
 }
 
 impl From<Constructor> for BareDeclaration {
@@ -129,7 +131,7 @@ impl PossiblyErroneous for BareExpression {
 
 #[derive(Clone)]
 pub struct PiType {
-    pub explicitness: Explicitness,
+    pub kind: ParameterKind,
     pub binder: Option<Identifier>,
     pub domain: Expression,
     pub codomain: Expression,
@@ -167,8 +169,8 @@ impl From<Binding> for BareExpression {
 
 #[derive(Clone)]
 pub struct Lambda {
-    pub explicitness: Explicitness,
-    pub binder: Identifier,
+    pub kind: ParameterKind,
+    pub binder: Option<Identifier>,
     pub domain: Option<Expression>,
     pub codomain: Option<Expression>,
     pub body: Expression,
@@ -224,7 +226,14 @@ impl From<IntrinsicApplication> for BareExpression {
 
 #[derive(Clone)]
 pub struct Projection {
-    // @Task
+    pub basis: Expression,
+    pub field: ast::Identifier,
+}
+
+impl From<Projection> for BareExpression {
+    fn from(projection: Projection) -> Self {
+        Self::Projection(Box::new(projection))
+    }
 }
 
 #[derive(Clone)]
@@ -253,8 +262,10 @@ pub type Pattern = Item<BarePattern>;
 pub enum BarePattern {
     Number(Box<Number>),
     Text(Box<Text>),
-    Binding(Box<Binding>),
-    Binder(Box<Binder>),
+    // @Task rename Binding & LetBinding in a way that makes it understandable which
+    // one of the two *defines* and which one *references*.
+    Binding(Binding),
+    LetBinding(LocalBinder),
     Application(Box<Application<Pattern>>),
     Error(ErasedReportedError),
 }
@@ -279,16 +290,13 @@ impl From<Text> for BarePattern {
 
 impl From<Binding> for BarePattern {
     fn from(binding: Binding) -> Self {
-        Self::Binding(Box::new(binding))
+        Self::Binding(binding)
     }
 }
 
-#[derive(Clone)]
-pub struct Binder(pub Identifier);
-
-impl From<Binder> for BarePattern {
-    fn from(binder: Binder) -> Self {
-        Self::Binder(Box::new(binder))
+impl From<LocalBinder> for BarePattern {
+    fn from(binder: LocalBinder) -> Self {
+        Self::LetBinding(binder)
     }
 }
 
@@ -303,8 +311,8 @@ pub struct Binding(pub Identifier); // @Task rename 0 -> binder again
 
 #[derive(Clone)]
 pub struct Application<T> {
+    pub kind: ParameterKind,
     pub callee: T,
-    pub explicitness: Explicitness,
     pub argument: T,
 }
 
@@ -374,6 +382,8 @@ impl fmt::Display for Text {
         }
     }
 }
+
+pub type LocalBinder = span::binder::LocalBinder<Identifier>;
 
 #[derive(Clone, Default)]
 pub struct Namespace {

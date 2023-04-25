@@ -1,4 +1,4 @@
-error[E010]: found ‘=>’ but expected parameter, ‘->’ or ‘**’
+error[E010]: found ‘=>’ but expected ‘'’, parameter, ‘->’ or ‘**’
   ┌─ ${TEST_FOLDER}/parsing/quantified-type-wide-arrow.lushui:2:5
   │
 2 │     For (A: Type) => A

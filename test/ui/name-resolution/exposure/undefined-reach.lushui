@@ -14,7 +14,11 @@ Y: Type = Unit
 data Unit: Type of
     unit: Unit
 
-use topmost.((namespaced as indir0) (indir0 as indir1) (indir1 as indir2))
+use topmost.(
+    namespaced as indir0,
+    indir0 as indir1,
+    indir1 as indir2,
+    )
 
 @(public self.indir2.emptiness)
 X: Type = Unit

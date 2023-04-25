@@ -1,20 +1,19 @@
-#![feature(decl_macro, default_free_fn, lazy_cell)]
+#![feature(decl_macro, lazy_cell)]
 
 use component::{Component, DeclarationIndexExt};
 use diagnostics::{error::Result, Diagnostic, Reporter};
 use hir::{
     special::{self, Bindings},
-    DeclarationIndex, Expression, LocalDeclarationIndex,
+    DeclarationIndex, LocalDeclarationIndex,
 };
 use lexer::word::Word;
 use package::{ManifestPath, Package};
 use span::{SourceMap, Span};
 use std::{
-    default::default,
     ops::{Index, IndexMut},
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
-use utilities::{ComponentIndex, HashMap};
+use utility::{default, ComponentIndex, HashMap};
 
 pub mod component;
 pub mod interfaceable;
@@ -104,11 +103,13 @@ impl<'ctx> Session<'ctx> {
         &self,
         special: impl Into<special::Binding>,
         user: Option<Span>,
-    ) -> Result<Expression> {
+    ) -> Result<hir::Identifier> {
+        let special = special.into();
+
         self.context
             .specials
-            .require(special, user)
-            .map_err(|error| error.report(self.reporter()))
+            .get(special)
+            .ok_or_else(|| error::missing_binding(special, user).report(self.reporter()))
     }
 
     pub fn component(&self) -> &Component {
@@ -288,4 +289,26 @@ impl Index<DeclarationIndex> for Context {
 pub struct ComponentOutline {
     pub name: Word,
     pub index: ComponentIndex,
+}
+
+mod error {
+    #[allow(clippy::wildcard_imports)] // private inline module
+    use super::*;
+    use diagnostics::ErrorCode;
+
+    pub(super) fn missing_binding(special: special::Binding, user: Option<Span>) -> Diagnostic {
+        let kind = special.kind();
+
+        Diagnostic::error()
+            .code(match kind {
+                special::Kind::Known => ErrorCode::E062,
+                special::Kind::Intrinsic => ErrorCode::E060,
+            })
+            .message(format!("the {kind} binding ‘{special}’ is not defined"))
+            .with(|it| match user {
+                // @Task label
+                Some(user) => it.span(user, "the type of this expression"),
+                None => it,
+            })
+    }
 }

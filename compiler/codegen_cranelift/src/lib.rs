@@ -15,7 +15,7 @@ use std::{
     path::{Path, PathBuf},
     process::Command,
 };
-use utilities::PROGRAM_ENTRY;
+use utility::PROGRAM_ENTRY;
 
 pub fn compile_and_link(
     options: Options,

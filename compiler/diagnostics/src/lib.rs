@@ -1,18 +1,20 @@
 //! The diagnostics system.
-#![feature(adt_const_params, associated_type_bounds, default_free_fn)]
+#![feature(adt_const_params, associated_type_bounds)]
 #![allow(incomplete_features)] // adt_const_params
 
-pub use code::{Code, ErrorCode, LintCode};
 use derivation::Str;
 use reporter::Report;
-pub use reporter::Reporter;
 use span::{SourceMap, Span, Spanning};
-use std::{collections::BTreeSet, fmt::Debug, ops::Deref, path::PathBuf};
-use utilities::Str;
+use std::{collections::BTreeSet, fmt::Debug, marker::ConstParamTy, ops::Deref, path::PathBuf};
+use utility::Str;
+
+pub use code::{Code, ErrorCode, LintCode};
+pub use reporter::Reporter;
 
 mod code;
-pub mod error;
 mod format;
+
+pub mod error;
 pub mod reporter;
 
 /// A complex diagnostic message, optionally with source locations.
@@ -76,6 +78,7 @@ impl<const S: Severity> Diagnostic<S> {
         self._span(spanning, None, Role::Secondary)
     }
 
+    #[allow(clippy::needless_pass_by_value)] // irrelevant
     fn _spans<I>(mut self, spannings: I, label: Option<Str>, role: Role) -> Self
     where
         I: Iterator<Item: Spanning>,
@@ -196,9 +199,12 @@ impl Diagnostic {
         self
     }
 
-    // Handle the diagnostic.
-    pub fn handle<T: error::PossiblyErroneous, H: error::Handler>(self, handler: H) -> T {
-        handler.handle(self)
+    pub fn embed<T: error::PossiblyErroneous, H: error::Handler>(self, handler: H) -> T {
+        handler.embed(self)
+    }
+
+    pub fn handle<H: error::Handler>(self, handler: H) {
+        let _: reporter::ErasedReportedError = handler.embed(self);
     }
 }
 
@@ -291,7 +297,7 @@ pub struct Subdiagnostic {
 }
 
 /// Level of severity of a diagnostic.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, PartialOrd, Ord, ConstParamTy)]
 pub enum Severity {
     /// An internal compiler error (ICE).
     Bug,

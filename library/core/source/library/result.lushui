@@ -1,12 +1,10 @@
 ;; Error handling with the Result type.
 module
 
-use topmost.type.Type
+@public
+data Result A E of
+    failure (_: E)
+    success (_: A)
 
 @public
-data Result (A: Type) (Error: Type): Type of
-    failure (A: Type) (Error: Type): Error -> Result A Error
-    success (A: Type) (Error: Type): A -> Result A Error
-
-@public
-use Result.(failure success)
+use Result.(failure, success)

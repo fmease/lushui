@@ -6,7 +6,7 @@
 use self.()
 
 @intrinsic @abstract @(location "/")
-use something.substantial.(root0 root1)
+use something.substantial.(root0, root1)
 
 @include
 binding: Binding =
@@ -18,4 +18,4 @@ data Manifest: Type of
 Platform: Type =
     case x of
         @static box => it
-        \__ => unboxed
+        let _ => unboxed

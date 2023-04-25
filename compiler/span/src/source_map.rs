@@ -1,9 +1,9 @@
 use super::{ByteIndex, LocalByteIndex, LocalSpan, Span, Spanning};
 use index_map::IndexMap;
-use std::{default::default, io, ops::Range, path::Path, sync::Arc};
+use std::{io, ops::Range, path::Path, sync::Arc};
 use unicode_width::UnicodeWidthStr;
-use utilities::{
-    obtain,
+use utility::{
+    default, obtain,
     path::{CanonicalPath, CanonicalPathBuf},
     ComponentIndex,
 };

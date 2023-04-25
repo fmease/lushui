@@ -7,4 +7,4 @@ publish = false
 [dependencies]
 index_map = { path = "../../project/library/index_map" }
 unicode-width = "0.1.10"
-utilities = { path = "../utilities" }
+utility = { path = "../utility" }

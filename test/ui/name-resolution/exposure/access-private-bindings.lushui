@@ -2,7 +2,7 @@ use extern.core.type.Type
 
 use S.structure as s
 
-use outer.((south.Structure as S) (north.Structure as N))
+use outer.(south.Structure as S, north.Structure as N)
 use outer.south
 
 module outer of

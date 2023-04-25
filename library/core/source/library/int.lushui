@@ -1,10 +1,8 @@
 ;; Integers and related functions.
 module
 
-use topmost.type.Type
-
 @public @intrinsic
-data Int: Type
+data Int
 
 ;;; @public @intrinsic
 ;;; to-nat: Int -> Option topmost.nat.Nat

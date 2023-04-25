@@ -1,7 +1,6 @@
 use crate::utility::HelperAttribute;
 use syn::{
     parse::{Nothing, Parse, ParseStream},
-    token::Paren,
     Error, Ident,
 };
 
@@ -15,10 +14,8 @@ impl HelperAttribute for FormatAttribute {
 
 impl Parse for FormatAttribute {
     fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
-        let content;
-        let _: Paren = syn::parenthesized!(content in input);
-        let letter_case = content.parse()?;
-        let _: Nothing = content.parse()?;
+        let letter_case = input.parse()?;
+        let _: Nothing = input.parse()?;
         let _: Nothing = input.parse()?;
 
         Ok(Self { letter_case })
