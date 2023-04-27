@@ -1,6 +1,6 @@
-//! Positive behavior tests for parsing the custom metadata format.
+//! Positive behavior tests for the parser.
 //!
-//! Negative behavior tests are UI tests and found in `/test/ui/tests/metadata/`.
+//! Negative behavior tests are UI tests and found in `/test/ui/tests/recnot/`.
 
 use super::{Record, Value};
 use diagnostics::{error::Result, Reporter};

@@ -1,22 +1,22 @@
 error[E803]: the entry ‘hey’ is defined multiple times
-  ┌─ ${TEST_FOLDER}/packages/syntactically-invalid-manifests/duplicate-entries/package.metadata:2:1
+  ┌─ ${TEST_FOLDER}/packages/syntactically-invalid-manifests/duplicate-entries/package.recnot:2:1
   │
 2 │ hey: "it's me",
   │ ─── previous definition
   │
-  ├─ ${TEST_FOLDER}/packages/syntactically-invalid-manifests/duplicate-entries/package.metadata:3:1
+  ├─ ${TEST_FOLDER}/packages/syntactically-invalid-manifests/duplicate-entries/package.recnot:3:1
   │
 3 │ hey: "it's me again",
   │ ═══ redefinition
 
 error: found ‘,’ but expected record key
-  ┌─ ${TEST_FOLDER}/packages/syntactically-invalid-manifests/duplicate-entries/package.metadata:5:9
+  ┌─ ${TEST_FOLDER}/packages/syntactically-invalid-manifests/duplicate-entries/package.recnot:5:9
   │
 5 │ more: { , "
   │         ═
 
 error: unterminated text
-  ┌─ ${TEST_FOLDER}/packages/syntactically-invalid-manifests/duplicate-entries/package.metadata:5:11
+  ┌─ ${TEST_FOLDER}/packages/syntactically-invalid-manifests/duplicate-entries/package.recnot:5:11
   │
 5 │ more: { , "
   │           ═

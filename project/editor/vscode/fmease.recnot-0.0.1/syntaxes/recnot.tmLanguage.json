@@ -1,6 +1,6 @@
 {
-    "scopeName": "source.lushui-metadata",
-    "name": "lushui-metadata",
+    "scopeName": "source.recnot",
+    "name": "recnot",
     "patterns": [
         {
             "include": "#comment"
@@ -25,7 +25,7 @@
         "comment": {
             "patterns": [
                 {
-                    "name": "comment.line.number-sign.lushui-metadata",
+                    "name": "comment.line.number-sign.recnot",
                     "match": "#(?: (TEST)((?: @\\w+)+)?(?: ((?:pass|fail) (?:check|build|run)|auxiliary|ignore|(?:compiler|program)-(?:args|env-var)|timeout|substution|revisions))(.*))?.*",
                     "captures": {
                         "1": {
@@ -50,27 +50,27 @@
         "punctuation": {
             "patterns": [
                 {
-                    "name": "punctuation.brackets.square.lushui-metadata",
+                    "name": "punctuation.brackets.square.recnot",
                     "match": "\\["
                 },
                 {
-                    "name": "punctuation.brackets.square.lushui-metadata",
+                    "name": "punctuation.brackets.square.recnot",
                     "match": "\\]"
                 },
                 {
-                    "name": "punctuation.brackets.curly.lushui-metadata",
+                    "name": "punctuation.brackets.curly.recnot",
                     "match": "\\{"
                 },
                 {
-                    "name": "punctuation.brackets.curly.lushui-metadata",
+                    "name": "punctuation.brackets.curly.recnot",
                     "match": "\\}"
                 },
                 {
-                    "name": "punctuation.comma.lushui-metadata",
+                    "name": "punctuation.comma.recnot",
                     "match": ","
                 },
                 {
-                    "name": "punctuation.colon.lushui-metadata",
+                    "name": "punctuation.colon.recnot",
                     "match": ":"
                 }
             ]
@@ -78,7 +78,7 @@
         "text": {
             "patterns": [
                 {
-                    "name": "string.quoted.double.lushui-metadata",
+                    "name": "string.quoted.double.recnot",
                     "begin": "\"",
                     "end": "\"",
                     "patterns": [
@@ -88,19 +88,19 @@
                     ]
                 },
                 {
-                    "name": "string.unquoted.lushui-metadata",
+                    "name": "string.unquoted.recnot",
                     "match": "\\b((?:[a-zA-Z_]\\w*)(?:-[a-zA-Z_]\\w*)*)\\b"
                 }
             ]
         },
         "escape_sequence": {
-            "name": "constant.character.escape.lushui-metadata",
+            "name": "constant.character.escape.recnot",
             "match": "\\\\(u\\{[0-9a-fA-F]+\\}|\\\\|\")"
         },
         "constant": {
             "patterns": [
                 {
-                    "name": "constant.language.lushui-metadata",
+                    "name": "constant.language.recnot",
                     "match": "\\b(false|true)\\b"
                 }
             ]
@@ -108,7 +108,7 @@
         "number": {
             "patterns": [
                 {
-                    "name": "constant.numeric.integer.decimal.lushui-metadata",
+                    "name": "constant.numeric.integer.decimal.recnot",
                     "match": "(-|\\b)[0-9]([0-9]|'[0-9])*\\b"
                 }
             ]
@@ -116,11 +116,11 @@
         "key": {
             "patterns": [
                 {
-                    "name": "keyword.key.lushui-metadata",
+                    "name": "keyword.key.recnot",
                     "match": "\\b((?:[a-zA-Z_]\\w*)(?:-[a-zA-Z_]\\w*)*)(?=\\s*:)"
                 },
                 {
-                    "name": "keyword.key.lushui-metadata",
+                    "name": "keyword.key.recnot",
                     "match": "\"([^\"])*?\"(?=\\s*:)"
                 }
             ]

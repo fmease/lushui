@@ -1,6 +1,11 @@
 cargo-features = ["profile-rustflags"]
 
 [workspace]
-members = ["compiler/*", "library/core/source/boot", "test/ui/framework"]
+members = [
+    "compiler/*",
+    "project/library/*",
+    "library/core/source/boot",
+    "test/ui/framework",
+]
 default-members = ["compiler/main"]
 resolver = "2"

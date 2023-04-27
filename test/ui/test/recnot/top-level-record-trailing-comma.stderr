@@ -1,5 +1,5 @@
 error: found ‘,’ but expected end of input
-  ┌─ ${TEST_FOLDER}/metadata/top-level-record-trailing-comma.metadata:3:2
+  ┌─ ${TEST_FOLDER}/recnot/top-level-record-trailing-comma.recnot:3:2
   │
 3 │ },
   │  ═

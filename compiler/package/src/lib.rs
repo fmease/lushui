@@ -9,7 +9,7 @@ use diagnostics::{
 use index_map::IndexMap;
 use lexer::word::Word;
 use manifest::{DependencyDeclaration, DependencyProvider, PackageManifest, PackageProfile};
-use metadata::Record;
+use recnot::Record;
 use session::{
     package::{ManifestPath, Package, PossiblyUnresolvedComponent::*, CORE_PACKAGE_NAME},
     unit::{BuildUnit, ComponentType},

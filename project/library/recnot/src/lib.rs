@@ -1,4 +1,6 @@
-//! A custom human-readable metadata file format.
+//! Deserialization support for Recnot, a human-readable configuration file format.
+//!
+//! Short for *record notation*.
 //!
 //! # Missing Features
 //!

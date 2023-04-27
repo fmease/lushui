@@ -1,5 +1,5 @@
 error: ‘weird$’ is not a valid dependency provider
-   ┌─ ${TEST_FOLDER}/packages/invalid-dependency-provider/package.metadata:10:51
+   ┌─ ${TEST_FOLDER}/packages/invalid-dependency-provider/package.recnot:10:51
    │
 10 │             thing0: { component: else, provider: "weird$" },
    │                                                   ══════
@@ -7,7 +7,7 @@ error: ‘weird$’ is not a valid dependency provider
   note: valid dependency providers are ‘package’, ‘filesystem’, ‘distribution’, ‘git’ and ‘registry’
 
 error: ‘unknown’ is not a valid dependency provider
-   ┌─ ${TEST_FOLDER}/packages/invalid-dependency-provider/package.metadata:11:33
+   ┌─ ${TEST_FOLDER}/packages/invalid-dependency-provider/package.recnot:11:33
    │
 11 │             thing1: { provider: unknown },
    │                                 ═══════

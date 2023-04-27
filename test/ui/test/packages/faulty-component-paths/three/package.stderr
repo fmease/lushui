@@ -1,7 +1,7 @@
 error: could not load the executable component ‘main’ in package ‘test’
   ┌─ ${TEST_FOLDER}/packages/faulty-component-paths/three/leading/astray
   │
-  ├─ ${TEST_FOLDER}/packages/faulty-component-paths/three/package.metadata:8:16
+  ├─ ${TEST_FOLDER}/packages/faulty-component-paths/three/package.recnot:8:16
   │
 8 │         path: "leading/astray",
   │                ══════════════

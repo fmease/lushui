@@ -1,5 +1,5 @@
 error: ‘examples’ is not a valid component type
-  ┌─ ${TEST_FOLDER}/packages/invalid-component-types/package.metadata:7:15
+  ┌─ ${TEST_FOLDER}/packages/invalid-component-types/package.recnot:7:15
   │
 7 │         type: examples,
   │               ════════
@@ -7,7 +7,7 @@ error: ‘examples’ is not a valid component type
  note: valid component types are ‘benchmark-suite’, ‘example’, ‘executable’, ‘library’ and ‘test-suite’
 
 error: ‘tes t#’ is not a valid component type
-   ┌─ ${TEST_FOLDER}/packages/invalid-component-types/package.metadata:11:16
+   ┌─ ${TEST_FOLDER}/packages/invalid-component-types/package.recnot:11:16
    │
 11 │         type: "tes t#",
    │                ══════

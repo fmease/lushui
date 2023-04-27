@@ -1,5 +1,5 @@
 error: found end of input but expected value
-  ┌─ ${TEST_FOLDER}/metadata/unexpected-end-of-input.metadata:1:6
+  ┌─ ${TEST_FOLDER}/recnot/unexpected-end-of-input.recnot:1:6
   │
 1 │ key:
   │    ⟫⟪

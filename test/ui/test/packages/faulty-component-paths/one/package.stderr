@@ -1,7 +1,7 @@
 error: could not load the library component ‘test’ in package ‘test’
   ┌─ ${TEST_FOLDER}/packages/faulty-component-paths/one/nonexistent.lushui
   │
-  ├─ ${TEST_FOLDER}/packages/faulty-component-paths/one/package.metadata:8:16
+  ├─ ${TEST_FOLDER}/packages/faulty-component-paths/one/package.recnot:8:16
   │
 8 │         path: "nonexistent.lushui",
   │                ══════════════════

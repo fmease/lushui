@@ -13,8 +13,8 @@ diagnostics = { path = "../../../compiler/diagnostics" }
 difference = "2.0.0"
 joinery = "3.1.0"
 lexer = { path = "../../../compiler/lexer" }
-metadata = { path = "../../../compiler/metadata" }
 pathdiff = "0.2.1"
+recnot = { path = "../../../project/library/recnot" }
 span = { path = "../../../compiler/span" }
 terminal_size = "0.2.5"
 unicode-width = "0.1.10"

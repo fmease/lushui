@@ -3,7 +3,7 @@
     default_free_fn,
     let_chains,
     associated_type_bounds,
-    type_alias_impl_trait
+    impl_trait_in_assoc_type
 )]
 
 use ast::Debug;
@@ -193,7 +193,7 @@ fn execute_command(
                 create::create_package(package_name, &options, &reporter)
             }
         },
-        Metadata { path } => check_metadata_file(&path, map, &reporter),
+        Recnot { path } => check_recnot_file(&path, map, &reporter),
     }
 }
 
@@ -491,7 +491,7 @@ fn build_unit(
     Ok(())
 }
 
-fn check_metadata_file(path: &Path, map: &Arc<RwLock<SourceMap>>, reporter: &Reporter) -> Result {
+fn check_recnot_file(path: &Path, map: &Arc<RwLock<SourceMap>>, reporter: &Reporter) -> Result {
     let file = map.write().unwrap().load(path, None).map_err(|error| {
         Diagnostic::error()
             .message("could not load the file")
@@ -500,7 +500,7 @@ fn check_metadata_file(path: &Path, map: &Arc<RwLock<SourceMap>>, reporter: &Rep
             .report(reporter)
     })?;
 
-    metadata::parse(file, map, reporter).map(drop)
+    recnot::parse(file, map, reporter).map(drop)
 }
 
 fn set_panic_hook() {

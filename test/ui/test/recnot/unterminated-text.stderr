@@ -1,5 +1,5 @@
 error: unterminated text
-  ┌─ ${TEST_FOLDER}/metadata/unterminated-text.metadata:2:12
+  ┌─ ${TEST_FOLDER}/recnot/unterminated-text.recnot:2:12
   │
 2 │       where: "the long
   · ╔════════════╝
@@ -7,7 +7,7 @@ error: unterminated text
   │ ╚═╝
 
 error: found end of input but expected ‘,’
-  ┌─ ${TEST_FOLDER}/metadata/unterminated-text.metadata:4:3
+  ┌─ ${TEST_FOLDER}/recnot/unterminated-text.recnot:4:3
   │
 4 │ }
   │ ⟫⟪

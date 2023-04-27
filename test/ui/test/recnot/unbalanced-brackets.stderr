@@ -1,5 +1,5 @@
 error: found end of input but expected ‘,’
-  ┌─ ${TEST_FOLDER}/metadata/unbalanced-brackets.metadata:5:2
+  ┌─ ${TEST_FOLDER}/recnot/unbalanced-brackets.recnot:5:2
   │
 5 │  
   │ ⟫⟪

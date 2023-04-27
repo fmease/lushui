@@ -1,0 +1,12 @@
+[package]
+name = "recnot"
+version = "0.0.0"
+description = "Deserialization support for the Recnot configuration language"
+edition = "2021"
+publish = false
+
+[dependencies]
+derivation = { path = "../derivation" }
+diagnostics = { path = "../../../compiler/diagnostics" }
+span = { path = "../../../compiler/span" }
+utilities = { path = "../../../compiler/utilities" }

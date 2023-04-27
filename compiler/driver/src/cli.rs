@@ -39,7 +39,7 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
         env!("TARGET"),
     );
 
-    let metadata_subcommand_disclaimer = METADATA_SUBCOMMAND_DISCLAIMER.red().to_string();
+    let recnot_subcommand_disclaimer = RECNOT_SUBCOMMAND_DISCLAIMER.red().to_string();
 
     let path_argument = Arg::new(argument::PATH).value_parser(ValueParser::path_buf());
 
@@ -218,14 +218,14 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
                         .help("The name of the package"),
                 )
                 .args(package_creation_arguments),
-            clap::Command::new(subcommand::METADATA)
-                .about("Check a metadata file for syntax errors")
+            clap::Command::new(subcommand::RECNOT)
+                .about("Check a Recnot file for syntax errors")
                 .hide(true)
-                .after_help(metadata_subcommand_disclaimer)
+                .after_help(recnot_subcommand_disclaimer)
                 .arg(
                     path_argument
                         .required(true)
-                        .help("The path to the metadata file"),
+                        .help("The path to the Recnot file"),
                 ),
         ])
         .get_matches();
@@ -327,7 +327,7 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
             },
             options: PackageCreationOptions::deserialize(matches),
         },
-        (subcommand::METADATA, matches) => Command::Metadata {
+        (subcommand::RECNOT, matches) => Command::Recnot {
             path: matches.get_one(argument::PATH).cloned().unwrap(),
         },
         _ => unreachable!(),
@@ -343,8 +343,8 @@ mod subcommand {
     pub(super) const EXPLAIN: &str = "explain";
     pub(super) const FILE: &str = "file";
     pub(super) const INITIALIZE: &str = "initialize";
-    pub(super) const METADATA: &str = "metadata";
     pub(super) const NEW: &str = "new";
+    pub(super) const RECNOT: &str = "recnot";
     pub(super) const RUN: &str = "run";
     #[cfg(feature = "lsp")]
     pub(super) const SERVE: &str = "serve";
@@ -370,7 +370,7 @@ mod option {
     pub(super) const UNSTABLE_OPTION: &str = "unstable-option";
 }
 
-const METADATA_SUBCOMMAND_DISCLAIMER: &str = "\
+const RECNOT_SUBCOMMAND_DISCLAIMER: &str = "\
     This subcommand is not subject to any stability guarantees.\n\
     It may be CHANGED in its behavior or REMOVED ENTIRELY at any time and without further notice.\n\
     If this subcommand is executed, the program behavior and\n\
@@ -392,7 +392,7 @@ pub(crate) enum Command {
         mode: PackageCreationMode,
         options: PackageCreationOptions,
     },
-    Metadata {
+    Recnot {
         path: PathBuf,
     },
 }

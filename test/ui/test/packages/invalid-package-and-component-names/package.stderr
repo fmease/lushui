@@ -1,47 +1,47 @@
 error[E036]: the package name ‘???’ is not a valid word
-  ┌─ ${TEST_FOLDER}/packages/invalid-package-and-component-names/package.metadata:2:8
+  ┌─ ${TEST_FOLDER}/packages/invalid-package-and-component-names/package.recnot:2:8
   │
 2 │ name: "???",
   │        ═══
 
 error[E036]: the component name ‘of’ is not a valid word
-  ┌─ ${TEST_FOLDER}/packages/invalid-package-and-component-names/package.metadata:6:5
+  ┌─ ${TEST_FOLDER}/packages/invalid-package-and-component-names/package.recnot:6:5
   │
 6 │     "of": {
   │     ════
 
 error[E036]: the component name ‘0//’ is not a valid word
-   ┌─ ${TEST_FOLDER}/packages/invalid-package-and-component-names/package.metadata:11:14
+   ┌─ ${TEST_FOLDER}/packages/invalid-package-and-component-names/package.recnot:11:14
    │
 11 │             "0//": { component: "hey there", package: "-e" },
    │              ═══
 
 error[E036]: the component name ‘hey there’ is not a valid word
-   ┌─ ${TEST_FOLDER}/packages/invalid-package-and-component-names/package.metadata:11:34
+   ┌─ ${TEST_FOLDER}/packages/invalid-package-and-component-names/package.recnot:11:34
    │
 11 │             "0//": { component: "hey there", package: "-e" },
    │                                  ═════════
 
 error[E036]: the package name ‘-e’ is not a valid word
-   ┌─ ${TEST_FOLDER}/packages/invalid-package-and-component-names/package.metadata:11:56
+   ┌─ ${TEST_FOLDER}/packages/invalid-package-and-component-names/package.recnot:11:56
    │
 11 │             "0//": { component: "hey there", package: "-e" },
    │                                                        ══
 
 error[E036]: the component name ‘’ is not a valid word
-   ┌─ ${TEST_FOLDER}/packages/invalid-package-and-component-names/package.metadata:12:14
+   ┌─ ${TEST_FOLDER}/packages/invalid-package-and-component-names/package.recnot:12:14
    │
 12 │             "": { component: module, provider: distribution },
    │             ⟫⟪
 
 error[E036]: the component name ‘module’ is not a valid word
-   ┌─ ${TEST_FOLDER}/packages/invalid-package-and-component-names/package.metadata:12:30
+   ┌─ ${TEST_FOLDER}/packages/invalid-package-and-component-names/package.recnot:12:30
    │
 12 │             "": { component: module, provider: distribution },
    │                              ══════
 
 error[E036]: the component name ‘data’ is not a valid word
-   ┌─ ${TEST_FOLDER}/packages/invalid-package-and-component-names/package.metadata:13:13
+   ┌─ ${TEST_FOLDER}/packages/invalid-package-and-component-names/package.recnot:13:13
    │
 13 │             data: {},
    │             ════

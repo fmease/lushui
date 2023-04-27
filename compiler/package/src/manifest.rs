@@ -5,7 +5,7 @@ use diagnostics::{
     reporter::ErasedReportedError,
     Diagnostic, ErrorCode, Reporter,
 };
-use metadata::{convert, Record, RecordWalker, WithTextContentSpanExt};
+use recnot::{convert, Record, RecordWalker, WithTextContentSpanExt};
 use session::{package::Version, unit::ComponentType};
 
 use lexer::word::Word;
@@ -20,8 +20,8 @@ pub(super) struct PackageManifest {
 
 impl PackageManifest {
     pub(super) fn parse(file: SourceFileIndex, queue: &BuildQueue) -> Result<Self> {
-        let manifest = metadata::parse(file, &queue.map, &queue.reporter)?;
-        let manifest = metadata::convert(manifest, &queue.reporter)?;
+        let manifest = recnot::parse(file, &queue.map, &queue.reporter)?;
+        let manifest = recnot::convert(manifest, &queue.reporter)?;
         let mut manifest = RecordWalker::new(manifest, &queue.reporter);
 
         let name = manifest
@@ -88,7 +88,7 @@ impl fmt::Display for NameKind {
 }
 
 fn parse_components(
-    untyped_components: Spanned<metadata::Record>,
+    untyped_components: Spanned<recnot::Record>,
     map: &SourceMap,
     reporter: &Reporter,
 ) -> Result<Spanned<Components>> {

@@ -93,7 +93,7 @@ pub enum ErrorCode {
     E034,
     /// Type analysis.
     E035,
-    /// Invalid word (package name, component name, metadata key, …).
+    /// Invalid word (package name, component name, Recnot key, …).
     E036,
     /// Exposure reach not an ancestor of definition-site namespace.
     E037,
@@ -127,13 +127,13 @@ pub enum ErrorCode {
     E062,
     /// Unrecognized known binding.
     E063,
-    /// Metadata: Type mismatch.
+    /// Recnot: Type mismatch.
     E800,
-    /// Metadata: Unknown entry.
+    /// Recnot: Unknown entry.
     E801,
-    /// Metadata: Missing entry.
+    /// Recnot: Missing entry.
     E802,
-    /// Metadata: Duplicate entries.
+    /// Recnot: Duplicate entries.
     E803,
 }
 

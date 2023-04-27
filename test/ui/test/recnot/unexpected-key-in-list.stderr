@@ -1,5 +1,5 @@
 error: found ‘:’ but expected ‘,’
-  ┌─ ${TEST_FOLDER}/metadata/unexpected-key-in-list.metadata:1:13
+  ┌─ ${TEST_FOLDER}/recnot/unexpected-key-in-list.recnot:1:13
   │
 1 │ list: [first: 0, second: 2]
   │             ═

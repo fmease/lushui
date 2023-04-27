@@ -1,5 +1,5 @@
 error: the components ‘right’ and ‘left’ are circular
-  ┌─ ${TEST_FOLDER}/packages/circular-components-from-distinct-packages/right/package.metadata:9:25
+  ┌─ ${TEST_FOLDER}/packages/circular-components-from-distinct-packages/right/package.recnot:9:25
   │
 9 │         dependencies: { left: { path: ".." } }
   │                         ════

@@ -1,5 +1,5 @@
 error: found ‘,’ but expected value
-  ┌─ ${TEST_FOLDER}/metadata/empty-list-with-comma.metadata:1:2
+  ┌─ ${TEST_FOLDER}/recnot/empty-list-with-comma.recnot:1:2
   │
 1 │ [,]
   │  ═

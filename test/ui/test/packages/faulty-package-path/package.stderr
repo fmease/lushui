@@ -1,7 +1,7 @@
 error: could not load the dependency ‘who’
-  ┌─ ${TEST_FOLDER}/packages/faulty-package-path/nowhere/package.metadata
+  ┌─ ${TEST_FOLDER}/packages/faulty-package-path/nowhere/package.recnot
   │
-  ├─ ${TEST_FOLDER}/packages/faulty-package-path/package.metadata:9:39
+  ├─ ${TEST_FOLDER}/packages/faulty-package-path/package.recnot:9:39
   │
 9 │         dependencies: { who: { path: "nowhere" }, really-who: { path: void } },
   │                                       ═══════
@@ -9,9 +9,9 @@ error: could not load the dependency ‘who’
  note: No such file or directory (os error 2)
 
 error: could not load the dependency ‘really-who’
-  ┌─ ${TEST_FOLDER}/packages/faulty-package-path/void/package.metadata
+  ┌─ ${TEST_FOLDER}/packages/faulty-package-path/void/package.recnot
   │
-  ├─ ${TEST_FOLDER}/packages/faulty-package-path/package.metadata:9:71
+  ├─ ${TEST_FOLDER}/packages/faulty-package-path/package.recnot:9:71
   │
 9 │         dependencies: { who: { path: "nowhere" }, really-who: { path: void } },
   │                                                                       ════

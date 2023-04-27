@@ -92,7 +92,7 @@ impl<'a> Parser<'a> {
         Ok(token)
     }
 
-    /// Parse a metadata document.
+    /// Parse a document.
     ///
     /// # Grammar
     ///

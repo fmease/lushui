@@ -54,13 +54,13 @@ fn parse_parameter_fail_build() {
 }
 
 #[test]
-fn parse_parameter_build_mode_unavailable_to_metadata_tests() {
+fn parse_parameter_build_mode_unavailable_to_recnot_tests() {
     assert_eq!(
         Err(Error::new(
-            "the test mode ‘build’ is not available for metadata source file tests",
+            "the test mode ‘build’ is not available for Recnot source file tests",
             span(0, 0)
         )),
-        parse_parameter("pass build", MetadataSourceFile)
+        parse_parameter("pass build", RecnotSourceFile)
     );
 }
 
@@ -299,7 +299,7 @@ fn parse_configuration_unsupported_program_args() {
         )),
         parse_configuration(
             "# TEST program-args input",
-            MetadataSourceFile,
+            RecnotSourceFile,
             &mut SourceMap::default()
         ),
     );
@@ -314,7 +314,7 @@ fn parse_configuration_unsupported_program_env_var() {
         )),
         parse_configuration(
             "# TEST program-env-var EXTRA STUFF!",
-            MetadataSourceFile,
+            RecnotSourceFile,
             &mut SourceMap::default()
         ),
     );
@@ -372,7 +372,7 @@ fn parse_configuration_revisions_depending_on_revisions() {
         )),
         parse_configuration(
             "# TEST @self revisions self",
-            MetadataSourceFile,
+            RecnotSourceFile,
             &mut SourceMap::default()
         )
     );
@@ -422,7 +422,7 @@ fn do_not_parse_configuration_inside_text_literal() {
 }
 
 #[test]
-fn parse_configuration_end_of_line_metadata_source_file() {
+fn parse_configuration_end_of_line_recnot_source_file() {
     assert_eq!(
         Ok(Configuration {
             tag: TestTag::Pass { mode: Mode::Check },
@@ -430,14 +430,14 @@ fn parse_configuration_end_of_line_metadata_source_file() {
         }),
         parse_configuration(
             "some filler content # TEST pass check",
-            MetadataSourceFile,
+            RecnotSourceFile,
             &mut SourceMap::default()
         )
     );
 }
 
 #[test]
-fn parse_configuration_end_of_line_metadata_source_file_invalid() {
+fn parse_configuration_end_of_line_recnot_source_file_invalid() {
     assert_eq!(
         Err(Error::new(
             "‘unknown’ is not a valid test parameter",
@@ -445,20 +445,20 @@ fn parse_configuration_end_of_line_metadata_source_file_invalid() {
         )),
         parse_configuration(
             r#"{ left: "right" } # TEST unknown"#,
-            MetadataSourceFile,
+            RecnotSourceFile,
             &mut SourceMap::default()
         )
     );
 }
 
 #[test]
-fn do_not_parse_configuration_inside_metadata_text() {
+fn do_not_parse_configuration_inside_recnot_text() {
     assert_eq!(
         Ok(Configuration::default()),
         parse_configuration(
             r#"snippet: "
 # TEST trigger?","#,
-            MetadataSourceFile,
+            RecnotSourceFile,
             &mut SourceMap::default()
         ),
     );

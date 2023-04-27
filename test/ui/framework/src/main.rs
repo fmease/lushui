@@ -264,7 +264,7 @@ fn handle_test_folder_entry(
 
     let path = entry.path();
 
-    // ignore folders; packages are recognized by their manifests (`package.metadata`) not their folder
+    // ignore folders; packages are recognized by their manifests (`package.recnot`) not their folder
     if entry.file_type().is_dir() {
         return;
     }
@@ -298,7 +298,7 @@ fn handle_test_folder_entry(
     {
         if arguments.inspecting == Inspecting::Yes
             && !path.with_extension("lushui").exists()
-            && !path.with_extension("metadata").exists()
+            && !path.with_extension("recnot").exists()
         {
             print_file_status(path, Status::Invalid, None);
             failed_tests.push(FailedTest::new(
@@ -323,7 +323,7 @@ fn handle_test_folder_entry(
                 message: "the file extension is not supported".into(),
                 note: Some(
                     "the file extension has to be one of \
-                    ‘metadata’, ‘lushui’, ‘stderr’ or ‘stdout’"
+                     ‘lushui’, ‘recnot’, ‘stderr’ or ‘stdout’"
                         .into(),
                 ),
                 span: None,
@@ -508,7 +508,7 @@ impl fmt::Display for Status {
 pub(crate) enum TestType {
     SourceFile,
     Package,
-    MetadataSourceFile,
+    RecnotSourceFile,
 }
 
 impl fmt::Display for TestType {
@@ -516,7 +516,7 @@ impl fmt::Display for TestType {
         f.write_str(match self {
             Self::SourceFile => "source file",
             Self::Package => "package",
-            Self::MetadataSourceFile => "metadata source file",
+            Self::RecnotSourceFile => "Recnot source file",
         })
     }
 }
@@ -524,17 +524,17 @@ impl fmt::Display for TestType {
 fn classify_test(path: &Path) -> Result<TestType, ()> {
     let extension = path.extension().ok_or(())?;
 
-    const METADATA_TEST_SUITE_NAME: &str = "metadata";
+    const RECNOT_TEST_SUITE_NAME: &str = "recnot";
 
     if extension == "lushui" {
         Ok(TestType::SourceFile)
-    } else if extension == "metadata" {
+    } else if extension == "recnot" {
         if path
             .strip_prefix(path::test_folder())
             .unwrap()
-            .starts_with(METADATA_TEST_SUITE_NAME)
+            .starts_with(RECNOT_TEST_SUITE_NAME)
         {
-            Ok(TestType::MetadataSourceFile)
+            Ok(TestType::RecnotSourceFile)
         } else {
             Ok(TestType::Package)
         }
@@ -653,8 +653,8 @@ fn compile(
             (SourceFile | Package, Mode::Check) => "check",
             (SourceFile | Package, Mode::Build) => "build",
             (SourceFile | Package, Mode::Run) => "run",
-            (MetadataSourceFile, Mode::Check) => "metadata",
-            (MetadataSourceFile, _) => unreachable!(),
+            (RecnotSourceFile, Mode::Check) => "recnot",
+            (RecnotSourceFile, _) => unreachable!(),
         });
     }
 
@@ -677,7 +677,7 @@ fn compile(
     command.envs(&configuration.compiler_env_vars);
 
     match type_ {
-        TestType::SourceFile | TestType::MetadataSourceFile => {
+        TestType::SourceFile | TestType::RecnotSourceFile => {
             command.arg(path);
         }
         TestType::Package => {

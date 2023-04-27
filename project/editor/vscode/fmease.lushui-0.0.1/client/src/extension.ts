@@ -36,7 +36,7 @@ function createLanguageClient(): LanguageClient {
         documentSelector: [{ scheme: 'file', language: 'lushui' }],
         synchronize: {
             fileEvents: [
-                workspace.createFileSystemWatcher("**/package.metadata"),
+                workspace.createFileSystemWatcher("**/package.recnot"),
             ],
         },
     };

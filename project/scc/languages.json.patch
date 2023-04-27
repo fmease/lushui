@@ -38,10 +38,10 @@ index 742f361..dd5b7a7 100644
 +      }
 +    ]
 +  },
-+  "Lushui Metadata": {
++  "Recnot": {
 +    "complexitychecks": [],
 +    "extensions": [
-+      "metadata"
++      "recnot"
 +    ],
 +    "line_comment": [
 +      "#"

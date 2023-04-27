@@ -1,0 +1,28 @@
+{
+    "name": "recnot",
+    "displayName": "Recnot",
+    "description": "Recnot language support",
+    "publisher": "fmease",
+    "version": "0.0.1",
+    "engines": {
+        "vscode": "^1.22.0"
+    },
+    "contributes": {
+        "languages": [
+            {
+                "id": "recnot",
+                "extensions": [
+                    ".recnot"
+                ],
+                "configuration": "./language-configuration.json"
+            }
+        ],
+        "grammars": [
+            {
+                "language": "recnot",
+                "scopeName": "source.recnot",
+                "path": "./syntaxes/recnot.tmLanguage.json"
+            }
+        ]
+    }
+}

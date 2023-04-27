@@ -169,7 +169,7 @@ fn blocks<'a>(
 ) -> impl Iterator<Item = Spanned<&'a str>> + 'a {
     let comment = language.comment();
 
-    use metadata as _;
+    use recnot as _;
 
     let block: Vec<_> = match language {
         Language::Lushui => lexer::lex(
@@ -184,15 +184,15 @@ fn blocks<'a>(
         .map(|token| token.span)
         .collect(),
 
-        Language::Metadata => metadata::lexer::lex(
+        Language::Recnot => recnot::lexer::lex(
             file,
-            &metadata::lexer::Options {
+            &recnot::lexer::Options {
                 keep_comments: true,
             },
         )
         .tokens
         .into_iter()
-        .filter(|token| token.bare == metadata::lexer::BareToken::Comment)
+        .filter(|token| token.bare == recnot::lexer::BareToken::Comment)
         .map(|token| token.span)
         .collect(),
     };
@@ -358,8 +358,8 @@ fn parse_mode(source: Spanned<&str>, type_: TestType) -> Result<Mode, Error> {
     #[allow(clippy::match_same_arms)]
     match (type_, mode) {
         (SourceFile | Package, Mode::Check | Mode::Build | Mode::Run) => {}
-        (MetadataSourceFile, Mode::Check) => {}
-        (MetadataSourceFile, Mode::Build | Mode::Run) => {
+        (RecnotSourceFile, Mode::Check) => {}
+        (RecnotSourceFile, Mode::Build | Mode::Run) => {
             return Err(Error::new(
                 format!(
                     "the test mode ‘{}’ is not available for {type_} tests",
@@ -397,14 +397,14 @@ enum ParameterKind<'src> {
 #[derive(Clone, Copy)]
 enum Language {
     Lushui,
-    Metadata,
+    Recnot,
 }
 
 impl Language {
     const fn comment(self) -> &'static str {
         match self {
             Self::Lushui => ";;;",
-            Self::Metadata => "#",
+            Self::Recnot => "#",
         }
     }
 }
@@ -412,7 +412,7 @@ impl Language {
 impl TestType {
     fn language(self) -> Language {
         match self {
-            Self::Package | Self::MetadataSourceFile => Language::Metadata,
+            Self::Package | Self::RecnotSourceFile => Language::Recnot,
             Self::SourceFile => Language::Lushui,
         }
     }

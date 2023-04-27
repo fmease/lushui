@@ -1,17 +1,17 @@
 error: the package ‘lost-in-the-local-forest’ does not contain a component called ‘who’
-   ┌─ ${TEST_FOLDER}/packages/undefined-package-local-components/package.metadata:11:13
+   ┌─ ${TEST_FOLDER}/packages/undefined-package-local-components/package.recnot:11:13
    │
 11 │             who: {},
    │             ═══
 
 error: the package ‘lost-in-the-local-forest’ does not contain a component called ‘wait-who’
-   ┌─ ${TEST_FOLDER}/packages/undefined-package-local-components/package.metadata:12:13
+   ┌─ ${TEST_FOLDER}/packages/undefined-package-local-components/package.recnot:12:13
    │
 12 │             wait-who: {},
    │             ════════
 
 error: the package ‘lost-in-the-local-forest’ does not contain a component called ‘i-mean-who’
-   ┌─ ${TEST_FOLDER}/packages/undefined-package-local-components/package.metadata:13:39
+   ┌─ ${TEST_FOLDER}/packages/undefined-package-local-components/package.recnot:13:39
    │
 13 │             no-wait-who: { component: i-mean-who },
    │                                       ══════════

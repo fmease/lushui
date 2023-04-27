@@ -1,17 +1,17 @@
 error: the component type ‘example’ is not supported yet
-  ┌─ ${TEST_FOLDER}/packages/unsupported-component-types/package.metadata:7:16
+  ┌─ ${TEST_FOLDER}/packages/unsupported-component-types/package.recnot:7:16
   │
 7 │         type: "example",
   │                ═══════
 
 error: the component type ‘test-suite’ is not supported yet
-   ┌─ ${TEST_FOLDER}/packages/unsupported-component-types/package.metadata:11:15
+   ┌─ ${TEST_FOLDER}/packages/unsupported-component-types/package.recnot:11:15
    │
 11 │         type: test-suite,
    │               ══════════
 
 error: the component type ‘benchmark-suite’ is not supported yet
-   ┌─ ${TEST_FOLDER}/packages/unsupported-component-types/package.metadata:15:16
+   ┌─ ${TEST_FOLDER}/packages/unsupported-component-types/package.recnot:15:16
    │
 15 │         type: "benchmark-suite",
    │                ═══════════════

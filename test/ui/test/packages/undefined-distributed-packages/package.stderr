@@ -1,7 +1,7 @@
 error: could not load the dependency ‘who’
-   ┌─ ${DISTRIBUTED_LIBRARIES_FOLDER}/dis/package.metadata
+   ┌─ ${DISTRIBUTED_LIBRARIES_FOLDER}/dis/package.recnot
    │
-   ├─ ${TEST_FOLDER}/packages/undefined-distributed-packages/package.metadata:13:13
+   ├─ ${TEST_FOLDER}/packages/undefined-distributed-packages/package.recnot:13:13
    │
 13 │             who: { component: "dis", provider: distribution },
    │             ═══
@@ -9,9 +9,9 @@ error: could not load the dependency ‘who’
   note: No such file or directory (os error 2)
 
 error: could not load the dependency ‘kore’
-   ┌─ ${DISTRIBUTED_LIBRARIES_FOLDER}/kore/package.metadata
+   ┌─ ${DISTRIBUTED_LIBRARIES_FOLDER}/kore/package.recnot
    │
-   ├─ ${TEST_FOLDER}/packages/undefined-distributed-packages/package.metadata:11:13
+   ├─ ${TEST_FOLDER}/packages/undefined-distributed-packages/package.recnot:11:13
    │
 11 │             kore: { provider: distribution },
    │             ════
@@ -19,9 +19,9 @@ error: could not load the dependency ‘kore’
   note: No such file or directory (os error 2)
 
 error: could not load the dependency ‘core’
-   ┌─ ${DISTRIBUTED_LIBRARIES_FOLDER}/kore/package.metadata
+   ┌─ ${DISTRIBUTED_LIBRARIES_FOLDER}/kore/package.recnot
    │
-   ├─ ${TEST_FOLDER}/packages/undefined-distributed-packages/package.metadata:12:13
+   ├─ ${TEST_FOLDER}/packages/undefined-distributed-packages/package.recnot:12:13
    │
 12 │             core: { component: kore, provider: distribution },
    │             ════

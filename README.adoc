@@ -127,7 +127,7 @@ If you want to restrict yourself to UI tests, execute `./test/ui/run`.
 === Visual Studio Code
 
 Basic language support (syntax highlighting and a rudimentary language server) is available as an extension.
-For package metadata files, we currently provide a separate extension.
+For Recnot files (a type of configuration files), we currently provide a separate extension.
 It's planned to be integrated into the main extension at some point.
 
 ==== Installation (Linux)
@@ -144,7 +144,7 @@ Then, copy or symlink the folder to `~/.vscode/extensions/`.
 The compiler currently needs to be built with (Cargo) feature `lsp` and added to the `$PATH` as `lushui-nightly`
 for the language server to work.
 
-For package metadata support (a configuration language), copy or symlink the folder `./project/editor/vscode/fmease.lushui-metadata-syntax-0.0.1`
+For Recnot language support (a configuration language), copy or symlink the folder `./project/editor/vscode/fmease.lushui-recnot-0.0.1`
 to `~/.vscode/extensions/`.
 
 == Compiling With LLVM (Experimental)

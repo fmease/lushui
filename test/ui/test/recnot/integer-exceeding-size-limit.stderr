@@ -1,5 +1,5 @@
 error: the number exceeds the size limit
-  ┌─ ${TEST_FOLDER}/metadata/integer-exceeding-size-limit.metadata:2:5
+  ┌─ ${TEST_FOLDER}/recnot/integer-exceeding-size-limit.recnot:2:5
   │
 2 │     -9223372036854775809,
   │     ════════════════════
@@ -7,7 +7,7 @@ error: the number exceeds the size limit
  note: numbers must not be smaller than -2^63
 
 error: the number exceeds the size limit
-  ┌─ ${TEST_FOLDER}/metadata/integer-exceeding-size-limit.metadata:3:5
+  ┌─ ${TEST_FOLDER}/recnot/integer-exceeding-size-limit.recnot:3:5
   │
 3 │     9223372036854775808,
   │     ═══════════════════

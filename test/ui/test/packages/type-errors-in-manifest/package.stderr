@@ -1,41 +1,41 @@
 error[E800]: expected type ‘text’ but got type ‘integer’
-  ┌─ ${TEST_FOLDER}/packages/type-errors-in-manifest/package.metadata:2:7
+  ┌─ ${TEST_FOLDER}/packages/type-errors-in-manifest/package.recnot:2:7
   │
 2 │ name: 0, version: [ 2, "0", "0" ],
   │       ═ has the wrong type
 
 error[E800]: expected type ‘text’ but got type ‘list’
-  ┌─ ${TEST_FOLDER}/packages/type-errors-in-manifest/package.metadata:2:19
+  ┌─ ${TEST_FOLDER}/packages/type-errors-in-manifest/package.recnot:2:19
   │
 2 │ name: 0, version: [ 2, "0", "0" ],
   │                   ═══════════════ has the wrong type
 
 error[E800]: expected type ‘record’ but got type ‘text’
-  ┌─ ${TEST_FOLDER}/packages/type-errors-in-manifest/package.metadata:5:11
+  ┌─ ${TEST_FOLDER}/packages/type-errors-in-manifest/package.recnot:5:11
   │
 5 │     ichi: "core",
   │           ══════ has the wrong type
 
 error[E802]: the record does not contain the entry ‘path’
-  ┌─ ${TEST_FOLDER}/packages/type-errors-in-manifest/package.metadata:6:9
+  ┌─ ${TEST_FOLDER}/packages/type-errors-in-manifest/package.recnot:6:9
   │
 6 │     ni: {},
   │         ══
 
 error[E802]: the record does not contain the entry ‘type’
-  ┌─ ${TEST_FOLDER}/packages/type-errors-in-manifest/package.metadata:6:9
+  ┌─ ${TEST_FOLDER}/packages/type-errors-in-manifest/package.recnot:6:9
   │
 6 │     ni: {},
   │         ══
 
 error[E802]: the record does not contain the entry ‘path’
-  ┌─ ${TEST_FOLDER}/packages/type-errors-in-manifest/package.metadata:7:10
+  ┌─ ${TEST_FOLDER}/packages/type-errors-in-manifest/package.recnot:7:10
   │
 7 │     san: { type: false, },
   │          ════════════════
 
 error[E800]: expected type ‘text’ but got type ‘boolean’
-  ┌─ ${TEST_FOLDER}/packages/type-errors-in-manifest/package.metadata:7:18
+  ┌─ ${TEST_FOLDER}/packages/type-errors-in-manifest/package.recnot:7:18
   │
 7 │     san: { type: false, },
   │                  ═════ has the wrong type
