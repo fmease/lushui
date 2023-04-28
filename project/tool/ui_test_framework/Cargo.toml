@@ -1,20 +1,20 @@
 [package]
-name = "golden-ui-testing-framework"
+name = "ui_test_framework"
 version = "0.1.0"
-description = "The golden UI testing framework for the compiler"
+description = "A golden UI testing framework for the Lushui compiler"
 edition = "2021"
 publish = false
 
 [dependencies]
 clap = { version = "4.1.8", features = ["deprecated", "string"] }
 colored = "2.0.0"
-derivation = { path = "../../../project/library/derivation" }
+derivation = { path = "../../library/derivation" }
 diagnostics = { path = "../../../compiler/diagnostics" }
 difference = "2.0.0"
 joinery = "3.1.0"
 lexer = { path = "../../../compiler/lexer" }
 pathdiff = "0.2.1"
-recnot = { path = "../../../project/library/recnot" }
+recnot = { path = "../../library/recnot" }
 span = { path = "../../../compiler/span" }
 terminal_size = "0.2.5"
 unicode-width = "0.1.10"

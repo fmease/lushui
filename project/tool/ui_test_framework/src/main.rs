@@ -857,7 +857,7 @@ mod path {
     pub(crate) fn test_folder() -> &'static str {
         static PATH: LazyLock<String> = LazyLock::new(|| {
             Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../test")
+                .join("../../../test/ui")
                 .canonicalize()
                 .unwrap()
                 .to_str()

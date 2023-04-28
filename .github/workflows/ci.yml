@@ -65,7 +65,7 @@ jobs:
       run: cargo test --workspace --exclude codegen_llvm --features cranelift,lsp
     - name: Run UI tests
       # @Task test with LLVM and Cranelift
-      run: ./test/ui/run --release --timeout=20
+      run: ./test/run ui --release --timeout=20
 
   test-on-windows:
     name: Run tests on Windows
@@ -86,7 +86,7 @@ jobs:
       run: cargo test --workspace --exclude codegen_llvm --features cranelift,lsp
     - name: Run UI tests
       # @Task build with LLVM and Cranelift
-      run: ./tests/ui/run --release --timeout=20
+      run: ./test/run ui --release --timeout=20
 
   build-documentation:
     name: Build documentation (on Linux)

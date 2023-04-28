@@ -4,8 +4,8 @@ cargo-features = ["profile-rustflags"]
 members = [
     "compiler/*",
     "project/library/*",
+    "project/tool/*",
     "library/core/source/boot",
-    "test/ui/framework",
 ]
 default-members = ["compiler/main"]
 resolver = "2"

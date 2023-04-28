@@ -2,16 +2,68 @@
 
 FOLDER="$( dirname $( realpath $0 ) )"
 
-# Run unit tests (via the rust testing framework)
-cargo \
-    +nightly \
-    test \
-    --quiet \
-    --manifest-path="$FOLDER/../Cargo.toml" \
-    --workspace \
-    --all-features \
-    -- \
-    --format pretty
+suite="$1"
 
-# Run UI tests (via the golden UI testing framework)
-"$FOLDER/ui/run"
+case "$suite" in
+    all | '')
+        echo 'note: running all test suites'
+        suite=all
+        shift
+        ;;
+    ui | unit)
+        shift
+        ;;
+    'unit:nodoc')
+        suite=unit
+        EXTRA_CARGO_TEST_FLAGS='--all-targets'
+        shift
+        ;;
+    'unit:doc')
+        suite=unit
+        EXTRA_CARGO_TEST_FLAGS='--doc'
+        shift
+        ;;
+    *)
+        >&2 echo "error: unknown test suite ‘$suite’"
+        >&2 echo '       available suites are ‘all’, ‘unit’, ‘unit:nodoc’, ‘unit:doc’, ‘ui’'
+        exit 1
+esac
+
+selected () {
+    if [[ $suite == all || $suite == $1 ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+selected "ui"
+if [[ $? == 0 ]]; then
+    echo "note: running golden ui tests"
+    cargo \
+        +nightly \
+        run \
+        --release \
+        --quiet \
+        --manifest-path="$FOLDER/../project/tool/ui_test_framework/Cargo.toml" \
+        -- \
+        "$@"
+fi
+
+selected "unit"
+if [[ $? == 0 ]]; then
+    echo "note: running unit tests"
+
+    cargo \
+        +nightly \
+        test \
+        --quiet \
+        --manifest-path="$FOLDER/../Cargo.toml" \
+        --workspace \
+        --all-features \
+        "$EXTRA_CARGO_TEST_FLAGS" \
+        -- \
+        --format pretty
+fi
+
+echo "xxx: end"

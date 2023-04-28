@@ -640,26 +640,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "golden-ui-testing-framework"
-version = "0.1.0"
-dependencies = [
- "clap",
- "colored",
- "derivation",
- "diagnostics",
- "difference",
- "joinery",
- "lexer",
- "pathdiff",
- "recnot",
- "span",
- "terminal_size",
- "unicode-width",
- "utilities",
- "walkdir",
-]
-
-[[package]]
 name = "hashbrown"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1596,6 +1576,26 @@ dependencies = [
  "resolver",
  "session",
  "utilities",
+]
+
+[[package]]
+name = "ui_test_framework"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "colored",
+ "derivation",
+ "diagnostics",
+ "difference",
+ "joinery",
+ "lexer",
+ "pathdiff",
+ "recnot",
+ "span",
+ "terminal_size",
+ "unicode-width",
+ "utilities",
+ "walkdir",
 ]
 
 [[package]]
