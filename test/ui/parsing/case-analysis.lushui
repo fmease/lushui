@@ -24,7 +24,7 @@ main: Untyped =
 use extern.core.(
     nat.Nat,
     bool.Bool.(self, false, true),
-    )
+)
 
 invert (b: Bool): Bool =
     case b of

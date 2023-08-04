@@ -6,7 +6,7 @@ use extern.core.(
     bool.Bool,
     list.List,
     tuple.Tuple,
-    )
+)
 
 combine: Nat -> Nat -> Nat = nat.+
 successor: Nat -> Nat = combine 1

@@ -5,7 +5,7 @@ use extern.core.(
     list.List,
     bool.(Bool, false, true),
     unit.(Unit, unit),
-    )
+)
 
 data Any: Type of
     any: For (A: Type) -> A -> Any

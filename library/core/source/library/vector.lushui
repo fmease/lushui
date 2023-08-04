@@ -1,8 +1,10 @@
 ;; Homogeneous lists with a fixed length and related functions.
 module
 
-use topmost.type.Type
-use topmost.nat.(Nat, +)
+use topmost.(
+    type.Type,
+    nat.(Nat, +),
+)
 
 @public @known
 data Vector A: For (n: Nat) -> Type of

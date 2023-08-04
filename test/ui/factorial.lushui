@@ -3,7 +3,7 @@
 use extern.core.(
     bool.(self, Bool, false, true),
     nat.(self, Nat),
-    )
+)
 
 main: Nat = factorial 20
 ;;; main: Nat = factorial 50 ;;; @Note takes several minutes after a rustc update (compared to a second)

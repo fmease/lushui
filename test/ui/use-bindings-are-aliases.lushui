@@ -4,7 +4,7 @@ use extern.core.(
     type.Type,
     nat.(Nat, Nat as N),
     list.List,
-    )
+)
 
 data Source: Type of
     source: N -> Source

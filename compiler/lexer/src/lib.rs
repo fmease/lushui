@@ -301,10 +301,13 @@ impl<'a> Lexer<'a> {
             .map_or(false, |token| token.bare.introduces_indented_section());
 
         // Squash consecutive line breaks into a single one.
+        // This leads to more legible and fewer diagnostics later in the parser in case the
+        // line break wasn't expected. Further, it might lead to less churn in the parser.
         self.take_while(|character| character == '\n');
-        // Tentatively register the line break. If certain conditions are met
-        // later on (*), we will remove it again.
+        // Tentatively register the line break.
+        // If certain conditions are met later on (*), we will remove it again.
         self.add(LineBreak);
+        let mut has_removed_line_break = false;
 
         self.local_span = self
             .index()
@@ -313,7 +316,10 @@ impl<'a> Lexer<'a> {
         let mut spaces = Spaces(0);
         self.take_while_with(|character| character == ' ', || spaces.0 += 1);
 
-        // If the line is empty ignore it. This is important for indented comments.
+        // If the line is empty ignore it. While most places in the parser can deal with
+        // “empty declarations”, in the future (once `line_is_empty` can detect comments
+        // as well) we might want to simplify the parser by throwing away the special
+        // handling (i.e. skipping) of empty lines.
         if self.line_is_empty() {
             spaces = self.indentation;
         }
@@ -336,6 +342,7 @@ impl<'a> Lexer<'a> {
             if change == Ordering::Greater {
                 // (*) Remove the line break again.
                 self.tokens.pop();
+                has_removed_line_break = true;
                 self.add(BareToken::Indentation);
                 self.sections.enter(Section::Indented {
                     brackets: self.brackets.stack.len(),
@@ -355,6 +362,7 @@ impl<'a> Lexer<'a> {
             {
                 // (*) Remove the line break again.
                 self.tokens.pop();
+                has_removed_line_break = true;
             }
 
             if change == Ordering::Greater {
@@ -365,11 +373,12 @@ impl<'a> Lexer<'a> {
         if change == Ordering::Less {
             // Remove syntactically legal but superfluous line breaks that
             // come before dedendentation (which also act as terminators).
-            // @Question is this still reachable???
             if self.sections.current_continued().0.is_indented()
                 && let Some(Spanned!(_, BareToken::LineBreak)) = self.tokens.last()
             {
+                // (*) Remove the line break again.
                 self.tokens.pop();
+                has_removed_line_break = true;
             }
 
             for _ in 0..indentation.0 {
@@ -384,6 +393,15 @@ impl<'a> Lexer<'a> {
         }
 
         self.indentation = spaces;
+
+        // @Task only remove the line break if the indentation of the closing bracket is
+        // greater or equal to the one of the corresponding opening bracket.
+        // @Note actually it would be even better if we could emit a nice diagnostic for
+        // closing brackets that are dedented too far.
+        if let Some(')' | ']' | '}') = self.peek() && !has_removed_line_break {
+            // (*) Remove the line break again.
+            self.tokens.pop();
+        }
     }
 
     fn line_is_empty(&mut self) -> bool {

@@ -19,4 +19,4 @@ use foo.(A as F1, B as F2)
 use topmost.foo.alpha.(
     gamma.delta.zeta.(foo, bar),
     xoo.moo.doo as XXX
-    )
+)

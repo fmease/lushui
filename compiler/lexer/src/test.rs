@@ -607,7 +607,7 @@ of
 }
 
 #[test]
-fn no_superfluous_virtual_semicolon_before_virtual_curly_bracket_with_continued_section() {
+fn no_superfluous_line_break_before_dedentation_token_with_continued_section() {
     assert_lex_eq!(
         "\
 of
@@ -627,7 +627,7 @@ of
 }
 
 #[test]
-fn empty_indented_section_does_not_create_virtual_curly_brackets() {
+fn empty_indented_section_does_not_create_indentation_tokens() {
     assert_lex_eq!(
         "\
 of
@@ -694,7 +694,6 @@ fn round_bracket_closes_indented_section() {
             Token::new(span(14, 16), Of),
             Token::new(span(17, 21), Indentation),
             Token::new(span(21, 23), Word("fo".into())),
-            Token::new(span(23, 24), LineBreak),
             // @Question better span?
             Token::new(span(28, 29), Dedentation),
             Token::new(span(28, 29), ClosingRoundBracket),
@@ -775,6 +774,24 @@ fn brackets_reset_indentation() {
             Token::new(span(21, 21), EndOfInput),
         ],
     )
+}
+
+#[test]
+fn dedented_closing_bracket_does_not_create_line_break() {
+    assert_lex_eq!(
+        "\
+hook = (
+    element
+)",
+        vec![
+            Token::new(span(1, 5), Word("hook".into())),
+            Token::new(span(6, 7), Equals),
+            Token::new(span(8, 9), OpeningRoundBracket),
+            Token::new(span(14, 21), Word("element".into())),
+            Token::new(span(22, 23), ClosingRoundBracket),
+            Token::new(span(23, 23), EndOfInput),
+        ]
+    );
 }
 
 #[test]

@@ -1,6 +1,11 @@
 ;; Types and functions related to comparing and ordering.
 module
 
+use topmost.(
+    unit.(unit, Unit, Thunk, force),
+    int.Int,
+)
+
 @public
 data Ordering of
     less
@@ -16,9 +21,6 @@ invert (o: Ordering): Ordering =
         less => greater
         equal => equal
         greater => less
-
-use topmost.unit.(unit, Unit, Thunk, force)
-use topmost.int.Int
 
 ;;; @Task uncomment once `@lazy` is implemented
 ;;; @public

@@ -5,7 +5,7 @@ use extern.core.(
     nat32.Nat32,
     int.Int,
     int64.Int64,
-    )
+)
 
 alpha: Int = Int.-1000
 

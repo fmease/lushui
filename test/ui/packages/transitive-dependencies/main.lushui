@@ -1,7 +1,12 @@
 ;;; TEST auxiliary packages/transitive-dependencies
 
-use extern.core.(type.Type, nat.(Nat, ==), bool.Bool)
-use extern.core.(tuple.Tuple, list.List)
+use extern.core.(
+    type.Type,
+    nat.(Nat, ==),
+    bool.Bool,
+    tuple.Tuple,
+    list.List,
+)
 use extern.alpha.(bet, g-one, jamma)
 use extern.gamma.(G as The-G, g1, gam)
 
