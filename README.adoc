@@ -55,7 +55,7 @@ data Option A of
 use Option.(none, some)
 
 @public
-map 'A 'B (x: Option A) (f: A -> B): B =
+map 'A 'B (f: A -> B) (x: Option A): Option B =
     case x of
         none => none
         some (let x) => some (f x)
@@ -63,7 +63,7 @@ map 'A 'B (x: Option A) (f: A -> B): B =
 use extern.core.(type.Type, nat.(Nat, +, *))
 
 process (n: Option Nat): Option Nat =
-    map n for n => + n 1
+    map (for n => + n 1) n
 
 
 @public @transparent

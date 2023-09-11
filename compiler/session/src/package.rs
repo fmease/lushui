@@ -56,7 +56,7 @@ pub enum PossiblyUnresolvedComponent {
 pub struct ManifestPath(pub internment::Intern<CanonicalPathBuf>);
 
 impl ManifestPath {
-    pub const FILE_NAME: &str = "package.recnot";
+    pub const FILE_NAME: &'static str = "package.recnot";
 
     pub fn folder(&self) -> &CanonicalPath {
         self.0.parent().unwrap()

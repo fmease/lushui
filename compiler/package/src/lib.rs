@@ -749,7 +749,7 @@ fn parse_component_name_from_file_path(path: &Path, reporter: &Reporter) -> Resu
     // @Task do not unwrap! provide custom error
     let name = name.to_str().unwrap();
 
-    Word::parse(name.into()).map_err(|_| {
+    Word::parse(name.into()).map_err(|()| {
         // @Task DRY @Question is the common code justified?
         // @Question isn't this function used in such a way that it's
         //     "component and package name"?

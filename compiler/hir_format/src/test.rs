@@ -721,7 +721,7 @@ fn attributes() {
             .into(),
         ),
         &session,
-    )
+    );
 }
 
 #[test]

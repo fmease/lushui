@@ -342,14 +342,14 @@ impl Parser<'_> {
                 break;
             }
 
-            let name = self.parse_word()?;
-            let mut item = None;
+            let binder = self.parse_word()?;
+            let mut body = None;
 
             if self.consume(Equals) {
-                item = Some(self.parse_item()?);
+                body = Some(self.parse_item()?);
             }
 
-            fields.push(ast::Field { name, item });
+            fields.push(ast::Field { binder, body });
 
             if self.consume(Semicolon) {
                 base = Some(self.parse_item()?);

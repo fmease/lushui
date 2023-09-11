@@ -718,7 +718,35 @@ expected type ‘_ -> _’
             // @Task
             IntrinsicApplication(_) => todo!("inferring the type of intrinsic applications"),
             // @Task
-            Projection(_) => todo!("inferring the type of projections"),
+            Projection(projection) => {
+                let _basis_type = self.infer_type_of_expression(&projection.basis, scope)?;
+
+                // @Task check if the basis type is a record and if it has given field
+                // @Note somehow substitute stuff, consider
+
+                // record R A of
+                //     f: A
+                // main = R.{f = Nat.0}::f ;;; 0 : Nat
+
+                // This might need unification
+
+                todo!("inferring the type of projections")
+            }
+            // @Beacon @Beacon @Beacon @Bug unsound, check if the type is record type first!
+            // @Task type-check the fields, too!
+            Record(record) => {
+                // @Task check if `type_` is a record type
+                // @Task check if the fields are correct (amount, names, types)
+
+                // @Note this is so ugly!
+                hir::Identifier::new(
+                    record.type_.bare,
+                    self.session[record.type_.bare]
+                        .source
+                        .respan(record.type_.span),
+                )
+                .to_item()
+            }
             IO(_) => self
                 .session
                 .require_special(Type::IO, Some(expression.span))?

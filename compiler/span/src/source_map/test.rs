@@ -387,17 +387,19 @@ fn lines_highlight_containing_trailing_line_break() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "not yet implemented")]
 #[ignore = "panicking on invalid spans is currently not guaranteed"]
 fn lines_span_out_of_bounds_single_line_source() {
     let mut map = SourceMap::default();
     map.add_str(Anonymous, "abcdefghi\n");
 
     map.lines_with_highlight(span(6, 20));
+
+    todo!()
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "called `Option::unwrap()` on a `None` value")]
 fn lines_span_out_of_bounds_single_line_source_no_trailing_line_break() {
     let mut map = SourceMap::default();
     map.add_str(Anonymous, "abcdefghi");
@@ -406,7 +408,7 @@ fn lines_span_out_of_bounds_single_line_source_no_trailing_line_break() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "not yet implemented")]
 #[ignore = "panicking on invalid spans is currently not guaranteed"]
 fn lines_span_out_of_bounds_multi_line_source() {
     let mut map = SourceMap::default();
@@ -416,7 +418,7 @@ fn lines_span_out_of_bounds_multi_line_source() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "called `Option::unwrap()` on a `None` value")]
 fn lines_span_out_of_bounds_multi_line_source_no_trailing_line_break() {
     let mut map = SourceMap::default();
     map.add_str(Anonymous, "abc\ndefghi");
@@ -425,7 +427,7 @@ fn lines_span_out_of_bounds_multi_line_source_no_trailing_line_break() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "called `Option::unwrap()` on a `None` value")]
 fn lines_span_out_of_bounds_empty_source() {
     let mut map = SourceMap::default();
     map.add_str(Anonymous, "");
@@ -435,7 +437,7 @@ fn lines_span_out_of_bounds_empty_source() {
 
 // @Task implement this
 #[test]
-#[should_panic]
+#[should_panic(expected = "not yet implemented")]
 #[ignore = "unimplemented"]
 fn lines_span_does_not_start_at_char_boundary() {
     todo!()
@@ -443,7 +445,7 @@ fn lines_span_does_not_start_at_char_boundary() {
 
 // @Task implement this
 #[test]
-#[should_panic]
+#[should_panic(expected = "not yet implemented")]
 #[ignore = "unimplemented"]
 fn lines_span_does_not_end_at_char_boundary() {
     todo!()

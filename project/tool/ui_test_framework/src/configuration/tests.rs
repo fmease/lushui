@@ -167,7 +167,7 @@ fn parse_parameter_missing_argument_compiler_env_var_0() {
             span(0, 0)
         )),
         parse_parameter("compiler-env-var", SourceFile)
-    )
+    );
 }
 
 #[test]
@@ -178,7 +178,7 @@ fn parse_parameter_missing_argument_compiler_env_var_1() {
             span(0, 0)
         )),
         parse_parameter("compiler-env-var BACKTRACE", SourceFile)
-    )
+    );
 }
 
 #[test]
@@ -186,7 +186,7 @@ fn parse_parameter_invalid_argument() {
     assert_eq!(
         Err(Error::new("‘no’ is not a valid duration", span(0, 0))),
         parse_parameter("timeout no", SourceFile)
-    )
+    );
 }
 
 #[test]
@@ -208,7 +208,7 @@ fn parse_parameter_too_many_arguments_pass() {
             span(0, 0)
         )),
         parse_parameter("pass check -Zinternals --no-core --tlib", SourceFile)
-    )
+    );
 }
 
 #[test]
@@ -355,7 +355,7 @@ fn parse_configuration_unsupported_substitution() {
             span(1, 40)
         )),
         parse_configuration(
-            r#";;; TEST substitution DIR path/to/(\w+)"#,
+            r";;; TEST substitution DIR path/to/(\w+)",
             SourceFile,
             &mut SourceMap::default()
         ),

@@ -26,6 +26,7 @@ macro assert_lex_eq {
 }
 
 #[track_caller]
+#[allow(clippy::needless_pass_by_value)] // more legible call sites, flexibility doesn't matter here
 fn assert_eq(actual: Outcome, expected: Outcome) {
     assert!(
         actual == expected,
@@ -98,7 +99,7 @@ it",
             Token::new(span(23, 25), Word("it".into())),
             Token::new(span(25, 25), EndOfInput),
         ],
-    )
+    );
 }
 
 #[test]
@@ -157,7 +158,7 @@ fn shebang_lookalike_not_first_line() {
             Token::new(span(23, 24), LineBreak),
             Token::new(span(24, 24), EndOfInput),
         ],
-    )
+    );
 }
 
 #[test]
@@ -248,7 +249,7 @@ fn identifier_with_trailing_dot() {
             Token::new(span(10, 11), Dot),
             Token::new(span(11, 11), EndOfInput),
         ],
-    )
+    );
 }
 
 #[test]
@@ -261,7 +262,7 @@ fn identifier_dot_symbol() {
             Token::new(span(11, 14), Symbol("+>!".into())),
             Token::new(span(14, 14), EndOfInput),
         ],
-    )
+    );
 }
 
 #[test]
@@ -274,7 +275,7 @@ fn lex_identifier_dot_dotted_symbol() {
             Token::new(span(11, 16), Symbol("$.?!.".into())),
             Token::new(span(16, 16), EndOfInput),
         ],
-    )
+    );
 }
 
 #[test]
@@ -286,7 +287,7 @@ fn lex_identifier_and_dotted_symbol_after_space() {
             Token::new(span(11, 17), Symbol(".$.?!.".into())),
             Token::new(span(17, 17), EndOfInput),
         ],
-    )
+    );
 }
 
 #[test]
@@ -299,7 +300,7 @@ fn lex_keyword_dot_symbol() {
             Token::new(span(6, 7), Symbol("#".into())),
             Token::new(span(7, 7), EndOfInput),
         ],
-    )
+    );
 }
 
 #[test]
@@ -648,7 +649,7 @@ of
             Token::new(span(18, 18), LineBreak),
             Token::new(span(18, 18), EndOfInput),
         ],
-    )
+    );
 }
 
 #[test]
@@ -773,7 +774,7 @@ fn brackets_reset_indentation() {
             Token::new(span(20, 21), LineBreak),
             Token::new(span(21, 21), EndOfInput),
         ],
-    )
+    );
 }
 
 #[test]

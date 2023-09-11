@@ -24,8 +24,8 @@ mod summary;
 
 fn main() -> ExitCode {
     match try_main() {
-        Ok(_) => ExitCode::SUCCESS,
-        Err(_) => ExitCode::FAILURE,
+        Ok(()) => ExitCode::SUCCESS,
+        Err(()) => ExitCode::FAILURE,
     }
 }
 

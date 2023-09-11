@@ -96,7 +96,7 @@ pub enum ParentDeclarationKind {
 impl Target for ast::Expression {
     type Context = ();
 
-    fn name(&self, _: ()) -> &'static str {
+    fn name(&self, (): ()) -> &'static str {
         use ast::BareExpression::*;
 
         match &self.bare {
@@ -121,7 +121,7 @@ impl Target for ast::Expression {
         }
     }
 
-    fn targets(&self, _: ()) -> Targets {
+    fn targets(&self, (): ()) -> Targets {
         use ast::BareExpression::*;
 
         match self.bare {
@@ -147,7 +147,7 @@ impl Target for ast::Expression {
 impl Target for ast::Pattern {
     type Context = ();
 
-    fn name(&self, _: ()) -> &'static str {
+    fn name(&self, (): ()) -> &'static str {
         use ast::BarePattern::*;
 
         match self.bare {
@@ -162,7 +162,7 @@ impl Target for ast::Pattern {
         }
     }
 
-    fn targets(&self, _: ()) -> Targets {
+    fn targets(&self, (): ()) -> Targets {
         use ast::BarePattern::*;
 
         match self.bare {
@@ -371,7 +371,7 @@ pub enum BareAttribute {
     /// Make the declaration available in the context.
     ///
     /// Not part of the surface language.
-    /// Used by the lowered form of given-declarations.
+    /// Produced by the lowering of given-declarations.
     Context,
     /// Deny a [lint](Lint).
     ///
@@ -455,7 +455,7 @@ pub enum BareAttribute {
     /// location <0:path:Text-Literal>
     /// ```
     Location { path: Atom },
-    /// Mark a data type binding to be likely expanded in the number of constructors.
+    /// Mark a data type to be likely expanded in the number of constructors.
     Moving,
     /// Make the binding part of the public API or at least visible in modules higher up.
     ///
@@ -467,6 +467,11 @@ pub enum BareAttribute {
     /// public [<0:reach:Path>]
     ///
     Public(Public),
+    /// Mark a data type as a record or trait.
+    ///
+    /// Not part of the surface language.
+    /// Produced by the lowering of record and trait declarations.
+    Record,
     /// Define the recursion limit of the TWI.
     ///
     /// # Form
@@ -482,6 +487,11 @@ pub enum BareAttribute {
     Statistics,
     /// Mark a function as a unit test.
     Test,
+    /// Mark a data type as a trait.
+    ///
+    /// Not part of the surface language.
+    /// Produced by the lowering of trait declarations.
+    Trait,
     /// Mark a binding or expression as "unsafe".
     Unsafe,
     /// Mark a binding as an unstable part of the public API.
@@ -516,7 +526,7 @@ impl BareAttribute {
             }
             Intrinsic { .. } => Targets::FUNCTION_DECLARATION | Targets::DATA_DECLARATION,
             Include => Targets::TEXT_LITERAL,
-            Known { .. } | Moving | Abstract => Targets::DATA_DECLARATION,
+            Known { .. } | Moving | Abstract | Record | Trait => Targets::DATA_DECLARATION,
             // @Task for constructors, smh add extra diagnostic note saying they are public automatically
             // @Update with `@transparent` implemented, suggest `@transparent` on the data decl
             Public { .. } => {
@@ -575,9 +585,11 @@ impl fmt::Display for BareAttribute {
             | Self::Ignore
             | Self::Include
             | Self::Moving
+            | Self::Record
             | Self::Static
             | Self::Statistics
             | Self::Test
+            | Self::Trait
             | Self::Unsafe => write!(f, "{name}"),
 
             Self::Allow { lint }

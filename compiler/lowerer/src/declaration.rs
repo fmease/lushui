@@ -8,6 +8,12 @@ use lo_ast::{
 use span::{PossiblySpanning, Span, Spanned, Spanning};
 use utility::{default, smallvec, Atom, FormatError, SmallVec, FILE_EXTENSION};
 
+// @Bug trait lowering is incorrect but it can't easily be fixed (the synthesized field accessors can refer to each
+// other order independently and the constructor can refer to them too by accident if it refers to fields that are
+// out of order or ones that should be undefined)
+// @Bug further, the lowering of records, traits (and maybe givens, too) is super useless for the type-checker
+// it doesn't simplify things at all
+
 impl Lowerer<'_> {
     pub(crate) fn lower_declaration(
         &mut self,
@@ -39,15 +45,7 @@ impl Lowerer<'_> {
                     function.into(),
                 )]
             }
-            Data(type_) => {
-                let type_ = self.lower_data(*type_, &attributes, declaration.span);
-
-                smallvec![lo_ast::Declaration::new(
-                    attributes,
-                    declaration.span,
-                    type_.into()
-                )]
-            }
+            Data(type_) => smallvec![self.lower_data(*type_, attributes, declaration.span)],
             Given(given) => smallvec![self.lower_given(*given, attributes, declaration.span)],
             Module(module) => {
                 smallvec![self.lower_module(*module, attributes, declaration.span, inline_modules)]
@@ -135,10 +133,10 @@ impl Lowerer<'_> {
     fn lower_data(
         &mut self,
         data_type: ast::Data,
-        attributes: &Attributes,
+        mut attributes: Attributes,
         span: Span,
-    ) -> lo_ast::Data {
-        self.check_data_body(&data_type, attributes, span);
+    ) -> lo_ast::Declaration {
+        self.check_data_body(&data_type, &attributes, span);
 
         let type_ = match data_type.type_ {
             Some(type_) => self.lower_expression(type_),
@@ -168,11 +166,28 @@ impl Lowerer<'_> {
                 }
             });
 
-        lo_ast::Data {
-            binder: data_type.binder,
-            type_,
-            declarations,
+        if let ast::DataKind::Record | ast::DataKind::Trait = data_type.kind {
+            attributes
+                .0
+                .push(Spanned::new(span, lo_ast::BareAttribute::Record));
         }
+
+        if let ast::DataKind::Trait = data_type.kind {
+            attributes
+                .0
+                .push(Spanned::new(span, lo_ast::BareAttribute::Trait));
+        }
+
+        lo_ast::Declaration::new(
+            attributes,
+            span,
+            lo_ast::Data {
+                binder: data_type.binder,
+                type_,
+                declarations,
+            }
+            .into(),
+        )
     }
 
     fn check_data_body(&mut self, type_: &ast::Data, attributes: &Attributes, span: Span) {
@@ -464,7 +479,7 @@ the body containing a set of constructors
                     );
 
                     // @Beacon @Task don't re-lower type_constructor params! (here, in lower_fields & in lower_data)
-                    for parameter in type_constructor_parameters.clone() {
+                    for parameter in type_constructor_parameters.clone().into_iter().rev() {
                         let domain = self.lower_parameter_type_with_default(
                             parameter.bare.type_,
                             parameter.bare.kind,
@@ -565,9 +580,9 @@ the body containing a set of constructors
                                         body,
                                     );
 
-                                    Some(ast::Field {
-                                        name: field.binder,
-                                        item: Some(body),
+                                    Some(lo_ast::Field {
+                                        binder: field.binder,
+                                        body,
                                     })
                                 }
                                 _ => {
@@ -585,7 +600,7 @@ the body containing a set of constructors
 
                     lo_ast::Expression::common(
                         body,
-                        ast::RecordLiteral {
+                        lo_ast::RecordLiteral {
                             fields: Spanned::new(body, fields),
                             path: None,
                             base: None,

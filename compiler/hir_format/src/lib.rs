@@ -267,6 +267,8 @@ fn write_lower_expression(
             write_lower_expression(&projection.basis, session, f)?;
             write!(f, "::{}", projection.field)
         }
+        // @Task
+        Record(_record) => f.write_str("⟨record⟩"),
         IO(io) => {
             // @Temporary format
             write!(f, "⟨io {}", io.index)?;
@@ -538,26 +540,26 @@ impl ComponentExt for Component {
     ) -> String {
         let entity = &self[index];
         // @Task rewrite this recursive approach to an iterative one!
-        if let Some(parent) = entity.parent {
-            let mut parent_path = self.local_index_with_root_to_extern_path(parent, root);
+        let Some(parent) = entity.parent else {
+            return root;
+        };
 
-            let parent_is_symbol = parent_path.chars().next_back().unwrap().is_symbol();
+        let mut parent_path = self.local_index_with_root_to_extern_path(parent, root);
 
-            if parent_is_symbol {
-                parent_path.push(' ');
-            }
+        let parent_is_symbol = parent_path.chars().next_back().unwrap().is_symbol();
 
-            parent_path.push('.');
-
-            if entity.source.is_symbol() && parent_is_symbol {
-                parent_path.push(' ');
-            }
-
-            parent_path += entity.source.to_str();
-            parent_path
-        } else {
-            root
+        if parent_is_symbol {
+            parent_path.push(' ');
         }
+
+        parent_path.push('.');
+
+        if entity.source.is_symbol() && parent_is_symbol {
+            parent_path.push(' ');
+        }
+
+        parent_path += entity.source.to_str();
+        parent_path
     }
 
     fn local_index_to_path_segments(

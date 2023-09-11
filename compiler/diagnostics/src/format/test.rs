@@ -474,7 +474,7 @@ warning: it
        hopefully
  help: less helpful
        tip",
-    )
+    );
 }
 
 #[test]
@@ -768,7 +768,7 @@ warning: this file looks spooky
   ┌─ scary.exe
   │
  help: better delete it",
-    )
+    );
 }
 
 #[test]

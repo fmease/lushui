@@ -61,7 +61,7 @@ fn parse_declaration(source: &str) -> Result<Declaration> {
     )
 }
 
-/// The name of the module returned by [parse_declaration].
+/// The name of the module returned by [`parse_declaration`].
 fn test_module_name() -> Identifier {
     identifier("test", default())
 }
@@ -121,7 +121,7 @@ fn identifier(name: &str, span: Span) -> Identifier {
     Identifier::new_unchecked(span, name.into())
 }
 
-/// Compare with [application_lambda_literal_argument_strict_grouping].
+/// Compare with [`application_lambda_literal_argument_strict_grouping`].
 /// They parse to the same AST modulo spans.
 #[test]
 fn application_lambda_literal_argument_lax_grouping() {
@@ -164,7 +164,7 @@ fn application_lambda_literal_argument_lax_grouping() {
     );
 }
 
-/// Compare with [application_lambda_literal_argument_lax_grouping].
+/// Compare with [`application_lambda_literal_argument_lax_grouping`].
 /// They parse to the same AST modulo spans.
 #[test]
 fn application_lambda_literal_argument_strict_grouping() {
@@ -274,7 +274,7 @@ fn bracketed_pi_type_literal_application_bracketed_argument_domain() {
 /// Compare this with `f Int -> Type`.
 ///
 /// This should demonstrate why we don't want `'A -> Type` to mean `'(_: A) -> Type`.
-/// Compare this with [application_pi_type_literal_implicit_domain], too.
+/// Compare this with [`application_pi_type_literal_implicit_domain`], too.
 #[test]
 fn pi_type_literal_application_implicit_argument_domain() {
     assert_eq(
@@ -339,7 +339,7 @@ fn pi_type_literal_application_implicit_named_argument_domain() {
     );
 }
 
-/// Compare with [pi_type_literal_application_implicit_argument_domain].
+/// Compare with [`pi_type_literal_application_implicit_argument_domain`].
 #[test]
 fn application_pi_type_literal_implicit_domain() {
     assert_eq(
@@ -420,7 +420,7 @@ fn namespaced_base_with_field() {
     );
 }
 
-/// Compare with [base_with_attribute_and_field].
+/// Compare with [`base_with_attribute_and_field`].
 #[test]
 fn field_with_attribute() {
     assert_eq(
@@ -443,7 +443,7 @@ fn field_with_attribute() {
     );
 }
 
-/// Compare with [field_with_attribute].
+/// Compare with [`field_with_attribute`].
 #[test]
 fn base_with_attribute_and_field() {
     assert_eq(
@@ -625,7 +625,6 @@ lengthy-space-filler (case 0 of
 // @Task add test (here or as golden) for expression `f (a = g b)` (this couldn't be parsed until now
 // because of a bug; only `f (a = (g b))` was valid)
 
-/// Compare with [use_as_double_brackets].
 #[test]
 fn use_as_plain() {
     assert_eq(
@@ -657,10 +656,10 @@ fn use_as_plain() {
             }
             .into(),
         )),
-    )
+    );
 }
 
-/// Compare with [unindented_case_analysis]. They are identical up to span.
+/// Compare with [`unindented_case_analysis`]. They are identical up to span.
 #[test]
 fn indented_case_analysis() {
     assert_eq(
@@ -734,7 +733,7 @@ main =
     );
 }
 
-/// Compare with [indented_case_analysis]. They are identical up to span.
+/// Compare with [`indented_case_analysis`]. They are identical up to span.
 #[test]
 fn unindented_case_analysis() {
     assert_eq(
@@ -815,7 +814,7 @@ fn pattern_with_attributes() {
             vec![Attribute::new(
                 span(1, 4),
                 BareAttribute::Regular {
-                    binder: identifier("it".into(), span(2, 4)),
+                    binder: identifier("it", span(2, 4)),
                     arguments: SmallVec::new(),
                 },
             )],
@@ -823,7 +822,7 @@ fn pattern_with_attributes() {
             ast::Application {
                 callee: Pattern::common(
                     span(6, 9),
-                    Path::from(identifier("has".into(), span(6, 9))).into(),
+                    Path::from(identifier("has", span(6, 9))).into(),
                 ),
                 kind: Explicit,
                 binder: None,
@@ -831,15 +830,15 @@ fn pattern_with_attributes() {
                     vec![Attribute::new(
                         span(10, 13),
                         BareAttribute::Regular {
-                            binder: identifier("IT".into(), span(11, 13)),
+                            binder: identifier("IT", span(11, 13)),
                             arguments: SmallVec::new(),
                         },
                     )],
                     span(14, 17),
-                    Path::from(identifier("HAS".into(), span(14, 17))).into(),
+                    Path::from(identifier("HAS", span(14, 17))).into(),
                 ),
             }
             .into(),
         )),
-    )
+    );
 }

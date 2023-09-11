@@ -96,16 +96,20 @@ impl Lowerer<'_> {
             RecordLiteral(record) => lo_ast::Expression::new(
                 attributes,
                 expression.span,
-                ast::RecordLiteral {
+                lo_ast::RecordLiteral {
                     path: record.path,
                     fields: record.fields.map(|fields| {
                         fields
                             .into_iter()
-                            .map(|field| ast::Field {
-                                name: field.name,
-                                item: field
-                                    .item
-                                    .map(|expression| self.lower_expression(expression)),
+                            .map(|field| lo_ast::Field {
+                                binder: field.binder,
+                                body: field.body.map_or(
+                                    lo_ast::Expression::common(
+                                        field.binder.span(),
+                                        ast::Path::from(field.binder).into(),
+                                    ),
+                                    |expression| self.lower_expression(expression),
+                                ),
                             })
                             .collect()
                     }),

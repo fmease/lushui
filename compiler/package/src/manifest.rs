@@ -63,7 +63,7 @@ fn parse_name(
 ) -> Result<Spanned<Word>> {
     Word::parse(name.clone())
         .map(|name| Spanned::new(span, name))
-        .map_err(|_| {
+        .map_err(|()| {
             // @Task DRY, @Question is the common code justified? package v component
             Diagnostic::error()
                 .code(ErrorCode::E036)
@@ -154,7 +154,7 @@ fn parse_component_type(
 ) -> Result<Spanned<ComponentType>, ErasedReportedError> {
     ComponentType::from_str(&type_)
         .map(|type_| Spanned::new(span, type_))
-        .map_err(|_| {
+        .map_err(|()| {
             // @Task don't list all component types unconditionally:
             //       if the invalid type is_similar to a valid one, give a more
             //       fine-tuned suggestion
@@ -207,7 +207,7 @@ fn parse_dependencies(
                 let Spanned!(span, name) = name.with_text_content_span(map);
                 DependencyProvider::from_str(&name)
                     .map(|name| Spanned::new(span, name))
-                    .map_err(|_| {
+                    .map_err(|()| {
                         // @Task code
                         // @Task don't list all providers unconditionally:
                         //       if the invalid provider is_similar to a valid one, give a more

@@ -62,7 +62,7 @@ pub fn parse_root_module_file(
         .to_str()
         .unwrap();
 
-    let binder = Word::parse(name.to_owned()).map_err(|_| {
+    let binder = Word::parse(name.to_owned()).map_err(|()| {
         Diagnostic::error()
             .code(ErrorCode::E036)
             .message(format!(
@@ -98,7 +98,6 @@ pub fn parse_path(
     map: &SourceMap,
     reporter: &Reporter,
 ) -> Result<ast::Path> {
-    #[allow(clippy::redundant_closure_for_method_calls)] // false positive, #9335
     parse(tokens, |parser| parser.parse_path(), file, map, reporter)
 }
 

@@ -75,7 +75,7 @@ mod format_struct {
         pub(super) fn name(mut self, name: &str) -> Self {
             self.result = self
                 .result
-                .and_then(|_| write!(self.formatter, "{}", name.color(palette::NAME).bold()));
+                .and_then(|()| write!(self.formatter, "{}", name.color(palette::NAME).bold()));
 
             self
         }
@@ -86,7 +86,7 @@ mod format_struct {
                 self.indentation = self.indentation.increased();
             }
 
-            self.result = self.result.and_then(|_| {
+            self.result = self.result.and_then(|()| {
                 if self.inline {
                     write!(self.formatter, " ")
                 } else {
@@ -94,7 +94,7 @@ mod format_struct {
                 }
             });
 
-            self.result = self.result.and_then(|_| {
+            self.result = self.result.and_then(|()| {
                 if !self.inline {
                     write!(self.formatter, "{}", self.indentation)?;
                 }
@@ -589,8 +589,8 @@ impl<T: Format> Format for super::Field<T> {
     fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
         FormatStruct::new(f, indentation)
             .name("Field")
-            .field("name", &self.name)
-            .field("value", &self.item)
+            .field("binder", &self.binder)
+            .field("body", &self.body)
             .finish()
     }
 }

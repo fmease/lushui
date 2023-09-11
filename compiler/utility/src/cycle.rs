@@ -135,6 +135,8 @@ mod tests {
 
     #[test]
     fn empty_graph() {
+        #![allow(clippy::zero_sized_map_values)] // `Graph` is to be considered opaque
+
         assert_eq!(find_cycles(&Graph::<()>::default()), Vec::new());
     }
 

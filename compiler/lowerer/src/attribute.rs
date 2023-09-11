@@ -322,6 +322,7 @@ impl BareAttributeExt for lo_ast::BareAttribute {
 
                     Self::Public(lo_ast::attribute::Public { reach })
                 }
+                Record => Self::Record,
                 RecursionLimit => {
                     let depth = argument(arguments, attribute.span, session.reporter())?;
                     let depth = depth
@@ -346,6 +347,7 @@ impl BareAttributeExt for lo_ast::BareAttribute {
                 Static => Self::Static,
                 Statistics => Self::Statistics,
                 Test => Self::Test,
+                Trait => Self::Trait,
                 Unsafe => Self::Unsafe,
                 Unstable => {
                     return Err(AttributeParsingError::Erased(

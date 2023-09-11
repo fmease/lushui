@@ -84,8 +84,8 @@ pub macro try_all {
 
 pub macro condition($( $condition:expr => $consequence:expr ),+ $(, else => $alternative:expr )? $(,)?) {
     match () {
-        $( _ if $condition => $consequence, )+
-        $( _ => $alternative )?
+        $( () if $condition => $consequence, )+
+        $( () => $alternative )?
     }
 }
 

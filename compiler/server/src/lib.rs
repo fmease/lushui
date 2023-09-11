@@ -124,6 +124,7 @@ impl Server {
 
 // @Task replace the async tower_lsp library with a sync server. async is not worth it
 #[tower_lsp::async_trait]
+#[allow(clippy::ignored_unit_patterns)] // false positive
 impl tower_lsp::LanguageServer for Server {
     async fn initialize(&self, _: InitializeParams) -> jsonrpc::Result<InitializeResult> {
         Ok(InitializeResult {
@@ -466,6 +467,7 @@ impl FindBinding for hir::Expression {
             Substituted(_) => None,          // @Task
             IntrinsicApplication(_) => None, // @Task
             Projection(_) => None,           // @Task
+            Record(_) => None, // @Task
             IO(_) => None,                   // @Task
             Error(_) => None,                // @Task
         }

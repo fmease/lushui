@@ -3,11 +3,11 @@
 #![allow(incomplete_features)] // adt_const_params
 
 use ast::{
-    Identifier, LocalBinder, NumberLiteral, ParameterKind, Path, RecordLiteral, SequenceLiteral,
-    TextLiteral, Wildcard,
+    Identifier, LocalBinder, NumberLiteral, ParameterKind, Path, SequenceLiteral, TextLiteral,
+    Wildcard,
 };
 use diagnostics::{error::PossiblyErroneous, reporter::ErasedReportedError};
-use span::SourceFileIndex;
+use span::{SourceFileIndex, Spanned};
 
 pub use attribute::{Attribute, AttributeName, Attributes, BareAttribute};
 pub use format::Display;
@@ -332,6 +332,20 @@ pub struct Application<T> {
     pub kind: ParameterKind,
     pub callee: T,
     pub argument: T,
+}
+
+#[derive(Clone)]
+pub struct RecordLiteral<T> {
+    pub path: Option<Path>,
+    pub fields: Spanned<Vec<Field<T>>>,
+    pub base: Option<T>,
+}
+
+#[derive(Clone)]
+
+pub struct Field<T> {
+    pub binder: Identifier,
+    pub body: T,
 }
 
 #[derive(Clone, Copy)]

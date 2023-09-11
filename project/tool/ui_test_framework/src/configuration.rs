@@ -315,7 +315,7 @@ fn parse_parameter(mut source: Spanned<&str>, type_: TestType) -> Result<Paramet
 
             exhaust_arguments(arguments)?;
 
-            ParameterKind::Timeout(timeout.parse().map_err(|_| {
+            ParameterKind::Timeout(timeout.parse().map_err(|()| {
                 Error::new(format!("‘{timeout}’ is not a valid duration"), source.span)
             })?)
         }
@@ -353,7 +353,7 @@ fn parse_mode(source: Spanned<&str>, type_: TestType) -> Result<Mode, Error> {
     let mode = source
         .bare
         .parse()
-        .map_err(|_| Error::new(format!("‘{source}’ is not a valid test mode"), source.span))?;
+        .map_err(|()| Error::new(format!("‘{source}’ is not a valid test mode"), source.span))?;
 
     #[allow(clippy::match_same_arms)]
     match (type_, mode) {

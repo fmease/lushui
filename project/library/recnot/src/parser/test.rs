@@ -18,6 +18,7 @@ fn parse(source: &str) -> Result<Value> {
     super::super::parse(file, &map, &reporter)
 }
 
+#[allow(clippy::needless_pass_by_value)] // more legible call sites, flexibility doesn't matter here
 fn assert_eq(actual: Result<Value>, expected: Value) {
     match actual {
         Ok(actual) => {

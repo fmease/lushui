@@ -238,18 +238,12 @@ fn write_pi_type_literal_or_lower(
             f.write_str("{")?;
             let mut fields = record.fields.bare.iter();
             if let Some(field) = fields.next() {
-                write!(f, "{}", field.name)?;
-                if let Some(expression) = &field.item {
-                    f.write_str(" = ")?;
-                    expression.write(f)?;
-                }
+                write!(f, "{} = ", field.binder)?;
+                field.body.write(f)?;
             }
             for field in fields {
-                write!(f, ", {}", field.name)?;
-                if let Some(expression) = &field.item {
-                    f.write_str(" = ")?;
-                    expression.write(f)?;
-                }
+                write!(f, ", {} = ", field.binder)?;
+                field.body.write(f)?;
             }
             f.write_str("}")
         }

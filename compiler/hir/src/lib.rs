@@ -3,7 +3,7 @@
 
 use diagnostics::{error::PossiblyErroneous, reporter::ErasedReportedError};
 use joinery::JoinableIterator;
-use span::SourceFileIndex;
+use span::{SourceFileIndex, Spanned};
 use special::NumericType;
 use std::{
     fmt,
@@ -109,17 +109,18 @@ pub type Expression = Item<BareExpression>;
 
 #[derive(Clone)]
 pub enum BareExpression {
-    PiType(Box<PiType>),
-    Application(Box<Application<Expression>>),
     Number(Box<Number>),
     Text(Box<Text>),
     Binding(Box<Binding>),
+    Application(Box<Application<Expression>>),
+    IntrinsicApplication(Box<IntrinsicApplication>),
+    Record(Box<Record>),
+    Projection(Box<Projection>),
+    PiType(Box<PiType>),
     Lambda(Box<Lambda>),
+    IO(Box<IO>),
     CaseAnalysis(Box<CaseAnalysis>),
     Substituted(Box<Substituted>),
-    IntrinsicApplication(Box<IntrinsicApplication>),
-    Projection(Box<Projection>),
-    IO(Box<IO>),
     Error(ErasedReportedError),
 }
 
@@ -222,6 +223,24 @@ impl From<IntrinsicApplication> for BareExpression {
     fn from(application: IntrinsicApplication) -> Self {
         Self::IntrinsicApplication(Box::new(application))
     }
+}
+
+#[derive(Clone)]
+pub struct Record {
+    pub type_: Spanned<DeclarationIndex>,
+    pub fields: Vec<Field>,
+}
+
+impl From<Record> for BareExpression {
+    fn from(record: Record) -> Self {
+        Self::Record(Box::new(record))
+    }
+}
+
+#[derive(Clone)]
+pub struct Field {
+    pub binder: ast::Identifier,
+    pub body: Expression,
 }
 
 #[derive(Clone)]

@@ -435,7 +435,7 @@ impl TypedValueParser for ColorModeParser {
     ) -> Result<Self::Value, clap::Error> {
         let source = parse_utf8(source)?;
 
-        source.parse().map_err(|_| {
+        source.parse().map_err(|()| {
             // @Task smh. avoid using `Error::raw` and smh. pass along the context.
             //       https://github.com/clap-rs/clap/discussions/4029
             clap::Error::raw(
@@ -700,7 +700,7 @@ impl TypedValueParser for WordParser {
     ) -> Result<Self::Value, clap::Error> {
         let source = parse_utf8(source)?;
 
-        Word::parse(source.to_owned()).map_err(|_| {
+        Word::parse(source.to_owned()).map_err(|()| {
             // @Task smh. avoid using `Error::raw` and smh. pass along the context.
             //       https://github.com/clap-rs/clap/discussions/4029
             clap::Error::raw(
@@ -726,7 +726,7 @@ impl TypedValueParser for ComponentTypeParser {
         let source = parse_utf8(source)?;
 
         // @Task smh. also support the shorthands (e.g. `exe`, `lib`)
-        source.parse().map_err(|_| {
+        source.parse().map_err(|()| {
             // @Task smh. avoid using `Error::raw` and smh. pass along the context.
             //       https://github.com/clap-rs/clap/discussions/4029
             clap::Error::raw(
@@ -757,7 +757,7 @@ impl TypedValueParser for BackendParser {
     ) -> Result<Self::Value, clap::Error> {
         let source = parse_utf8(source)?;
 
-        source.parse().map_err(|_| {
+        source.parse().map_err(|()| {
             // @Task smh. avoid using `Error::raw` and smh. pass along the context.
             //       https://github.com/clap-rs/clap/discussions/4029
             clap::Error::raw(
@@ -1064,7 +1064,7 @@ mod unstable {
     }
 
     impl From<()> for ParseError {
-        fn from(_: ()) -> Self {
+        fn from((): ()) -> Self {
             Self::UndefinedOption
         }
     }

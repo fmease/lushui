@@ -77,6 +77,6 @@ pub struct RecordLiteral<T> {
 
 pub struct Field<T> {
     // @Task generalize this to some new kind of path that is delimited by "::" OR "."
-    pub name: Identifier,
-    pub item: Option<T>,
+    pub binder: Identifier,
+    pub body: Option<T>,
 }

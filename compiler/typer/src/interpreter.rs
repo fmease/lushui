@@ -173,7 +173,8 @@ impl<'a> Interpreter<'a> {
                 }
             }
             Number(_) | Text(_) | IO(_) => expression.clone(),
-            Projection(_) => todo!(),
+            Record(_) => todo!("evaluating records"),
+            Projection(_) => todo!("evaluating projections"),
             PiType(pi) => match context.form {
                 Form::Normal => {
                     let domain = self.evaluate_expression(&pi.domain, context)?;
@@ -571,10 +572,9 @@ impl Substitute for Expression {
                 .substitute(&substituted0.substitution)
                 .substitute(substituted1),
             (Number(_) | Text(_), _) => self.clone(),
-            // @Task verify
-            (Projection(_), _) => self.clone(),
-            // @Temporary
-            (IO(_), _) => self.clone(),
+            (Record(_), _) => todo!("subst'ing records"),
+            (Projection(_), _) => todo!("subst'ing projections"),
+            (IO(_), _) => todo!("subst'ing effects"),
             (Application(application), substitution) => Expression::new(
                 self.attributes.clone(),
                 self.span,

@@ -1,5 +1,5 @@
 //! The LLVM-IR generator.
-#![feature(let_chains, io_error_other)]
+#![feature(let_chains)]
 #![allow(clippy::match_same_arms)] // @Temporary
 
 use diagnostics::{error::Result, Diagnostic};
@@ -379,6 +379,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
             PiType(_) => todo!(),
             Number(number) => self.compile_number(number).into(),
             Text(_) => todo!(),
+            Record(_) => todo!(),
             Binding(_) => todo!(),
             Lambda(_)
             | CaseAnalysis(_)
@@ -437,6 +438,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
             }
             Number(number) => Some(self.compile_number(number).into()),
             Text(_) => todo!("compiling text"),
+            Record(_) => todo!("compiling records"),
             Binding(binding) if self.session.specials().is(binding.0, Type::Type) => None,
             Binding(binding) => {
                 use hir::Index::*;
@@ -531,7 +533,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
             IntrinsicApplication(_) => todo!(),
             Projection(_) => todo!(),
             Error(_) => todo!(),
-            Number(_) | Text(_) | IO(_) => unreachable!(),
+            Number(_) | Text(_) | Record(_) | IO(_) => unreachable!(),
         }
     }
 
@@ -547,15 +549,14 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
                 codomain.fn_type(&[domain.into()], false)
             }
             Application(_) => todo!(),
-            Number(_) | Text(_) => unreachable!(),
             Binding(_) => todo!(),
             Lambda(_) => todo!(),
             CaseAnalysis(_) => todo!(),
             Substituted(_) => todo!(),
             IntrinsicApplication(_) => todo!(),
             Projection(_) => todo!(),
-            IO(_) => todo!(),
             Error(_) => todo!(),
+            Number(_) | Text(_) | Record(_) | IO(_) => unreachable!(),
         }
     }
 }
@@ -584,6 +585,7 @@ impl ExpressionExt for hir::Expression {
             Substituted(_) => todo!(),
             Projection(_) => todo!(),
             IO(_) => todo!(),
+            Record(_) => todo!(),
             Error(_) => todo!(),
         }
     }

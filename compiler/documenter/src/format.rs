@@ -198,8 +198,9 @@ impl<'a> Formatter<'a> {
             Number(literal) => self.write(&literal.to_string()),
             Text(literal) => self.write(&literal.to_string()),
             Binding(binding) => self.format_binder(&binding.0),
-            // @Beacon @Temporary @Task just write out the path
+            // @Task
             Projection(_projection) => self.write("⟨projection⟩"),
+            Record(_record) => self.write("⟨record⟩"),
             IO(io) => {
                 self.write("⟨io ");
                 self.write(&io.index.to_string());

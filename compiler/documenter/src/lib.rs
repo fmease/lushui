@@ -850,10 +850,10 @@ fn add_declaration_attribute(attribute: &Attribute, parent: &mut Element<'_>, ur
         Unstable(_) => parent.add_child(Element::div("experimental").child("experimental")),
         Unsafe => parent.add_child(Element::div("unsafe").child("unsafe")),
 
-        // rendered separately
+        // Rendered separately.
         Doc { .. } => {}
 
-        // not rendered
+        // Not rendered since they are not part of the API.
         Allow { .. }
         | Deny { .. }
         | Forbid { .. }
@@ -863,10 +863,11 @@ fn add_declaration_attribute(attribute: &Attribute, parent: &mut Element<'_>, ur
         | Statistics
         | Warn { .. } => {}
 
-        // should not exist at this point in time
+        // Not rendered since they are truly internal and not part of the surface language.
+        Context | Record | Trait => {}
+
+        // Should not exist at this stage.
         Ignore | Include | Test => unreachable!(),
-        // render given-declarations properly
-        Context => todo!(),
     }
 }
 

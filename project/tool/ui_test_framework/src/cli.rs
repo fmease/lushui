@@ -222,7 +222,7 @@ impl TypedValueParser for DiffViewParser {
     ) -> Result<Self::Value, clap::Error> {
         let source: &str = parse_utf8(source)?;
 
-        source.parse().map_err(|_| {
+        source.parse().map_err(|()| {
             // @Task smh. avoid using `Error::raw` and smh. pass along the context.
             //       https://github.com/clap-rs/clap/discussions/4029
             clap::Error::raw(

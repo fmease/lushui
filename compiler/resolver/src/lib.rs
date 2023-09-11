@@ -867,12 +867,14 @@ impl<'a> Resolver<'a> {
                 )
             }
             SequenceLiteral(sequence) => {
-                let mut elements = Vec::new();
+                let mut elements = Vec::with_capacity(sequence.elements.bare.len());
+                let health = &mut Health::Untainted;
 
                 for element in sequence.elements.bare {
-                    // @Task use Stain::stain to not return early!
-                    elements.push(self.resolve_expression(element, scope)?);
+                    elements.push(self.resolve_expression(element, scope).stain(health));
                 }
+
+                Result::from(*health)?;
 
                 self.resolve_sequence_literal(
                     hir::Item::new(
@@ -886,11 +888,46 @@ impl<'a> Resolver<'a> {
                     scope,
                 )?
             }
-            RecordLiteral(_) => {
-                return Err(Diagnostic::error()
-                    .message("record literals are not supported yet")
-                    .unlabeled_span(expression.span)
-                    .report(self.session.reporter()))
+            RecordLiteral(record) => {
+                let path = record.path.as_ref().ok_or_else(|| {
+                    error::unqualified_literal("record", record.fields.span)
+                        .report(self.session.reporter())
+                })?;
+
+                // @Task maybe check if it points to a record!
+                let type_ = Spanned::new(
+                    path.span(), // @Task use the span of the last segment for consistency
+                    self.resolve_path_of_literal(path, record.fields.span, scope)?,
+                );
+
+                if let Some(base) = record.base {
+                    let error = Diagnostic::error()
+                        .message("record literal bases are not supported yet")
+                        .unlabeled_span(base.span)
+                        .report(self.session.reporter());
+
+                    let _ = self.resolve_expression(base, scope)?;
+
+                    return Err(error);
+                }
+
+                let mut fields = Vec::with_capacity(record.fields.bare.len());
+                let health = &mut Health::Untainted;
+
+                for field in record.fields.bare {
+                    fields.push(hir::Field {
+                        binder: field.binder,
+                        body: self.resolve_expression(field.body, scope).stain(health),
+                    });
+                }
+
+                Result::from(*health)?;
+
+                hir::Expression::new(
+                    expression.attributes,
+                    expression.span,
+                    hir::Record { type_, fields }.into(),
+                )
             }
             Error(error) => PossiblyErroneous::error(error),
         })
@@ -1003,7 +1040,7 @@ impl<'a> Resolver<'a> {
             .as_ref()
             .map(|path| {
                 Ok(Spanned::new(
-                    path.span(),
+                    path.span(), // @Task use the span of the last segment for consistency
                     self.resolve_path_of_literal(path, number.bare.literal.span, scope)?,
                 ))
             })
@@ -1056,7 +1093,7 @@ impl<'a> Resolver<'a> {
             .as_ref()
             .map(|path| {
                 Ok(Spanned::new(
-                    path.span(),
+                    path.span(), // @Task use the span of the last segment for consistency
                     self.resolve_path_of_literal(path, text.bare.literal.span, scope)?,
                 ))
             })
@@ -1096,15 +1133,12 @@ impl<'a> Resolver<'a> {
 
         // @Task test this!
         let path = sequence.bare.path.as_ref().ok_or_else(|| {
-            Diagnostic::error()
-                .message("sequence literals without explicit type are not supported yet")
-                .unlabeled_span(&sequence.bare.elements)
-                .help("consider prefixing the literal with a path to a type followed by a ‘.’")
+            error::unqualified_literal("sequence", sequence.bare.elements.span)
                 .report(self.session.reporter())
         })?;
 
         let type_ = Spanned::new(
-            path.span(),
+            path.span(), // @Task use the span of the last segment for consistency
             self.resolve_path_of_literal(path, sequence.bare.elements.span, scope)?,
         );
 
@@ -1430,7 +1464,7 @@ impl<'a> Resolver<'a> {
                     };
 
                     // @Beacon @Task add test for error case
-                    let component: Spanned<Word> = (*component).try_into().map_err(|_| {
+                    let component: Spanned<Word> = (*component).try_into().map_err(|()| {
                         // @Task DRY @Question is the common code justified?
                         Diagnostic::error()
                             .code(ErrorCode::E036)
@@ -2492,5 +2526,14 @@ mod error {
                 pluralize!(cycle.len(), "is", "are"),
             ))
             .unlabeled_spans(cycle.into_iter().map(|&index| session[index].source.span()))
+    }
+
+    pub(super) fn unqualified_literal(kind: &'static str, span: Span) -> Diagnostic {
+        Diagnostic::error()
+            .message(format!(
+                "{kind} literals without explicit type are not supported yet"
+            ))
+            .unlabeled_span(span)
+            .help("consider prefixing the literal with a path to a type followed by a ‘.’")
     }
 }
