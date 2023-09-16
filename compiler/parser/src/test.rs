@@ -4,23 +4,27 @@
 
 use super::parse;
 use ast::{
-    Attribute, BareAttribute, BareParameter, BareUsePathTree, Case, Debug, Declaration, Expression,
-    Format, Identifier, Item, Parameter,
+    Attribute, BareAttribute, BareParameter, BareUsePathTree, Case, Declaration, Expression,
+    Identifier, Item, Parameter,
     ParameterKind::{Explicit, Implicit},
-    Parameters, Path, Pattern, UsePathTree,
+    Parameters, Path, Pattern, Render, UsePathTree,
 };
 use diagnostics::{error::Result, Reporter};
 use index_map::Index as _;
 use lexer::lex;
 use span::{span, FileName, SourceFileIndex, SourceMap, Span, Spanned};
 use std::sync::{Arc, RwLock};
-use utility::{default, displayed, smallvec, SmallVec};
+use utility::{
+    default,
+    paint::{epaint, paint_to_string, ColorChoice},
+    smallvec, Changeset, ChangesetExt, SmallVec,
+};
 
 fn parse_expression(source: &str) -> Result<Expression> {
     let mut map = SourceMap::default();
     let file = map.add_str(FileName::Anonymous, source);
     let map = Arc::new(RwLock::new(map));
-    let reporter = Reporter::stderr().with_map(map.clone());
+    let reporter = Reporter::stderr(ColorChoice::Auto).with_map(map.clone());
     let map = map.read().unwrap();
     parse(
         lex(&map[file], &default()),
@@ -35,7 +39,7 @@ fn parse_pattern(source: &str) -> Result<Pattern> {
     let mut map = SourceMap::default();
     let file = map.add_str(FileName::Anonymous, source);
     let map = Arc::new(RwLock::new(map));
-    let reporter = Reporter::stderr().with_map(map.clone());
+    let reporter = Reporter::stderr(ColorChoice::Auto).with_map(map.clone());
     let map = map.read().unwrap();
     parse(
         lex(&map[file], &default()),
@@ -50,7 +54,7 @@ fn parse_declaration(source: &str) -> Result<Declaration> {
     let mut map = SourceMap::default();
     let file = map.add_str(FileName::Anonymous, source);
     let map = Arc::new(RwLock::new(map));
-    let reporter = Reporter::stderr().with_map(map.clone());
+    let reporter = Reporter::stderr(ColorChoice::Auto).with_map(map.clone());
     let map = map.read().unwrap();
     parse(
         lex(&map[file], &default()),
@@ -72,35 +76,37 @@ fn test_file_index() -> SourceFileIndex {
 
 fn assert_eq<BareItem>(actual: Result<Item<BareItem>>, expected: Result<Item<BareItem>>)
 where
-    BareItem: Eq + Format,
+    BareItem: Eq + Render,
 {
     match (expected, actual) {
         (Ok(expected), Ok(actual)) => {
             if actual != expected {
-                // the colored Format-output overwrites the colored highlighting of
-                // the Changeset, this prevent that from happening
-                colored::control::set_override(false);
+                // Don't color the AST since it doesn't go super well with the colored diff.
+                let expected = paint_to_string(
+                    |painter| expected.render(default(), painter),
+                    ColorChoice::Never,
+                )
+                .unwrap();
+                let actual = paint_to_string(
+                    |painter| actual.render(default(), painter),
+                    ColorChoice::Never,
+                )
+                .unwrap();
 
-                let difference = difference::Changeset::new(
-                    &displayed(|f| expected.write(f)).to_string(),
-                    &displayed(|f| actual.write(f)).to_string(),
-                    "\n",
-                );
+                // We also lock stdout since the test runner would otherwise interfere.
+                let stdout = std::io::stdout().lock();
+                epaint(
+                    |painter| Changeset::new(&expected, &actual, "\n").render_with_ledge(painter),
+                    ColorChoice::Auto,
+                )
+                .unwrap();
+                drop(stdout);
 
-                // colored::control::unset_override(); // conflicts with parallel test execution
-
-                panic!(
-                    "the actual output of the parser does not match the expected one:\n{difference}",
-                );
+                panic!("the actual output of the parser does not match the expected one");
             }
         }
-        (Ok(expected), Err(_)) => {
-            panic!(
-                "expected the parser to successfully parse the input to the following AST:\n\
-                {}\n\
-                but it (silently) reported an error",
-                displayed(|f| expected.write(f))
-            )
+        (Ok(_), Err(_)) => {
+            panic!("expected the parser to successfully parse the input")
         }
         (Err(_), _) => unreachable!(),
     }

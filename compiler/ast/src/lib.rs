@@ -12,20 +12,20 @@ pub use attribute::{
 };
 pub use declaration::*;
 pub use expression::*;
-pub use format::{Debug, Format};
 pub use identifier::Identifier;
 pub use item::*;
 pub use path::{BareHanger, Hanger, Path};
 pub use pattern::*;
+pub use render::Render;
 
 mod attribute;
 mod declaration;
 mod expression;
-mod format;
 mod identifier;
 mod item;
 mod path;
 mod pattern;
+mod render;
 
 pub type Parameters = SmallVec<Parameter, 1>;
 // @Beacon @Task make this an Item<_> for attribute support on params

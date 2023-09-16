@@ -11,8 +11,8 @@ pub enum Code {
 impl fmt::Display for Code {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Error(code) => write!(f, "{code}"),
-            Self::Lint(code) => write!(f, "{code}"),
+            Self::Error(code) => code.fmt(f),
+            Self::Lint(code) => code.fmt(f),
         }
     }
 }
@@ -141,7 +141,7 @@ impl ErrorCode {
     pub(crate) const fn explanation(self) -> Option<&'static str> {
         #[allow(clippy::match_single_binding)]
         match self {
-            // @Task
+            // @Task implement error explanations
             _ => None,
         }
     }
@@ -165,9 +165,7 @@ impl fmt::Display for ErrorCode {
 #[format(dash_case)]
 pub enum LintCode {
     /// _Permanently unassigned_ (used in tests).
-    PermanentlyUnassignedOne,
-    /// _Permanently unassigned_ (used in tests).
-    PermanentlyUnassignedTwo,
+    PermanentlyUnassigned,
     Deprecated,
 }
 

@@ -6,7 +6,7 @@ use clap::{
 use derivation::Elements;
 use diagnostics::{Diagnostic, Reporter};
 use std::{ffi::OsStr, num::NonZeroUsize, path::PathBuf, time::Duration};
-use utility::FormatError;
+use utility::{paint::ColorChoice, FormatError};
 
 pub(crate) fn arguments() -> Result<Arguments, ()> {
     let available_parallelism =
@@ -98,7 +98,7 @@ pub(crate) fn arguments() -> Result<Arguments, ()> {
                     .message("could not load the test file")
                     .path(path.clone())
                     .note(error.format())
-                    .report(&Reporter::stderr());
+                    .report(&Reporter::stderr(ColorChoice::Auto));
             }
         }
     }

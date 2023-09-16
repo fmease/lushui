@@ -6,7 +6,6 @@ edition = "2021"
 publish = false
 
 [dependencies]
-colored = "2.0.0"
 diagnostics = { path = "../diagnostics" }
 index_map = { path = "../../project/library/index_map" }
 joinery = "3.1.0"

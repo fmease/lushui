@@ -6,7 +6,8 @@ use super::{Record, Value};
 use diagnostics::{error::Result, Reporter};
 use span::{span, FileName, SourceMap, WeaklySpanned};
 use std::sync::{Arc, RwLock};
-use utility::{default, difference};
+use utility::paint::{epaint, ColorChoice};
+use utility::{default, Changeset, ChangesetExt};
 
 fn parse(source: &str) -> Result<Value> {
     let map: Arc<RwLock<SourceMap>> = default();
@@ -14,7 +15,7 @@ fn parse(source: &str) -> Result<Value> {
         .write()
         .unwrap()
         .add(FileName::Anonymous, Arc::new(source.to_owned()), None);
-    let reporter = Reporter::stderr().with_map(map.clone());
+    let reporter = Reporter::stderr(ColorChoice::Auto).with_map(map.clone());
     super::super::parse(file, &map, &reporter)
 }
 
@@ -22,12 +23,23 @@ fn parse(source: &str) -> Result<Value> {
 fn assert_eq(actual: Result<Value>, expected: Value) {
     match actual {
         Ok(actual) => {
-            // @Note for some reason, despite the `#`, large Records are not formatted with multiple line breaks
-            assert!(
-                actual == expected,
-                "the actual value outputted by the parser does not match the expected one:\n{}",
-                difference(&format!("{expected:#?}"), &format!("{actual:#?}"), "")
-            );
+            // FIXME: For some reason, despite the `#`, large Records are not formatted with multiple line breaks.
+
+            if actual != expected {
+                // We also lock stdout since the test runner would otherwise interfere.
+                let stdout = std::io::stdout().lock();
+                epaint(
+                    |painter| {
+                        Changeset::new(&format!("{expected:#?}"), &format!("{actual:#?}"), "")
+                            .render_with_ledge(painter)
+                    },
+                    ColorChoice::Auto,
+                )
+                .unwrap();
+                drop(stdout);
+
+                panic!("the actual value outputted by the parser does not match the expected one");
+            }
         }
         _ => panic!("expected the value ‘{expected:?}’ but an error was (silently) reported"),
     }

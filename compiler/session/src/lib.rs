@@ -209,6 +209,7 @@ impl Context {
     #[cfg(feature = "test")]
     pub fn mock() -> Self {
         use index_map::Index;
+        use utility::paint::ColorChoice;
 
         let map: Arc<RwLock<SourceMap>> = default();
 
@@ -222,7 +223,7 @@ impl Context {
             },
             specials: default(),
             map: map.clone(),
-            reporter: Reporter::stderr().with_map(map),
+            reporter: Reporter::stderr(ColorChoice::Auto).with_map(map),
         }
     }
 

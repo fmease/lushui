@@ -15,7 +15,6 @@ ast = { path = "../ast" }
 clap = { version = "4.3.8", features = ["deprecated", "string"] }
 codegen_cranelift = { path = "../codegen_cranelift", optional = true }
 codegen_llvm = { path = "../codegen_llvm", optional = true }
-colored = "2.0.0"
 derivation = { path = "../../project/library/derivation" }
 diagnostics = { path = "../diagnostics" }
 documenter = { path = "../documenter" }

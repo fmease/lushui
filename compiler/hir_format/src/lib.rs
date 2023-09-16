@@ -1,7 +1,6 @@
 //! The definition of the textual representation of the [HIR](hir).
 #![feature(associated_type_defaults)]
 
-use colored::Colorize;
 use joinery::JoinableIterator;
 use lexer::{token::INDENTATION, CharExt};
 use session::{
@@ -13,6 +12,9 @@ use utility::Atom;
 
 #[cfg(test)]
 mod test;
+
+// FIXME: Migrate this from `Formatter` to `Painter` and properly color the HIR for
+//        `-Zemit-hir`.
 
 pub trait Display {
     fn write(&self, session: &Session<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result;
@@ -377,12 +379,13 @@ impl Display for hir::Entity {
         let parent = self
             .parent
             .map(|parent| format!("{parent:?}."))
-            .unwrap_or_default()
-            .bright_black();
-        let source = self.source.to_string().bright_red().bold();
-        let path = format!("{parent}{source}");
-        let exposure = format!("{:?}<", self.exposure).bright_black();
-        write!(f, "{exposure:>5}   {path:<40} ↦ ")?;
+            .unwrap_or_default();
+        write!(
+            f,
+            "{:>4?}<   {:<40} ↦ ",
+            self.exposure,
+            format!("{parent}{}", self.source)
+        )?;
         self.kind.write(session, f)
     }
 }
@@ -391,7 +394,7 @@ impl Display for hir::EntityKind {
     fn write(&self, session: &Session<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use hir::EntityKind::*;
 
-        write!(f, "{:>19}   ", self.precise_name().bright_blue())?;
+        write!(f, "{:>19}   ", self.precise_name())?;
 
         match self {
             Module { namespace } | UntypedDataType { namespace } => write!(f, "{namespace:?}"),
@@ -584,7 +587,7 @@ impl Display for Component {
         writeln!(f, "  bindings:")?;
 
         for (index, entity) in &self.bindings {
-            write!(f, "    {}: ", format!("{index:?}").red())?;
+            write!(f, "    {index:?}: ")?;
             entity.write(session, f)?;
             writeln!(f)?;
         }

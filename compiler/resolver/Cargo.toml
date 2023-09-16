@@ -7,7 +7,6 @@ publish = false
 
 [dependencies]
 ast = { path = "../ast" }
-colored = "2.0.0"
 diagnostics = { path = "../diagnostics" }
 difference = "2.0.0"
 hir = { path = "../hir" }

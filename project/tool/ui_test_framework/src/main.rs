@@ -1,6 +1,5 @@
 #![feature(const_option, lazy_cell, let_chains, str_split_remainder, extract_if)]
 
-use colored::Colorize;
 use configuration::{Configuration, Mode, TestTag, Timeout};
 use failure::{FailedTest, Failure};
 use joinery::JoinableIterator;
@@ -8,14 +7,17 @@ use span::SourceMap;
 use std::{
     collections::BTreeSet,
     fmt, fs,
-    io::Write,
+    io::{self, Write},
     path::{Path, PathBuf},
     process::{Command, ExitCode, Stdio},
     sync::{Arc, LazyLock, Mutex},
     time::{Duration, Instant},
 };
 use summary::{TestSuiteStatistics, TestSuiteSummary};
-use utility::pluralize;
+use utility::{
+    paint::{AnsiColor, ColorChoice, Painter},
+    pluralize,
+};
 
 mod cli;
 mod configuration;
@@ -29,31 +31,26 @@ fn main() -> ExitCode {
     }
 }
 
-// @Beacon @Bug Currently we are traversing the whole test folder and filtering out
-//              any tests that don't match the given list of paths.
-//              However, that means we are wasting a huge amount of time.
-//              This does not scale.
-// @Task        Instead, only pass the relevant paths to `walkdir` (smh.) (if possible)
+// FIXME: Currently we are traversing the whole test folder and filtering out
+//        any tests that don't match the given list of paths.
+//        However, that means we are wasting a huge amount of time.
+//        This does not scale.
+//        Instead, only pass the relevant paths to `walkdir` (smh.) (if possible)
 
 fn try_main() -> Result<(), ()> {
+    // FIXME: Add `--color`.
     let arguments = cli::arguments()?;
 
-    if arguments.gilding == Gilding::Yes {
-        print!("Do you really want to gild all (valid) failing tests? [y/N] ");
-        std::io::stdout().flush().unwrap();
+    let mut stdout = Painter::stdout(ColorChoice::Always);
+    let mut stderr = Painter::stderr(ColorChoice::Auto);
 
-        let mut answer = String::new();
-        std::io::stdin().read_line(&mut answer).unwrap();
-        let answer = answer.trim();
-
-        if !(answer.eq_ignore_ascii_case("y") || answer.eq_ignore_ascii_case("yes")) {
-            return Err(());
-        }
-
-        println!();
+    if arguments.gilding == Gilding::Yes && !confirm_gilding(&mut stdout).unwrap() {
+        return Err(());
     }
 
-    println!("Building the compiler ...");
+    title("note", AnsiColor::Cyan, &mut stdout).unwrap();
+    writeln!(stdout, "building the compiler...").unwrap();
+    stdout.flush().unwrap();
 
     let output = Command::new("cargo")
         .args(["+nightly", "--color=always", "build", "--manifest-path"])
@@ -68,20 +65,26 @@ fn try_main() -> Result<(), ()> {
         .unwrap();
 
     if !output.status.success() {
-        eprintln!("{}", "The compiler failed to build.".red());
+        title("error", AnsiColor::Red, &mut stderr).unwrap();
+        writeln!(stderr, "the compiler failed to build").unwrap();
 
-        eprintln!();
-        eprintln!("{}", section_header("RUST-CARGO STDERR"));
-        eprintln!();
-
-        eprintln!("{}", String::from_utf8_lossy(&output.stderr));
+        writeln!(stderr).unwrap();
+        writeln!(stderr, "{}", section_header("RUST/CARGO STDERR")).unwrap();
+        writeln!(stderr).unwrap();
+        stderr.write_all(&output.stderr).unwrap();
+        stderr.flush().unwrap();
 
         return Err(());
     }
 
-    println!();
-    println!("{}", section_separator());
-    println!();
+    writeln!(stderr).unwrap();
+    writeln!(stderr, "{}", section_separator()).unwrap();
+    writeln!(stderr).unwrap();
+    stderr.flush().unwrap();
+
+    // Unlock stdout and stderr.
+    drop(stdout);
+    drop(stderr);
 
     let test_folder_entries = Arc::new(Mutex::new(
         walkdir::WalkDir::new(path::test_folder()).into_iter(),
@@ -145,7 +148,7 @@ fn try_main() -> Result<(), ()> {
     let duration = suite_time.elapsed();
     let mut statistics = TestSuiteStatistics::default();
     let mut failed_tests = Vec::new();
-    let mut stdout = std::io::stdout().lock();
+    let mut stdout = Painter::stdout(ColorChoice::Always);
 
     for (local_statistics, mut local_failed_tests, map) in thread_local_data {
         if !local_failed_tests.is_empty() {
@@ -206,23 +209,64 @@ fn try_main() -> Result<(), ()> {
     };
 
     if summary.statistics.total_amount() == 0 {
-        // no additional separator necessary if no tests were run
+        // No additional separator necessary if no tests were run.
     } else {
         writeln!(stdout).unwrap();
         writeln!(stdout, "{}", section_separator()).unwrap();
         writeln!(stdout).unwrap();
     }
 
-    writeln!(stdout, "{summary}").unwrap();
+    summary.render(&mut stdout).unwrap();
+    writeln!(stdout).unwrap();
 
     writeln!(stdout, "{}", section_separator()).unwrap();
     writeln!(stdout).unwrap();
+
+    stdout.flush().unwrap();
 
     if !summary.statistics.passed() {
         return Err(());
     }
 
     Ok(())
+}
+
+fn confirm_gilding(painter: &mut Painter) -> io::Result<bool> {
+    title("prompt", AnsiColor::Yellow, painter)?;
+
+    write!(
+        painter,
+        "would you really like to gild all valid failing tests? ["
+    )?;
+    painter.set(AnsiColor::Green)?;
+    write!(painter, "y")?;
+    painter.unset()?;
+    write!(painter, "/")?;
+    painter.set(AnsiColor::Red).unwrap();
+    write!(painter, "N")?;
+    painter.unset()?;
+    write!(painter, "] ")?;
+    painter.flush()?;
+
+    let mut answer = String::new();
+    io::stdin().read_line(&mut answer)?;
+    let answer = answer.trim();
+
+    if answer.eq_ignore_ascii_case("y") || answer.eq_ignore_ascii_case("yes") {
+        writeln!(painter)?;
+        painter.flush()?;
+
+        return Ok(true);
+    }
+
+    Ok(false)
+}
+
+fn title(content: &str, color: AnsiColor, painter: &mut Painter) -> io::Result<()> {
+    painter.set(color)?;
+    write!(painter, "{content}")?;
+    painter.unset()?;
+    write!(painter, ": ")
 }
 
 #[derive(Clone, Copy)]
@@ -264,7 +308,7 @@ fn handle_test_folder_entry(
 
     // disallow symbolic links for now
     if entry.file_type().is_symlink() {
-        print_file_status(path, Status::Invalid, None);
+        print_file_status(path, Status::Invalid, None).unwrap();
         failed_tests.push(FailedTest::new(
             path.to_owned(),
             Failure::InvalidTest {
@@ -293,7 +337,7 @@ fn handle_test_folder_entry(
             && !path.with_extension("lushui").exists()
             && !path.with_extension("recnot").exists()
         {
-            print_file_status(path, Status::Invalid, None);
+            print_file_status(path, Status::Invalid, None).unwrap();
             failed_tests.push(FailedTest::new(
                 path.to_owned(),
                 Failure::InvalidTest {
@@ -309,7 +353,7 @@ fn handle_test_folder_entry(
     }
 
     let Ok(type_) = classify_test(path) else {
-        print_file_status(path, Status::Invalid, None);
+        print_file_status(path, Status::Invalid, None).unwrap();
         failed_tests.push(FailedTest::new(
             path.to_owned(),
             Failure::InvalidTest {
@@ -345,7 +389,7 @@ fn handle_test_folder_entry(
                 path.to_owned(),
                 Failure::InvalidConfiguration(error),
             ));
-            print_file_status(path, Status::Invalid, None);
+            print_file_status(path, Status::Invalid, None).unwrap();
             statistics.invalid += 1;
             return;
         }
@@ -357,7 +401,7 @@ fn handle_test_folder_entry(
             let result = validate_auxiliary_file(&users, path, failed_tests);
 
             if result.is_err() {
-                print_file_status(path, Status::Invalid, None);
+                print_file_status(path, Status::Invalid, None).unwrap();
                 statistics.invalid += 1;
             }
         }
@@ -366,7 +410,7 @@ fn handle_test_folder_entry(
     }
 
     if let TestTag::Ignore = configuration.tag {
-        print_file_status(path, Status::Ignored, None);
+        print_file_status(path, Status::Ignored, None).unwrap();
         statistics.ignored += 1;
         return;
     }
@@ -450,26 +494,30 @@ fn handle_test_folder_entry(
         Status::Ok
     };
 
-    print_file_status(path, status, Some(duration));
+    print_file_status(path, status, Some(duration)).unwrap();
 }
 
-pub(crate) fn print_file_status(path: &Path, status: Status, duration: Option<Duration>) {
+pub(crate) fn print_file_status(
+    path: &Path,
+    status: Status,
+    duration: Option<Duration>,
+) -> io::Result<()> {
     let padding = terminal_width() * 4 / 5;
-    let mut stdout = std::io::stdout().lock();
+    let mut stdout = Painter::stdout(ColorChoice::Auto);
 
-    write!(
-        stdout,
-        "  {:<padding$} {}",
-        path::shorten(path).display(),
-        status
-    )
-    .unwrap();
+    write!(stdout, "  {:<padding$} ", path::shorten(path).display())?;
+    stdout.set(status.color())?;
+    write!(stdout, "{}", status.name())?;
+    stdout.unset()?;
 
     if let Some(duration) = duration {
-        write!(stdout, " {}", format!("{duration:.2?}").bright_black()).unwrap();
+        stdout.set(AnsiColor::BrightBlack)?;
+        write!(stdout, " {duration:.2?}")?;
+        stdout.unset()?;
     }
 
-    writeln!(stdout).unwrap();
+    writeln!(stdout)?;
+    stdout.flush()
 }
 
 #[derive(Clone, Copy)]
@@ -481,19 +529,24 @@ pub(crate) enum Status {
     Gilded,
 }
 
-impl fmt::Display for Status {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                Self::Ok => "ok".green(),
-                Self::Ignored => "ignored".yellow(),
-                Self::Failure => "FAIL".red(),
-                Self::Invalid => "INVALID".red(),
-                Self::Gilded => "gilded".blue(),
-            }
-        )
+impl Status {
+    const fn name(self) -> &'static str {
+        match self {
+            Self::Ok => "ok",
+            Self::Ignored => "ignored",
+            Self::Failure => "FAIL",
+            Self::Invalid => "INVALID",
+            Self::Gilded => "gilded",
+        }
+    }
+
+    const fn color(self) -> AnsiColor {
+        match self {
+            Self::Ok => AnsiColor::Green,
+            Self::Ignored => AnsiColor::Yellow,
+            Self::Failure | Self::Invalid => AnsiColor::Red,
+            Self::Gilded => AnsiColor::Blue,
+        }
     }
 }
 

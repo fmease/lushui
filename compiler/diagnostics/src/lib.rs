@@ -1,18 +1,24 @@
 //! The diagnostics system.
-#![feature(adt_const_params, associated_type_bounds)]
+#![feature(adt_const_params, associated_type_bounds, negative_impls)]
 #![allow(incomplete_features)] // adt_const_params
 
 use derivation::Str;
 use reporter::Report;
-use span::{SourceMap, Span, Spanning};
-use std::{collections::BTreeSet, fmt::Debug, marker::ConstParamTy, ops::Deref, path::PathBuf};
+use span::{Span, Spanning};
+use std::{
+    collections::BTreeSet,
+    fmt::Debug,
+    marker::ConstParamTy,
+    ops::{Deref, DerefMut},
+    path::PathBuf,
+};
 use utility::Str;
 
 pub use code::{Code, ErrorCode, LintCode};
 pub use reporter::Reporter;
 
 mod code;
-mod format;
+mod render;
 
 pub mod error;
 pub mod reporter;
@@ -154,7 +160,7 @@ impl<const S: Severity> Diagnostic<S> {
 
     /// Reference a path in the diagnostic.
     ///
-    /// Useful if the given path is not registered in the [`SourceMap`] (e.g. if the
+    /// Useful if the given path is not registered in the [source map] (e.g., if the
     /// path does not point to a file that could not be opened) or if one would like to
     /// highlight the entirety of a file without the need to reside to the whole [file span]
     /// which might divert attention from the intend of the diagnostic.
@@ -162,6 +168,7 @@ impl<const S: Severity> Diagnostic<S> {
     /// A diagnostic may only ever have a single such path.
     /// Calling this function again overwrites the previous one.
     ///
+    /// [source map]: span::SourceMap
     /// [file span]: span::SourceFile::span
     pub fn path(mut self, path: PathBuf) -> Self {
         self.untagged.path = Some(path);
@@ -235,6 +242,9 @@ impl<const S: Severity> Deref for Diagnostic<S> {
     }
 }
 
+// This impl would allow users to retag a diagnostic.
+impl<const S: Severity> !DerefMut for Diagnostic<S> {}
+
 pub type UntaggedDiagnostic = Box<UnboxedUntaggedDiagnostic>;
 
 // @Task rethink ordering: message should be higher I guess
@@ -265,10 +275,6 @@ impl UnboxedUntaggedDiagnostic {
             message: None,
             severity,
         }
-    }
-
-    pub fn format(&self, map: Option<&SourceMap>) -> String {
-        format::format(self, map)
     }
 }
 

@@ -113,7 +113,6 @@ checksum = "e2d098ff73c1ca148721f37baad5ea6a465a13f9573aba8641fbbbae8164a54e"
 name = "ast"
 version = "0.0.0"
 dependencies = [
- "colored",
  "diagnostics",
  "index_map",
  "joinery",
@@ -280,17 +279,6 @@ name = "colorchoice"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "acbf1af155f9b9ef647e42cdc158db4b64a1b61f743629225fde6f3e0be2a7c7"
-
-[[package]]
-name = "colored"
-version = "2.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2674ec482fbc38012cf31e6c42ba0177b431a0cb6f15fe40efa5aab1bda516f6"
-dependencies = [
- "is-terminal",
- "lazy_static",
- "windows-sys",
-]
 
 [[package]]
 name = "cranelift"
@@ -527,7 +515,6 @@ dependencies = [
 name = "diagnostics"
 version = "0.0.0"
 dependencies = [
- "colored",
  "derivation",
  "span",
  "unicode-width",
@@ -570,7 +557,6 @@ dependencies = [
  "clap",
  "codegen_cranelift",
  "codegen_llvm",
- "colored",
  "derivation",
  "diagnostics",
  "documenter",
@@ -788,7 +774,6 @@ name = "hir_format"
 version = "0.0.0"
 dependencies = [
  "ast",
- "colored",
  "hir",
  "joinery",
  "lexer",
@@ -922,6 +907,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "is_ci"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "616cde7c720bb2bb5824a224687d8f77bfd38922027f01d825cd7453be5099fb"
+
+[[package]]
 name = "itoa"
 version = "1.0.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -985,7 +976,6 @@ version = "0.0.0"
 dependencies = [
  "ast",
  "bitflags 2.4.0",
- "colored",
  "derivation",
  "diagnostics",
  "lexer",
@@ -1192,9 +1182,7 @@ name = "parser"
 version = "0.0.0"
 dependencies = [
  "ast",
- "colored",
  "diagnostics",
- "difference",
  "index_map",
  "lexer",
  "span",
@@ -1353,7 +1341,6 @@ name = "resolver"
 version = "0.0.0"
 dependencies = [
  "ast",
- "colored",
  "diagnostics",
  "difference",
  "hir",
@@ -1549,6 +1536,16 @@ name = "strsim"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "73473c0e59e6d5812c5dfe2a064a6444949f089e20eec9a2e5506596494e4623"
+
+[[package]]
+name = "supports-color"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4950e7174bffabe99455511c39707310e7e9b440364a2fcb1cc21521be57b354"
+dependencies = [
+ "is-terminal",
+ "is_ci",
+]
 
 [[package]]
 name = "syn"
@@ -1751,10 +1748,8 @@ name = "ui_test_framework"
 version = "0.1.0"
 dependencies = [
  "clap",
- "colored",
  "derivation",
  "diagnostics",
- "difference",
  "joinery",
  "lexer",
  "pathdiff",
@@ -1833,12 +1828,14 @@ checksum = "711b9620af191e0cdc7468a8d14e709c3dcdb115b36f838e601583af800a370a"
 name = "utility"
 version = "0.0.0"
 dependencies = [
- "colored",
+ "anstyle",
+ "derivation",
  "difference",
  "index_map",
  "num-bigint",
  "rustc-hash",
  "smallvec",
+ "supports-color",
 ]
 
 [[package]]

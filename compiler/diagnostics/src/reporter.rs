@@ -1,6 +1,6 @@
 //! The diagnostic reporter.
 
-use super::{Diagnostic, ErrorCode, Severity, UntaggedDiagnostic};
+use super::{Diagnostic, ErrorCode, Severity, UnboxedUntaggedDiagnostic, UntaggedDiagnostic};
 use span::SourceMap;
 use std::{
     collections::BTreeSet,
@@ -10,7 +10,11 @@ use std::{
         Arc, Mutex, RwLock, RwLockReadGuard,
     },
 };
-use utility::{default, pluralize, Conjunction, ListingExt};
+use utility::{
+    default,
+    paint::{epaint, ColorChoice},
+    pluralize, Conjunction, ListingExt,
+};
 
 // @Task diagnostic formatting options
 // like display style: verbose (current default) vs. terse
@@ -34,14 +38,15 @@ impl Reporter {
         Self::new(ReporterKind::Buffer(diagnostics))
     }
 
-    pub fn stderr() -> Self {
-        Self::new(ReporterKind::Stderr)
+    pub fn stderr(choice: ColorChoice) -> Self {
+        Self::new(ReporterKind::Stderr { choice })
     }
 
-    pub fn buffered_stderr(reported_any_errors: Arc<AtomicBool>) -> Self {
+    pub fn buffered_stderr(choice: ColorChoice, reported_any_errors: Arc<AtomicBool>) -> Self {
         Self::new(ReporterKind::BufferedStderr(StderrBuffer {
             errors: default(),
             warnings: default(),
+            choice,
             reported_any_errors,
         }))
     }
@@ -74,7 +79,7 @@ impl Reporter {
             ReporterKind::Buffer(diagnostics) => {
                 diagnostics.lock().unwrap().insert(diagnostic);
             }
-            ReporterKind::Stderr => stderr_print(&diagnostic.format(self.map().as_deref())),
+            &ReporterKind::Stderr { choice } => report(&diagnostic, self.map().as_deref(), choice),
             ReporterKind::BufferedStderr(buffer) => match diagnostic.severity {
                 Severity::Bug | Severity::Error => {
                     buffer.errors.lock().unwrap().insert(diagnostic);
@@ -83,7 +88,7 @@ impl Reporter {
                     buffer.warnings.lock().unwrap().insert(diagnostic);
                 }
                 Severity::Debug => {
-                    stderr_print(&diagnostic.format(self.map().as_deref()));
+                    report(&diagnostic, self.map().as_deref(), buffer.choice);
                 }
             },
         }
@@ -101,7 +106,7 @@ impl Drop for Reporter {
 enum ReporterKind {
     Silent,
     Buffer(Buffer),
-    Stderr,
+    Stderr { choice: ColorChoice },
     BufferedStderr(StderrBuffer),
 }
 
@@ -110,6 +115,7 @@ pub type Buffer = Arc<Mutex<BTreeSet<UntaggedDiagnostic>>>;
 struct StderrBuffer {
     errors: Mutex<BTreeSet<UntaggedDiagnostic>>,
     warnings: Mutex<BTreeSet<UntaggedDiagnostic>>,
+    choice: ColorChoice,
     reported_any_errors: Arc<AtomicBool>,
 }
 
@@ -118,26 +124,30 @@ impl StderrBuffer {
         let warnings = mem::take(&mut *self.warnings.lock().unwrap());
 
         for warning in &warnings {
-            stderr_print(&warning.format(map));
+            report(warning, map, self.choice);
         }
 
         if !warnings.is_empty() {
-            Self::report_warning_summary(&warnings, map);
+            Self::report_warning_summary(&warnings, map, self.choice);
         }
 
         let errors = mem::take(&mut *self.errors.lock().unwrap());
 
         for error in &errors {
-            stderr_print(&error.format(map));
+            report(error, map, self.choice);
         }
 
         if !errors.is_empty() {
             self.reported_any_errors.store(true, Ordering::SeqCst);
-            Self::report_error_summary(&errors, map);
+            Self::report_error_summary(&errors, map, self.choice);
         }
     }
 
-    fn report_error_summary(errors: &BTreeSet<UntaggedDiagnostic>, map: Option<&SourceMap>) {
+    fn report_error_summary(
+        errors: &BTreeSet<UntaggedDiagnostic>,
+        map: Option<&SourceMap>,
+        choice: ColorChoice,
+    ) {
         let explained_codes: BTreeSet<_> = errors
             .iter()
             .filter_map(|error| error.code)
@@ -170,32 +180,35 @@ impl StderrBuffer {
                 } else {
                     it
                 }
-            })
-            .format(map);
+            });
 
-        stderr_print(&summary);
+        report(&summary, map, choice);
     }
 
-    fn report_warning_summary(warnings: &BTreeSet<UntaggedDiagnostic>, map: Option<&SourceMap>) {
-        let summary = Diagnostic::warning()
-            .message(format!(
-                "emitted {} {}",
-                warnings.len(),
-                pluralize!(warnings.len(), "warning")
-            ))
-            .format(map);
+    fn report_warning_summary(
+        warnings: &BTreeSet<UntaggedDiagnostic>,
+        map: Option<&SourceMap>,
+        choice: ColorChoice,
+    ) {
+        let summary = Diagnostic::warning().message(format!(
+            "emitted {} {}",
+            warnings.len(),
+            pluralize!(warnings.len(), "warning")
+        ));
 
-        stderr_print(&summary);
+        report(&summary, map, choice);
     }
 }
 
-fn stderr_print(message: &impl std::fmt::Display) {
-    eprintln!("{message}");
+fn report(diagnostic: &UnboxedUntaggedDiagnostic, map: Option<&SourceMap>, choice: ColorChoice) {
+    epaint(|painter| diagnostic.render(map, painter), choice).unwrap();
+    eprintln!();
     eprintln!();
 }
 
 pub trait Report {
     type Output;
+    // @Bug this leaks the badge! :facepalm:
     const OUTPUT: Self::Output;
 }
 

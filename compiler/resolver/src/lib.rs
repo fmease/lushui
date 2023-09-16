@@ -14,7 +14,6 @@
 //       and use the new Handler API and get rid of the Stain API
 
 use ast::ParameterKind::Explicit;
-use colored::Colorize;
 use diagnostics::{
     error::{Handler, Health, Outcome, PossiblyErroneous, Result, Stain},
     reporter::ErasedReportedError,
@@ -33,11 +32,15 @@ use session::{
     Session,
 };
 use span::{Span, Spanned, Spanning};
-use std::{cmp::Ordering, fmt, mem, sync::Mutex};
+use std::{cmp::Ordering, fmt, io, mem, sync::Mutex};
 use unicode_width::UnicodeWidthStr;
 use utility::{
-    cycle::find_cycles, default, displayed, obtain, pluralize, smallvec, AsAutoColoredChangeset,
-    Atom, Conjunction, HashMap, ListingExt, OwnedOrBorrowed::*, QuoteExt, SmallVec, PROGRAM_ENTRY,
+    cycle::find_cycles,
+    default, displayed, obtain,
+    paint::{paint_to_string, ColorChoice, Effects, Painter},
+    pluralize, smallvec, Atom, ChangesetExt, Conjunction, HashMap, ListingExt,
+    OwnedOrBorrowed::*,
+    QuoteExt, SmallVec, PROGRAM_ENTRY,
 };
 
 /// Resolve the names of a declaration.
@@ -2295,33 +2298,53 @@ struct Lookalike {
     lookalike: Atom,
 }
 
-impl fmt::Display for Lookalike {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Lookalike {
+    fn render(&self, painter: &mut Painter) -> io::Result<()> {
         use difference::{Changeset, Difference};
+        use std::io::Write;
 
         let actual = self.actual.to_str();
         let changeset = Changeset::new(actual, self.lookalike.to_str(), "");
         let mut purely_additive = true;
 
-        write!(f, "‘")?;
+        write!(painter, "‘")?;
 
         for difference in &changeset.diffs {
             match difference {
-                Difference::Same(segment) => write!(f, "{segment}")?,
-                Difference::Add(segment) => write!(f, "{}", segment.bold())?,
+                Difference::Same(segment) => write!(painter, "{segment}")?,
+                Difference::Add(segment) => {
+                    painter.set(Effects::BOLD)?;
+                    write!(painter, "{segment}")?;
+                    painter.unset()?;
+                }
                 Difference::Rem(_) => {
                     purely_additive = false;
                 }
             }
         }
 
-        write!(f, "’")?;
+        write!(painter, "’")?;
 
         if !(purely_additive || actual.width() == 1 && changeset.distance == 2) {
-            write!(f, " ({})", changeset.auto_colored())?;
+            write!(painter, " (")?;
+            changeset.render(painter)?;
+            write!(painter, ")")?;
         }
 
         Ok(())
+    }
+}
+
+// FIXME: Remove this impl since it creates a fresh `Painter` and thus violates the
+//        layers of abstraction. It can lead to broken output due to nested styles
+//        not being properly handled. Further, this painter has no way of respecting
+//        `--color`.
+//        Instead, the diagnostics API should expose a method that provides the
+//        underlying painter and callers of this impl should use `render` directly
+//        instead.
+impl fmt::Display for Lookalike {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&paint_to_string(|painter| self.render(painter), ColorChoice::Auto).unwrap())
     }
 }
 
