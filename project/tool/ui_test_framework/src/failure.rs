@@ -1,11 +1,17 @@
 use crate::{path::shorten, terminal_width, Stream};
-use colored::Colorize;
 use derivation::{Elements, FromStr, Str};
 use diagnostics::Diagnostic;
-use difference::{Changeset, Difference};
 use span::{SourceMap, Span};
-use std::{io::Write, path::PathBuf, process::ExitStatus, time::Duration};
-use utility::{pluralize, Str};
+use std::{
+    io::{self, Write},
+    path::PathBuf,
+    process::ExitStatus,
+    time::Duration,
+};
+use utility::{
+    paint::{AnsiColor, Painter},
+    pluralize, Changeset, ChangesetExt, Str,
+};
 
 pub(crate) struct FailedTest {
     pub(crate) path: PathBuf,
@@ -24,8 +30,8 @@ impl FailedTest {
         &self,
         diff_view: DiffView,
         map: &SourceMap,
-        sink: &mut dyn Write,
-    ) -> std::io::Result<()> {
+        painter: &mut Painter,
+    ) -> io::Result<()> {
         match &self.failure {
             Failure::UnexpectedExitStatus(status) => {
                 // @Task if it's an unexpected pass and if no test tag was specified (smh. get that info),
@@ -47,7 +53,7 @@ impl FailedTest {
                         "expected the compiler to {verb} but it exited with {code} indicating {noun}",
                     ));
 
-                write!(sink, "{}", diagnostic.format(None))
+                diagnostic.render(None, painter)
             }
             Failure::GoldenFileMismatch {
                 golden,
@@ -60,22 +66,30 @@ impl FailedTest {
                         "the {stream} output of the compiler differs from the expected one"
                     ));
 
-                writeln!(sink, "{}", diagnostic.format(None))?;
-                writeln!(sink, "{}", "-".repeat(terminal_width()).bright_black())?;
+                diagnostic.render(None, painter)?;
+                writeln!(painter)?;
+                painter.set(AnsiColor::BrightBlack)?;
+                writeln!(painter, "{}", "-".repeat(terminal_width()))?;
+                painter.unset()?;
 
                 match diff_view {
                     DiffView::Unified => {
-                        let changes = Changeset::new(golden, actual, "\n");
-                        write_differences_with_ledge(&changes.diffs, sink)?;
+                        Changeset::new(golden, actual, "\n").render_with_ledge(painter)?;
                     }
                     DiffView::Split => {
-                        write!(sink, "{}", golden.yellow())?;
-                        writeln!(sink, "{}", "-".repeat(terminal_width()).bright_black())?;
-                        write!(sink, "{actual}")?;
+                        painter.set(AnsiColor::Yellow)?;
+                        write!(painter, "{golden}")?;
+                        painter.unset()?;
+                        painter.set(AnsiColor::BrightBlack)?;
+                        writeln!(painter, "{}", "-".repeat(terminal_width()))?;
+                        painter.unset()?;
+                        write!(painter, "{actual}")?;
                     }
                 }
 
-                write!(sink, "{}", "-".repeat(terminal_width()).bright_black())
+                painter.set(AnsiColor::BrightBlack)?;
+                write!(painter, "{}", "-".repeat(terminal_width()))?;
+                painter.unset()
             }
             Failure::InvalidTest {
                 message,
@@ -94,7 +108,7 @@ impl FailedTest {
                         None => it,
                     });
 
-                write!(sink, "{}", diagnostic.format(None))
+                diagnostic.render(None, painter)
             }
             Failure::InvalidConfiguration(error) => {
                 // @Temporary
@@ -102,7 +116,7 @@ impl FailedTest {
                     .message(error.message.clone())
                     .unlabeled_span(error.span);
 
-                write!(sink, "{}", diagnostic.format(Some(map)))
+                diagnostic.render(Some(map), painter)
             }
             Failure::Timeout { global, local } => {
                 let timeout = match local {
@@ -128,11 +142,11 @@ impl FailedTest {
                         pluralize!(timeout, "second"),
                     ));
 
-                write!(sink, "{}", diagnostic.format(None))
+                diagnostic.render(None, painter)
             }
         }?;
 
-        writeln!(sink)
+        writeln!(painter)
     }
 }
 
@@ -163,32 +177,4 @@ pub(crate) enum DiffView {
     #[default]
     Unified,
     Split,
-}
-
-// @Task highlight changes within lines
-fn write_differences_with_ledge(
-    differences: &[Difference],
-    sink: &mut dyn Write,
-) -> std::io::Result<()> {
-    for difference in differences {
-        match difference {
-            Difference::Same(lines) => {
-                for line in lines.lines() {
-                    writeln!(sink, "{} {line}", " ".on_bright_white())?;
-                }
-            }
-            Difference::Add(lines) => {
-                for line in lines.lines().chain(lines.is_empty().then_some("")) {
-                    writeln!(sink, "{} {}", "+".black().on_green(), line.green())?;
-                }
-            }
-            Difference::Rem(lines) => {
-                for line in lines.lines().chain(lines.is_empty().then_some("")) {
-                    writeln!(sink, "{} {}", "-".black().on_red(), line.red())?;
-                }
-            }
-        }
-    }
-
-    Ok(())
 }

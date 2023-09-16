@@ -2,8 +2,11 @@
 #![allow(clippy::cast_precision_loss)]
 
 use crate::Gilding;
-use colored::Colorize;
-use std::{fmt, time::Duration};
+use std::{
+    io::{self, Write},
+    time::Duration,
+};
+use utility::paint::{AnsiColor, Painter};
 
 pub(crate) struct TestSuiteSummary {
     pub(crate) statistics: TestSuiteStatistics,
@@ -11,84 +14,103 @@ pub(crate) struct TestSuiteSummary {
     pub(crate) duration: Duration,
 }
 
-impl fmt::Display for TestSuiteSummary {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let status = if self.statistics.passed() {
-            if self.gilding == Gilding::No {
+impl TestSuiteSummary {
+    pub(crate) fn render(&self, painter: &mut Painter) -> io::Result<()> {
+        write!(painter, "  ")?;
+
+        if self.statistics.passed() {
+            let (message, color) = if self.gilding == Gilding::No {
                 if self.statistics.total_amount() != 0 {
-                    "ALL TESTS PASSED!".green()
+                    ("ALL TESTS PASSED!", AnsiColor::Green)
                 } else {
-                    "ALL TESTS WERE FILTERED OUT!".yellow()
+                    ("ALL TESTS WERE FILTERED OUT!", AnsiColor::Yellow)
                 }
             } else if self.statistics.gilded == 0 {
-                "ALL TESTS PASSED WITHOUT GILDING!".green()
+                ("ALL TESTS PASSED WITHOUT GILDING!", AnsiColor::Green)
             } else {
-                "SOME TESTS WERE GILDED!".blue()
-            }
+                ("SOME TESTS WERE GILDED!", AnsiColor::Blue)
+            };
+
+            painter.set(color)?;
+            write!(painter, "{message}")?;
+            painter.unset()?;
         } else {
-            let mut message = String::new();
+            painter.set(AnsiColor::Red)?;
 
             if self.statistics.failed > 0 {
-                message += "SOME TESTS FAILED!";
+                write!(painter, "SOME TESTS FAILED!")?;
             }
 
             if self.statistics.invalid > 0 {
                 if self.statistics.failed > 0 {
-                    message.push(' ');
+                    write!(painter, " ")?;
                 }
 
-                message += "SOME INVALID TESTS FOUND!";
+                write!(painter, "SOME INVALID TESTS FOUND!")?;
             }
 
-            message.red()
+            painter.unset()?;
         };
+        writeln!(painter)?;
+
+        write!(painter, "    {} ", self.statistics.passed)?;
+        painter.set(AnsiColor::Green)?;
+        if self.gilding == Gilding::No {
+            write!(painter, "passed")?;
+        } else {
+            write!(painter, "passed without gilding")?;
+        }
+        painter.unset()?;
 
         write!(
-            f,
-            "  {status}
-    {passed} {label_passed} ({ratio:.2}%)",
-            passed = self.statistics.passed,
-            label_passed = if self.gilding == Gilding::No {
-                "passed".green()
-            } else {
-                "passed without gilding".green()
-            },
-            ratio = self.statistics.ratio_passed_vs_included(),
+            painter,
+            " ({:.2}%)",
+            self.statistics.ratio_passed_vs_included(),
         )?;
 
+        fn column(
+            count: usize,
+            tag: &str,
+            color: AnsiColor,
+            painter: &mut Painter,
+        ) -> io::Result<()> {
+            write!(painter, " | {count} ")?;
+            painter.set(color)?;
+            write!(painter, "{tag}")?;
+            painter.unset()
+        }
+
         if self.gilding == Gilding::Yes {
-            write!(
-                f,
-                " | {gilded} {label_gilded}",
-                gilded = self.statistics.gilded,
-                label_gilded = "gilded".blue(),
-            )?;
+            column(self.statistics.gilded, "gilded", AnsiColor::Blue, painter)?;
         }
 
         if self.statistics.invalid > 0 {
-            write!(
-                f,
-                " | {invalid} {label_invalid}",
-                invalid = self.statistics.invalid,
-                label_invalid = "invalid".red(),
-            )?;
+            column(self.statistics.invalid, "invalid", AnsiColor::Red, painter)?;
         }
 
-        writeln!(f, " | {failed} {label_failed} | {ignored} {label_ignored} | {filtered_out} filtered out | {total} in total ({filter_ratio:.2}% of {unfiltered_total})
-    {duration}\
-",
-            failed = self.statistics.failed,
-            label_failed = "failed".red(),
-            ignored = self.statistics.ignored,
-            label_ignored = "ignored".yellow(),
-            total = self.statistics.total_amount(),
-            filtered_out = self.statistics.skipped,
-            unfiltered_total = self.statistics.unfiltered_total_amount(),
-            filter_ratio = self.statistics.filter_ratio(),
-            duration = format!("{:.2?}", self.duration).bright_black(),
+        column(self.statistics.failed, "failed", AnsiColor::Red, painter)?;
+
+        column(
+            self.statistics.ignored,
+            "ignored",
+            AnsiColor::Yellow,
+            painter,
         )?;
 
-        Ok(())
+        write!(painter, " | {} filtered out", self.statistics.skipped)?;
+        write!(painter, " | {} in total", self.statistics.total_amount())?;
+
+        write!(
+            painter,
+            " ({:.2}% of {})",
+            self.statistics.filter_ratio(),
+            self.statistics.unfiltered_total_amount(),
+        )?;
+
+        writeln!(painter)?;
+        painter.set(AnsiColor::BrightBlack)?;
+        writeln!(painter, "    {:.2?}", self.duration)?;
+        painter.unset()
     }
 }
 

@@ -3,14 +3,16 @@ use clap::{
     builder::{PossibleValue, TypedValueParser, ValueParser},
     Arg, ArgAction, ArgMatches,
 };
-use colored::Colorize;
 use derivation::{Elements, FromStr, Str};
 use diagnostics::error::Result;
 use lexer::word::Word;
 use package::ComponentFilter;
 use session::unit::ComponentType;
-use std::{cmp::max, ffi::OsStr, path::PathBuf};
-use utility::default;
+use std::{cmp::max, ffi::OsStr, io::Write, path::PathBuf};
+use utility::{
+    default,
+    paint::{paint_to_string, AnsiColor, ColorChoice},
+};
 
 // @Task update the color scheme of the `-Zhelp` output from clap-3-style to clap-4-style
 //       i.e. from upper-case section titles and the use of yellow & green to
@@ -40,7 +42,15 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
         env!("TARGET"),
     );
 
-    let recnot_subcommand_disclaimer = RECNOT_SUBCOMMAND_DISCLAIMER.red().to_string();
+    let recnot_subcommand_disclaimer = paint_to_string(
+        |painter| {
+            painter.set(AnsiColor::Red)?;
+            write!(painter, "{RECNOT_SUBCOMMAND_DISCLAIMER}")?;
+            painter.unset()
+        },
+        ColorChoice::Auto,
+    )
+    .unwrap();
 
     let path_argument = Arg::new(argument::PATH).value_parser(ValueParser::path_buf());
 
@@ -143,7 +153,7 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
                 .long("color")
                 .global(true)
                 .value_name("WHEN")
-                .value_parser(ColorModeParser)
+                .value_parser(ColorChoiceParser)
                 .help("Control when to use color"),
         ])
         .subcommands([
@@ -400,7 +410,7 @@ pub(crate) enum Command {
 
 pub(crate) struct GlobalOptions {
     pub(crate) quiet: bool,
-    pub(crate) color: ColorMode,
+    pub(crate) color: ColorChoice,
 }
 
 impl GlobalOptions {
@@ -412,20 +422,11 @@ impl GlobalOptions {
     }
 }
 
-#[derive(Default, Clone, Copy, FromStr, Str, Elements)]
-#[format(dash_case)]
-pub(crate) enum ColorMode {
-    Always,
-    Never,
-    #[default]
-    Auto,
-}
-
 #[derive(Clone)]
-struct ColorModeParser;
+struct ColorChoiceParser;
 
-impl TypedValueParser for ColorModeParser {
-    type Value = ColorMode;
+impl TypedValueParser for ColorChoiceParser {
+    type Value = ColorChoice;
 
     fn parse_ref(
         &self,
@@ -440,14 +441,14 @@ impl TypedValueParser for ColorModeParser {
             //       https://github.com/clap-rs/clap/discussions/4029
             clap::Error::raw(
                 clap::error::ErrorKind::InvalidValue,
-                format!("‘{source}’ is not a valid color mode\n"),
+                format!("‘{source}’ is not a valid color choice\n"),
             )
         })
     }
 
     fn possible_values(&self) -> Option<Box<dyn Iterator<Item = PossibleValue>>> {
         Some(Box::new(
-            ColorMode::elements().map(|mode| PossibleValue::new(mode.name())),
+            ColorChoice::elements().map(|mode| PossibleValue::new(mode.name())),
         ))
     }
 }
@@ -776,11 +777,17 @@ impl TypedValueParser for BackendParser {
 
 mod unstable {
     use clap::ArgMatches;
-    use colored::Colorize;
     use derivation::{Elements, FromStr, Str};
     use diagnostics::{error::Result, Diagnostic, Reporter};
-    use std::{fmt::Write, iter::once, str::FromStr};
-    use utility::{pluralize, Conjunction, ListingExt, QuoteExt};
+    use std::{
+        io::{self, Write},
+        iter::once,
+        str::FromStr,
+    };
+    use utility::{
+        paint::{AnsiColor, ColorChoice, Effects, Painter},
+        pluralize, Conjunction, ListingExt, QuoteExt,
+    };
 
     const HELP_OPTION: &str = "help";
     const SEPARATOR: &str = "=";
@@ -792,7 +799,7 @@ mod unstable {
         if let Some(unparsed_options) = matches.get_many::<String>(super::option::UNSTABLE_OPTION) {
             for option in unparsed_options {
                 if option == HELP_OPTION {
-                    help::<O>();
+                    help::<O>().unwrap();
                 }
 
                 if let Ok(option) = option.parse() {
@@ -813,7 +820,7 @@ mod unstable {
                         .map(QuoteExt::quote)
                         .list(Conjunction::And)
                 ))
-                .report(&Reporter::stderr()))
+                .report(&Reporter::stderr(ColorChoice::Auto)))
         } else {
             Ok(options)
         }
@@ -826,8 +833,13 @@ mod unstable {
         fn help(self) -> &'static str;
     }
 
-    fn help<O: UnstableOption>() {
-        let mut message = "UNSTABLE OPTIONS:\n".yellow().to_string();
+    fn help<O: UnstableOption>() -> io::Result<!> {
+        let mut stdout = Painter::stdout(ColorChoice::Auto);
+
+        stdout.set(Effects::BOLD | Effects::UNDERLINE)?;
+        writeln!(stdout, "Unstable Options:")?;
+        stdout.unset()?;
+
         let mut elements: Vec<_> = O::elements()
             .map(|element| (element.syntax(), element.help()))
             .chain(once((HELP_OPTION, "Print help information and halt")))
@@ -842,27 +854,28 @@ mod unstable {
         elements.sort_by_key(|&(syntax, _)| syntax);
 
         for (syntax, help) in elements {
-            writeln!(
-                message,
-                "    {} {:<padding$}     {help}",
-                "-Z".green(),
-                syntax.green(),
-            )
-            .unwrap();
+            stdout.set(Effects::BOLD)?;
+            write!(stdout, "    -Z {syntax:<padding$}     ")?;
+            stdout.unset()?;
+            writeln!(stdout, "{help}")?;
         }
 
-        writeln!(message).unwrap();
+        writeln!(stdout)?;
 
-        write!(message, "{}", "\
+        stdout.set(AnsiColor::Red)?;
+        writeln!(stdout, "\
             These options are not subject to any stability guarantees.\n\
             They may be CHANGED in their behavior or REMOVED ENTIRELY at any time and without further notice.\n\
             If this program is executed with any of these options specified,\n\
             its behavior and especially the form of its output MUST NOT BE RELIED UPON.\
-        ".red()).unwrap();
+        ")?;
+        stdout.unset()?;
 
-        println!("{message}");
-        // @Beacon @Task don't use this function!
-        std::process::exit(0);
+        // FIXME: Don't use `exit` since it doesn't allow destructors to run.
+        //        Instead, bubble up this piece of information and handle it
+        //        in `main`.
+        stdout.flush()?;
+        std::process::exit(0)
     }
 
     #[derive(Clone, Copy, Elements, Str, FromStr)]

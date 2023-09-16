@@ -2,12 +2,12 @@
     decl_macro,
     let_chains,
     associated_type_bounds,
-    impl_trait_in_assoc_type
+    impl_trait_in_assoc_type,
+    never_type
 )]
 
-use ast::Debug;
-use cli::{Backend, BuildMode, ColorMode, Command, PassRestriction};
-use colored::Colorize;
+use ast::Render;
+use cli::{Backend, BuildMode, Command, PassRestriction};
 use diagnostics::{error::Result, reporter::ErasedReportedError, Diagnostic, ErrorCode, Reporter};
 use hir_format::Display as _;
 use index_map::IndexMap;
@@ -22,13 +22,18 @@ use session::{
 use span::SourceMap;
 use std::{
     borrow::Cow,
+    io::Write,
     path::Path,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, RwLock,
     },
 };
-use utility::{default, displayed, ComponentIndex, FormatError, PROGRAM_ENTRY};
+use utility::{
+    default, displayed,
+    paint::{epaint, paint, AnsiColor, ColorChoice},
+    ComponentIndex, FormatError, PROGRAM_ENTRY,
+};
 
 mod cli;
 mod create;
@@ -38,19 +43,14 @@ pub fn main() -> Result {
 
     let (command, options) = cli::arguments()?;
 
-    match options.color {
-        ColorMode::Always => colored::control::set_override(true),
-        ColorMode::Never => colored::control::set_override(false),
-        ColorMode::Auto => {}
-    }
-
     let map: Arc<RwLock<SourceMap>> = default();
     // @Bug creating a buffered-stderr-reporter up here is not great at all
     // for BuildMode::Serve! there, we do not want to use it! (we want to
     // use the LSP to communicate server errors)
     // @Task smh break this code / construction up / modularize it
     let reported_any_errors: Arc<AtomicBool> = default();
-    let reporter = Reporter::buffered_stderr(reported_any_errors.clone()).with_map(map.clone());
+    let reporter =
+        Reporter::buffered_stderr(options.color, reported_any_errors.clone()).with_map(map.clone());
 
     let result = execute_command(command, &options, &map, reporter);
 
@@ -232,22 +232,23 @@ fn build_unit(
     // @Task abstract over this as print_status_report and report w/ label="Running" for
     // root component if mode==Run (in addition to initial "Building")
     if !global_options.quiet {
-        let label = match mode {
-            BuildMode::Check => "Checking",
-            BuildMode::Compile { .. } | BuildMode::Run { .. } => "Building",
-            // @Bug this should not be printed for non-root components and --no-deps
-            BuildMode::Document { .. } => "Documenting",
-        };
-        let label = label.green().bold();
-        println!(
-            "   {label} {} ({})",
-            if session.in_root_package(unit.index) {
-                format!("{}", unit.name)
-            } else {
-                unit.name.to_string()
+        paint(
+            |stdout| {
+                let label = match mode {
+                    BuildMode::Check => "Checking",
+                    BuildMode::Compile { .. } | BuildMode::Run { .. } => "Building",
+                    // FIXME: This shouldn't be printed for non-root components and `--no-deps`.
+                    BuildMode::Document { .. } => "Documenting",
+                };
+                stdout.set(AnsiColor::Green.on_default().bold())?;
+                write!(stdout, "   {label} ")?;
+                stdout.unset()?;
+
+                write!(stdout, "{} ({})", unit.name, unit.path.bare.display())
             },
-            unit.path.bare.display()
-        );
+            global_options.color,
+        )
+        .unwrap();
     }
 
     macro restriction_point($restriction:ident) {
@@ -320,7 +321,12 @@ fn build_unit(
     }
 
     if unit.is_root(session) && options.emit_ast {
-        eprintln!("{}", displayed(|f| component_root.write(f)));
+        epaint(
+            |painter| component_root.render(default(), painter),
+            global_options.color,
+        )
+        .unwrap();
+        eprintln!();
     }
 
     restriction_point! { Parser }
@@ -541,6 +547,7 @@ fn set_panic_hook() {
                     "rerun with the environment variable ‘LUSHUI_BACKTRACE=1’ to display a backtrace",
                 ),
             })
-            .report(&Reporter::stderr());
+            // FIXME: respect `--color`
+            .report(&Reporter::stderr(ColorChoice::Auto));
     }));
 }

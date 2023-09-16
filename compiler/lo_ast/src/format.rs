@@ -1,6 +1,7 @@
 //! Formatting routines for the internal textual representation of the [Lo-AST](super).
 
-use colored::Colorize;
+// FIXME: If we decide to not get rid of Lo-AST in favor of HIR, color the output again.
+
 use lexer::token::INDENTATION;
 use std::fmt;
 use utility::Atom;
@@ -24,82 +25,51 @@ fn write_declaration(
     use super::BareDeclaration::*;
 
     for attribute in &declaration.attributes.0 {
-        // @Task get rid of extra alloc
-        writeln!(
-            f,
-            "{}{}",
-            " ".repeat(depth * INDENTATION.0),
-            attribute.to_string().color(palette::ATTRIBUTE)
-        )?;
+        writeln!(f, "{}{attribute}", " ".repeat(depth * INDENTATION.0))?;
     }
 
     write!(f, "{}", " ".repeat(depth * INDENTATION.0))?;
 
     match &declaration.bare {
         Function(function) => {
-            write!(f, "{}{} ", function.binder, ":".color(palette::SYMBOL))?;
+            write!(f, "{}: ", function.binder)?;
             function.type_.write(f)?;
             if let Some(expression) = &function.body {
-                write!(f, " {} ", "=".color(palette::SYMBOL))?;
+                f.write_str(" = ")?;
                 expression.write(f)?;
             }
             writeln!(f)
         }
         Data(type_) => match &type_.declarations {
             Some(constructors) => {
-                write!(
-                    f,
-                    "{} {}{} ",
-                    "data".color(palette::KEYWORD),
-                    type_.binder,
-                    ":".color(palette::SYMBOL),
-                )?;
+                write!(f, "data {}: ", type_.binder)?;
                 type_.type_.write(f)?;
-                writeln!(f, " {}", "of".color(palette::KEYWORD))?;
+                writeln!(f, " of")?;
                 for constructor in constructors {
                     write_declaration(constructor, depth + 1, f)?;
                 }
                 Ok(())
             }
             None => {
-                write!(
-                    f,
-                    "{} {}{} ",
-                    "data".color(palette::KEYWORD),
-                    type_.binder,
-                    ":".color(palette::SYMBOL),
-                )?;
+                write!(f, "data {}: ", type_.binder)?;
                 type_.type_.write(f)?;
                 writeln!(f)
             }
         },
         Constructor(constructor) => {
-            write!(f, "{}{} ", constructor.binder, ":".color(palette::SYMBOL))?;
+            write!(f, "{}: ", constructor.binder)?;
             constructor.type_.write(f)?;
             writeln!(f)
         }
         Module(module) => {
-            writeln!(
-                f,
-                "{module} {binder} {of}",
-                module = "module".color(palette::KEYWORD),
-                binder = module.binder,
-                of = "of".color(palette::KEYWORD)
-            )?;
+            writeln!(f, "module {} of", module.binder)?;
             for declaration in &module.declarations {
                 write_declaration(declaration, depth + 1, f)?;
             }
             Ok(())
         }
-        Use(use_) => writeln!(
-            f,
-            "{use_} {target} {as_} {binder}",
-            use_ = "use".color(palette::KEYWORD),
-            target = use_.target,
-            as_ = "as".color(palette::KEYWORD),
-            binder = use_.binder,
-        ),
-        Error(_) => write!(f, "{}", "⟨error⟩".red()),
+        Use(use_) => writeln!(f, "use {} as {}", use_.target, use_.binder),
+        Error(_) => f.write_str("⟨error⟩"),
     }
 }
 
@@ -123,7 +93,7 @@ fn write_pi_type_literal_or_lower(
             if pi.binder.is_none() && pi.kind == ast::ParameterKind::Explicit {
                 format_application_or_lower(&pi.domain, f)?;
             } else {
-                write!(f, "{} ", "For".color(palette::KEYWORD))?;
+                f.write_str("For ")?;
 
                 if pi.kind == ast::ParameterKind::Implicit {
                     f.write_str("'")?;
@@ -133,7 +103,7 @@ fn write_pi_type_literal_or_lower(
                     f.write_str("[")?;
 
                     if let Some(binder) = &pi.binder {
-                        write!(f, "{binder}{} ", ":".color(palette::SYMBOL))?;
+                        write!(f, "{binder}: ")?;
                     }
                     pi.domain.write(f)?;
 
@@ -141,17 +111,17 @@ fn write_pi_type_literal_or_lower(
                 } else {
                     let binder = pi.binder.map_or(Atom::UNDERSCORE, ast::Identifier::bare);
 
-                    write!(f, "({binder}{} ", ":".color(palette::SYMBOL))?;
+                    write!(f, "({binder}: ")?;
                     pi.domain.write(f)?;
                     f.write_str(")")?;
                 }
             }
 
-            write!(f, " {arrow} ", arrow = "->".color(palette::SYMBOL))?;
+            f.write_str(" -> ")?;
             write_pi_type_literal_or_lower(&pi.codomain, f)
         }
         Lambda(lambda) => {
-            write!(f, "{} ", "for".color(palette::KEYWORD))?;
+            f.write_str("for ")?;
 
             if lambda.kind == ast::ParameterKind::Implicit {
                 write!(f, "'")?;
@@ -161,7 +131,7 @@ fn write_pi_type_literal_or_lower(
                 f.write_str("[")?;
 
                 if let Some(binder) = &lambda.binder {
-                    write!(f, "{binder}{} ", ":".color(palette::SYMBOL))?;
+                    write!(f, "{binder}: ")?;
                 }
 
                 // Although it's not statically guaranteed, the domain of context parameters has exist.
@@ -178,7 +148,7 @@ fn write_pi_type_literal_or_lower(
 
                 if let Some(domain) = &lambda.domain {
                     f.write_str("(")?;
-                    write!(f, "{binder}{} ", ":".color(palette::SYMBOL))?;
+                    write!(f, "{binder}: ")?;
                     domain.write(f)?;
                     f.write_str(")")?;
                 } else {
@@ -187,17 +157,17 @@ fn write_pi_type_literal_or_lower(
             }
 
             if let Some(codomain) = &lambda.codomain {
-                write!(f, "{colon} ", colon = ":".color(palette::SYMBOL))?;
+                f.write_str(": ")?;
                 codomain.write(f)?;
             }
-            write!(f, " {arrow} ", arrow = "=>".color(palette::SYMBOL))?;
+            f.write_str(" => ")?;
             lambda.body.write(f)
         }
         // @Task get rid of the delimited blocks, they are no longer part of the surface language!
         CaseAnalysis(analysis) => {
-            write!(f, "{case} ", case = "case".color(palette::KEYWORD))?;
+            f.write_str("case ")?;
             analysis.scrutinee.write(f)?;
-            write!(f, " {of} {{ ", of = "of".color(palette::KEYWORD))?;
+            f.write_str(" of { ")?;
             let mut first = true;
             for case in &analysis.cases {
                 if first {
@@ -207,10 +177,10 @@ fn write_pi_type_literal_or_lower(
                 }
 
                 case.pattern.write(f)?;
-                write!(f, " {arrow} ", arrow = "=>".color(palette::SYMBOL))?;
+                f.write_str(" => ")?;
                 case.body.write(f)?;
             }
-            write!(f, " }}")
+            f.write_str(" }")
         }
         SequenceLiteral(sequence) => {
             if let Some(path) = &sequence.path {
@@ -249,7 +219,7 @@ fn write_pi_type_literal_or_lower(
         }
         Projection(projection) => {
             format_lower_expression(&projection.basis, f)?;
-            write!(f, "{}{}", "::".color(palette::SYMBOL), projection.field)
+            write!(f, "::{}", projection.field)
         }
         _ => format_application_or_lower(expression, f),
     }
@@ -289,30 +259,17 @@ fn format_lower_expression(
     use super::BareExpression::*;
 
     for attribute in &expression.attributes.0 {
-        // @Task get rid of wasted alloc
-        write!(f, "{} ", attribute.to_string().color(palette::ATTRIBUTE))?;
+        write!(f, "{attribute} ")?;
     }
 
     match &expression.bare {
-        Type => {
-            if colored::control::SHOULD_COLORIZE.should_colorize() {
-                write!(f, "{}", "Type".color(palette::KEYWORD))
-            } else {
-                f.write_str("⟨Type⟩")
-            }
-        }
-        LocalBinding(_) => {
-            if colored::control::SHOULD_COLORIZE.should_colorize() {
-                write!(f, "{}", "_".color(palette::KEYWORD))
-            } else {
-                f.write_str("⟨_⟩")
-            }
-        }
+        Type => f.write_str("⟨Type⟩"),
+        LocalBinding(_) => f.write_str("⟨_⟩"),
         Wildcard(wildcard) => wildcard.write(f),
         NumberLiteral(number) => write!(f, "{number}"),
         TextLiteral(text) => write!(f, "{text}"),
         Path(path) => write!(f, "{path}"),
-        Error(_) => write!(f, "{}", "⟨error⟩".red()),
+        Error(_) => f.write_str("⟨error⟩"),
         _ => {
             write!(f, "(")?;
             expression.write(f)?;
@@ -331,9 +288,7 @@ impl Display for super::Pattern {
             NumberLiteral(number) => write!(f, "{number}"),
             TextLiteral(text) => write!(f, "{text}"),
             Path(path) => write!(f, "{path}"),
-            LetBinding(binder) => {
-                write!(f, "({} {binder})", "let ".color(palette::KEYWORD))
-            }
+            LetBinding(binder) => write!(f, "(let {binder})"),
             Application(application) => {
                 write!(f, "(")?;
                 application.callee.write(f)?;
@@ -362,7 +317,7 @@ impl Display for super::Pattern {
                 }
                 write!(f, "]")
             }
-            Error(_) => write!(f, "{}", "⟨error⟩".red()),
+            Error(_) => f.write_str("⟨error⟩"),
         }
     }
 }
@@ -374,12 +329,4 @@ impl Display for ast::Wildcard {
             Self::Signaling { tag } => write!(f, "?{tag}"),
         }
     }
-}
-
-mod palette {
-    use colored::Color;
-
-    pub(super) const KEYWORD: Color = Color::Cyan;
-    pub(super) const SYMBOL: Color = Color::BrightMagenta;
-    pub(super) const ATTRIBUTE: Color = Color::BrightWhite;
 }

@@ -49,6 +49,11 @@ if [[ $? == 0 ]]; then
         --manifest-path="$FOLDER/../project/tool/ui_test_framework/Cargo.toml" \
         -- \
         "$@"
+
+    status=$?
+    if [[ $status != 0 ]]; then
+        exit $status
+    fi
 fi
 
 selected "unit"
@@ -65,4 +70,9 @@ if [[ $? == 0 ]]; then
         "$EXTRA_CARGO_TEST_FLAGS" \
         -- \
         --format pretty
+
+    status=$?
+    if [[ $status != 0 ]]; then
+        exit $status
+    fi
 fi

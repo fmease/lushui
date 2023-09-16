@@ -1,21 +1,33 @@
 use crate::{Diagnostic, ErrorCode, LintCode, UnboxedUntaggedDiagnostic};
 use span::{span, FileName::Anonymous, SourceMap};
 use std::sync::Arc;
-use utility::difference;
+use utility::{
+    paint::{epaint, paint_to_string, ColorChoice},
+    Changeset, ChangesetExt,
+};
 
 #[track_caller]
+// FIXME: rename
 fn assert_format(diagnostic: &UnboxedUntaggedDiagnostic, map: Option<&SourceMap>, expected: &str) {
-    colored::control::set_override(false);
-    let actual = super::format(diagnostic, map);
-    // colored::control::unset_override(); // conflicts with parallel test execution
+    let actual = paint_to_string(
+        |painter| diagnostic.render(map, painter),
+        // We are not interested in checking the coloring.
+        ColorChoice::Never,
+    )
+    .unwrap();
 
-    // @Beacon @Bug this diff now isn't colored because of the global setting
-    // @Task replace colored with something more flexible
-    assert!(
-        actual == expected,
-        "the output differs:\n{}",
-        difference(expected, &actual, "\n")
-    );
+    if actual != expected {
+        // We also lock stdout since the test runner would otherwise interfere.
+        let stdout = std::io::stdout().lock();
+        epaint(
+            |painter| Changeset::new(expected, &actual, "\n").render_with_ledge(painter),
+            ColorChoice::Auto,
+        )
+        .unwrap();
+        drop(stdout);
+
+        panic!("the output differs");
+    }
 }
 
 #[test]
@@ -703,14 +715,14 @@ error: this file has to contain something reasonable
 #[test]
 fn format_warning_with_lint_code() {
     let diagnostic = Diagnostic::warning()
-        .code(LintCode::PermanentlyUnassignedOne)
+        .code(LintCode::PermanentlyUnassigned)
         .message("no man's land");
 
     assert_format(
         &diagnostic,
         None,
         "\
-warning[permanently-unassigned-one]: no man's land",
+warning[permanently-unassigned]: no man's land",
     );
 }
 

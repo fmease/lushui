@@ -9,8 +9,11 @@ use session::{
     Context, Session,
 };
 use span::Span;
-use utility::default;
-use utility::{difference, displayed};
+use utility::{
+    default, displayed,
+    paint::{epaint, ColorChoice},
+    Changeset, ChangesetExt,
+};
 
 // @Beacon @Task do something smart if spaces differ (which cannot have color)
 // like replacing them with a different character like the Unicode space symbol
@@ -18,11 +21,18 @@ use utility::{difference, displayed};
 fn assert_format(expected: &str, actual: &Expression, session: &Session<'_>) {
     let actual = displayed(|f| actual.write(session, f)).to_string();
 
-    assert!(
-        actual == expected,
-        "the actual textual representation of the HIR node does not match the expected one:\n{}",
-        difference(expected, &actual, "")
-    );
+    if actual != expected {
+        // We also lock stdout since the test runner would otherwise interfere.
+        let stdout = std::io::stdout().lock();
+        epaint(
+            |painter| Changeset::new(expected, &actual, "").render_with_ledge(painter),
+            ColorChoice::Auto,
+        )
+        .unwrap();
+        drop(stdout);
+
+        panic!("the actual textual representation of the HIR node does not match the expected one");
+    }
 }
 
 trait ComponentExt {

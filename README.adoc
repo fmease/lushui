@@ -37,7 +37,7 @@ It's planned to support
 * side effects via monads or algebraic effects (undecided ^^')
 * “type classes” via implicit record parameters
 * a deriving mechanism through a dependently-typed generics system
-* a coercion system for representationally equal types (in respect to memory layout)
+* a coercion system for representationally equal types (with respect to memory layout)
 * C-FFI at run-time and at compile-time
 * opt-in laziness
 * abstract definitions by default (bindings in types that don't reduce / aren't normalized outside of their defining module / defined reach)

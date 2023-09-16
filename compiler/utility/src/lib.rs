@@ -2,24 +2,32 @@
 #![feature(
     associated_type_bounds,
     decl_macro,
-    never_type_fallback,
-    never_type,
     lazy_cell,
     macro_metavar_expr,
-    negative_impls
+    negative_impls,
+    never_type_fallback,
+    never_type
 )]
 
-use colored::Colorize;
-use difference::{Changeset, Difference};
-use std::{cell::Cell, ffi::OsStr, fmt, path::Path};
+use difference::Difference;
+use paint::{AnsiColor, ColorExt, Painter};
+use std::{
+    cell::Cell,
+    ffi::OsStr,
+    fmt,
+    io::{self, Write},
+    path::Path,
+};
 
 pub use atom::Atom;
+pub use difference::Changeset;
 pub use num_bigint::{BigInt as Int, BigUint as Nat};
 pub use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 pub use smallvec::smallvec;
 
 pub mod atom;
 pub mod cycle;
+pub mod paint;
 pub mod path;
 
 pub const FILE_EXTENSION: &str = "lushui"; // @Question worth to be an Atom?
@@ -110,33 +118,72 @@ impl<'a, T> OwnedOrBorrowed<'a, T> {
     }
 }
 
-pub fn difference(original: &str, edit: &str, split: &str) -> String {
-    use std::io::Write;
+pub trait ChangesetExt {
+    fn render(&self, painter: &mut Painter) -> io::Result<()>;
+    fn render_with_ledge(&self, painter: &mut Painter) -> io::Result<()>;
+}
 
-    let mut buffer = Vec::new();
-
-    // the provided Display implementation for Changesets is unreadable when whitespace differs
-    for difference in Changeset::new(original, edit, split).diffs {
-        match difference {
-            Difference::Same(lines) => {
-                for line in lines.lines() {
-                    writeln!(buffer, "{} {line}", " ".on_bright_white()).unwrap();
+impl ChangesetExt for Changeset {
+    fn render(&self, painter: &mut Painter) -> io::Result<()> {
+        for difference in &self.diffs {
+            match difference {
+                Difference::Same(snippet) => {
+                    write!(painter, "{snippet}{}", self.split)?;
                 }
-            }
-            Difference::Add(lines) => {
-                for line in lines.lines().chain(lines.is_empty().then_some("")) {
-                    writeln!(buffer, "{} {}", "+".black().on_green(), line.green()).unwrap();
+                Difference::Add(snippet) => {
+                    painter.set(AnsiColor::Green)?;
+                    write!(painter, "{snippet}{}", self.split)?;
+                    painter.unset()?;
                 }
-            }
-            Difference::Rem(lines) => {
-                for line in lines.lines().chain(lines.is_empty().then_some("")) {
-                    writeln!(buffer, "{} {}", "-".black().on_red(), line.red()).unwrap();
+                Difference::Rem(snippet) => {
+                    painter.set(AnsiColor::Red)?;
+                    write!(painter, "{snippet}{}", self.split)?;
+                    painter.unset()?;
                 }
             }
         }
+
+        Ok(())
     }
 
-    String::from_utf8(buffer).unwrap()
+    fn render_with_ledge(&self, painter: &mut Painter) -> io::Result<()> {
+        for difference in &self.diffs {
+            match difference {
+                Difference::Same(lines) => {
+                    for line in lines.lines() {
+                        painter.set(AnsiColor::BrightWhite.to_bg())?;
+                        write!(painter, " ")?;
+                        painter.unset()?;
+                        write!(painter, " {line}{}", self.split)?;
+                    }
+                }
+                Difference::Add(lines) => {
+                    for line in lines.lines().chain(lines.is_empty().then_some("")) {
+                        painter.set(AnsiColor::Black.on(AnsiColor::Green))?;
+                        write!(painter, "+")?;
+                        painter.unset()?;
+                        painter.set(AnsiColor::Green)?;
+                        write!(painter, " {line}")?;
+                        painter.unset()?;
+                        write!(painter, "{}", self.split)?;
+                    }
+                }
+                Difference::Rem(lines) => {
+                    for line in lines.lines().chain(lines.is_empty().then_some("")) {
+                        painter.set(AnsiColor::Black.on(AnsiColor::Red))?;
+                        write!(painter, "-")?;
+                        painter.unset()?;
+                        painter.set(AnsiColor::Red)?;
+                        write!(painter, " {line}")?;
+                        painter.unset()?;
+                        write!(painter, "{}", self.split)?;
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
 }
 
 pub trait ListingExt {
@@ -226,48 +273,11 @@ pub macro quoted($code:expr) {
     concat!("‘", $code, "’")
 }
 
-// @Task replace this whole business with a `write_*` function
-pub struct AutoColoredChangeset<'a>(pub &'a Changeset);
-
-impl fmt::Display for AutoColoredChangeset<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let split = &self.0.split;
-
-        for difference in &self.0.diffs {
-            match difference {
-                Difference::Same(snippet) => {
-                    write!(f, "{snippet}{split}")?;
-                }
-                Difference::Add(snippet) => {
-                    // @Task get rid of wasteful allocation
-                    write!(f, "{}{split}", snippet.green())?;
-                }
-                Difference::Rem(snippet) => {
-                    // @Task get rid of wasteful allocation
-                    write!(f, "{}{split}", snippet.red())?;
-                }
-            }
-        }
-
-        Ok(())
-    }
-}
-
-pub trait AsAutoColoredChangeset {
-    fn auto_colored(&self) -> AutoColoredChangeset<'_>;
-}
-
-impl AsAutoColoredChangeset for Changeset {
-    fn auto_colored(&self) -> AutoColoredChangeset<'_> {
-        AutoColoredChangeset(self)
-    }
-}
-
 pub trait FormatError {
     fn format(self) -> String;
 }
 
-impl FormatError for std::io::Error {
+impl FormatError for io::Error {
     fn format(self) -> String {
         // @Task custom output
         self.to_string()

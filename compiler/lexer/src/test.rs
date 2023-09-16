@@ -10,7 +10,10 @@ use crate::{
     Error, Outcome, Token,
 };
 use span::span;
-use utility::difference;
+use utility::{
+    paint::{epaint, ColorChoice},
+    Changeset, ChangesetExt,
+};
 
 fn lex(source: &'static str) -> Outcome {
     super::lex_string(source.to_owned())
@@ -28,11 +31,21 @@ macro assert_lex_eq {
 #[track_caller]
 #[allow(clippy::needless_pass_by_value)] // more legible call sites, flexibility doesn't matter here
 fn assert_eq(actual: Outcome, expected: Outcome) {
-    assert!(
-        actual == expected,
-        "the output by the lexer does not match the expected one:\n{}",
-        difference(&format!("{expected:#?}"), &format!("{actual:#?}"), "\n")
-    );
+    if actual != expected {
+        // We also lock stdout since the test runner would otherwise interfere.
+        let stdout = std::io::stdout().lock();
+        epaint(
+            |painter| {
+                Changeset::new(&format!("{expected:#?}"), &format!("{actual:#?}"), "\n")
+                    .render_with_ledge(painter)
+            },
+            ColorChoice::Auto,
+        )
+        .unwrap();
+        drop(stdout);
+
+        panic!("the output by the lexer does not match the expected one");
+    }
 }
 
 #[test]
