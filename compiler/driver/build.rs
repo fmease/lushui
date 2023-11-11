@@ -24,7 +24,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut features = Vec::new();
     for (key, _) in std::env::vars_os() {
         if let Some(key) = key.to_str()
-        && let Some(feature) = key.strip_prefix("CARGO_FEATURE_")
+            && let Some(feature) = key.strip_prefix("CARGO_FEATURE_")
         {
             features.push(feature.to_ascii_lowercase());
         }

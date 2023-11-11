@@ -398,7 +398,9 @@ impl<'a> Lexer<'a> {
         // greater or equal to the one of the corresponding opening bracket.
         // @Note actually it would be even better if we could emit a nice diagnostic for
         // closing brackets that are dedented too far.
-        if let Some(')' | ']' | '}') = self.peek() && !has_removed_line_break {
+        if let Some(')' | ']' | '}') = self.peek()
+            && !has_removed_line_break
+        {
             // (*) Remove the line break again.
             self.tokens.pop();
         }

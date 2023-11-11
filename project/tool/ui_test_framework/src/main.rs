@@ -331,7 +331,7 @@ fn handle_test_folder_entry(
     // skip golden files (after optional `--inspect` validation)
     // since they are processed when encountering Lushui files and packages
     if let Some(extension) = path.extension()
-    && (extension == "stdout" || extension == "stderr")
+        && (extension == "stdout" || extension == "stderr")
     {
         if arguments.inspecting == Inspecting::Yes
             && !path.with_extension("lushui").exists()

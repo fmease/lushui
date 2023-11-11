@@ -208,7 +208,9 @@ fn build_units(
         })?;
     }
 
-    if let BuildMode::Document { options } = mode && options.open {
+    if let BuildMode::Document { options } = mode
+        && options.open
+    {
         // @Task smh open in background and immediately disown the child process afterwards
         if let Err(error) = open::that(documenter::index_page(context)) {
             return Err(Diagnostic::error()
@@ -244,7 +246,7 @@ fn build_unit(
                 write!(stdout, "   {label} ")?;
                 stdout.unset()?;
 
-                write!(stdout, "{} ({})", unit.name, unit.path.bare.display())
+                writeln!(stdout, "{} ({})", unit.name, unit.path.bare.display())
             },
             global_options.color,
         )

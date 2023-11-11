@@ -35,7 +35,9 @@ pub fn compile_and_link(
         module.print_to_stderr();
     }
 
-    if options.verify_llvm_ir && let Err(message) = module.verify() {
+    if options.verify_llvm_ir
+        && let Err(message) = module.verify()
+    {
         return Err(Diagnostic::bug()
             .message("the generated LLVM-IR is invalid")
             .note(message.to_string())

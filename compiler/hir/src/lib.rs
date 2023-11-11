@@ -411,11 +411,13 @@ pub struct Namespace {
 
 impl fmt::Debug for Namespace {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.binders
+        let binders = self
+            .binders
             .iter()
-            .map(|binding| format!("{binding:?}"))
-            .join_with(' ')
-            .fmt(f)
+            .map(|binder| format!("{binder:?}"))
+            .join_with(' ');
+
+        write!(f, "{binders}")
     }
 }
 
@@ -449,8 +451,8 @@ impl From<ExposureReach> for Exposure {
 impl fmt::Debug for Exposure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Unrestricted => write!(f, "*"),
-            Self::Restricted(reach) => write!(f, "{:?}", reach.lock().unwrap()),
+            Self::Unrestricted => f.pad("*"),
+            Self::Restricted(reach) => f.pad(&format!("{:?}", reach.lock().unwrap())),
         }
     }
 }

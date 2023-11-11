@@ -435,7 +435,9 @@ impl BuildQueue {
         let manifest_path = CanonicalPathBuf::new(&manifest_path_unchecked).map(ManifestPath::from);
 
         // Deduplicate packages by absolute path and check for circular components.
-        if let Ok(manifest_path) = manifest_path && let Some(package) = self.packages.get(&manifest_path) {
+        if let Ok(manifest_path) = manifest_path
+            && let Some(package) = self.packages.get(&manifest_path)
+        {
             // @Beacon @Task add a diag note for size-one cycles of the form `{ path: "." }` (etc) and
             //               recommend the dep-provider `package` (…)
 
@@ -443,7 +445,9 @@ impl BuildQueue {
             // if so, consider not throwing a cycle error (here / unconditionally)
             // @Beacon @Task handle component privacy here
             return match package.components.get(&component_endonym.bare) {
-                Some(&Resolved(component)) if self[component].type_ == ComponentType::Library => Ok(component),
+                Some(&Resolved(component)) if self[component].type_ == ComponentType::Library => {
+                    Ok(component)
+                }
                 // @Bug this does not fire when we want to since the it is apparently unresolved at this stage for some reason
                 // @Task test this, is this reachable?
                 Some(&Resolved(component)) => Err(error::non_library_dependency_error(
@@ -473,7 +477,7 @@ impl BuildQueue {
                     error::undefined_component_error(component_endonym, package.name)
                         .report(&self.reporter)
                         .into(),
-                )
+                ),
             };
         }
 
@@ -529,13 +533,11 @@ impl BuildQueue {
             && package_name.bare != manifest.profile.name.bare
         {
             // @Task message, @Task add UI test
-            return Err(
-                Diagnostic::error()
-                    .message("declared package name does not match actual one")
-                    .unlabeled_span(package_name)
-                    .report(&self.reporter)
-                    .into()
-            );
+            return Err(Diagnostic::error()
+                .message("declared package name does not match actual one")
+                .unlabeled_span(package_name)
+                .report(&self.reporter)
+                .into());
         }
 
         // @Task assert version requirement (if any) is fulfilled
@@ -645,7 +647,9 @@ impl BuildQueue {
                 .report(&self.reporter));
         }
 
-        if provider != DependencyProvider::Filesystem && let Some(path) = &declaration.path {
+        if provider != DependencyProvider::Filesystem
+            && let Some(path) = &declaration.path
+        {
             // @Beacon @Task report an error that those things are incompatible
             // @Task add test
             // @Task add a 2nd *primary* span that highlights the provider (if available otherwise do sth. else)

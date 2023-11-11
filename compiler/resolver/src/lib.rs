@@ -177,18 +177,20 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
 
                 let binder = Identifier::new(index.global(self.session), function.binder);
 
-                if let Some(intrinsic) = declaration.attributes.get::<{ AttributeName::Intrinsic }>()
-                && let Err(error) = self.session.define_special(
-                    special::Kind::Intrinsic,
-                    binder,
-                    match &intrinsic.bare.name {
-                        Some(name) => special::DefinitionStyle::Explicit { name },
-                        None => special::DefinitionStyle::Implicit {
-                            namespace: Some(module),
+                if let Some(intrinsic) =
+                    declaration.attributes.get::<{ AttributeName::Intrinsic }>()
+                    && let Err(error) = self.session.define_special(
+                        special::Kind::Intrinsic,
+                        binder,
+                        match &intrinsic.bare.name {
+                            Some(name) => special::DefinitionStyle::Explicit { name },
+                            None => special::DefinitionStyle::Implicit {
+                                namespace: Some(module),
+                            },
                         },
-                    },
-                    intrinsic.span,
-                ) {
+                        intrinsic.span,
+                    )
+                {
                     error.handle(&mut *self);
                 }
             }
@@ -209,28 +211,31 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
 
                 let known = declaration.attributes.get::<{ AttributeName::Known }>();
                 if let Some(known) = known
-                && let Err(error) = self.session.define_special(
-                    special::Kind::Known,
-                    binder,
-                    match &known.bare.name {
-                        Some(name) => special::DefinitionStyle::Explicit { name },
-                        None => special::DefinitionStyle::Implicit { namespace: None },
-                    },
-                    known.span,
-                ) {
+                    && let Err(error) = self.session.define_special(
+                        special::Kind::Known,
+                        binder,
+                        match &known.bare.name {
+                            Some(name) => special::DefinitionStyle::Explicit { name },
+                            None => special::DefinitionStyle::Implicit { namespace: None },
+                        },
+                        known.span,
+                    )
+                {
                     error.handle(&mut *self);
                 }
 
-                if let Some(intrinsic) = declaration.attributes.get::<{ AttributeName::Intrinsic }>()
-                && let Err(error) = self.session.define_special(
-                    special::Kind::Intrinsic,
-                    binder,
-                    match &intrinsic.bare.name {
-                        Some(name) => special::DefinitionStyle::Explicit { name },
-                        None => special::DefinitionStyle::Implicit { namespace: None },
-                    },
-                    intrinsic.span,
-                ) {
+                if let Some(intrinsic) =
+                    declaration.attributes.get::<{ AttributeName::Intrinsic }>()
+                    && let Err(error) = self.session.define_special(
+                        special::Kind::Intrinsic,
+                        binder,
+                        match &intrinsic.bare.name {
+                            Some(name) => special::DefinitionStyle::Explicit { name },
+                            None => special::DefinitionStyle::Implicit { namespace: None },
+                        },
+                        intrinsic.span,
+                    )
+                {
                     error.handle(&mut *self);
                 }
 
@@ -292,14 +297,15 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
 
                 // @Task support `@(known name)` on constructors
                 if let Some(known) = known
-                && let Err(error) = self.session.define_special(
-                    special::Kind::Known,
-                    binder,
-                    special::DefinitionStyle::Implicit {
-                        namespace: Some(namespace),
-                    },
-                    known,
-                ) {
+                    && let Err(error) = self.session.define_special(
+                        special::Kind::Known,
+                        binder,
+                        special::DefinitionStyle::Implicit {
+                            namespace: Some(namespace),
+                        },
+                        known,
+                    )
+                {
                     error.handle(&mut *self);
                 }
             }
@@ -1601,10 +1607,9 @@ impl<'a> Resolver<'a> {
         }
 
         if !context.allow_deprecated
-        && let Some(deprecated) = self
-            .session[index]
-            .attributes
-            .get::<{ AttributeName::Deprecated }>()
+            && let Some(deprecated) = self.session[index]
+                .attributes
+                .get::<{ AttributeName::Deprecated }>()
         {
             let mut message = format!(
                 "use of deprecated binding ‘{}’",

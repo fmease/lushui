@@ -406,7 +406,9 @@ impl Parser<'_> {
             let (binder, kind, argument) = if self.token() == OpeningSquareBracket {
                 self.advance();
 
-                let binder = if let Word(binder) = self.token() && self.look_ahead(1) == Some(Equals) {
+                let binder = if let Word(binder) = self.token()
+                    && self.look_ahead(1) == Some(Equals)
+                {
                     let span = self.span();
                     self.advance(); // #Word
                     self.advance(); // "="
@@ -431,7 +433,7 @@ impl Parser<'_> {
                 && self.look_ahead(2) == Some(Equals)
             {
                 self.advance(); // "("
-                let binder = Identifier::new_unchecked( self.span(), binder);
+                let binder = Identifier::new_unchecked(self.span(), binder);
                 self.advance(); // #Word
                 self.advance(); // "="
 
@@ -448,7 +450,10 @@ impl Parser<'_> {
                 (None, kind, span.merging(self.parse_lower_item()?))
             } else {
                 self.expected(Expectation::Argument);
-                self.annotate(Annotation::LabelWhileParsing { span: callee.span, name: T::KIND.name() });
+                self.annotate(Annotation::LabelWhileParsing {
+                    span: callee.span,
+                    name: T::KIND.name(),
+                });
 
                 if let ItemKind::Pattern = T::KIND
                     && let Let = self.token()
@@ -456,7 +461,10 @@ impl Parser<'_> {
                 {
                     let span = self.span().merge(&self.succeeding(1));
 
-                    self.annotate(Annotation::SuggestBracketsAroundLetBindingPattern { span, binder });
+                    self.annotate(Annotation::SuggestBracketsAroundLetBindingPattern {
+                        span,
+                        binder,
+                    });
 
                     return self.error();
                 } else if let Some(span) = apostrophe {

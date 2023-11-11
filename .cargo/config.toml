@@ -19,6 +19,7 @@ rustflags = [
     "-Aclippy::result_unit_err",                    # ‘Result<_, ()>’ has its uses, in some cases an alt. to ‘Option<_>’
     "-Aclippy::return_self_not_must_use",           # @Temporary, a churn to fix, not a priority right now
     "-Aclippy::similar_names",                      # too strict
+    "-Aclippy::struct_field_names",                 # too many false positives
     "-Aclippy::single_match_else",                  # too opinionated, match exprs look better in many cases
     "-Aclippy::struct_excessive_bools",             # too many false postives with CLI flag structs
     "-Aclippy::too_many_lines",                     # too opinionated

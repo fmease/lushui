@@ -1,4 +1,4 @@
-//! Diagnostic formatting.
+//! The code responsible for rendering diagnostics.
 
 // @Task make absolute paths relative to the current working directory
 // @Bug tabs in snippets (and others?) mess up the alignment!

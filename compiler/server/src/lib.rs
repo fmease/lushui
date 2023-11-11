@@ -362,7 +362,9 @@ impl FindBinding for hir::Declaration {
             Function(function) => {
                 if function.type_.span.contains(byte_index) {
                     function.type_.find_binding(byte_index)
-                } else if let Some(expression) = &function.body && expression.span.contains(byte_index) {
+                } else if let Some(expression) = &function.body
+                    && expression.span.contains(byte_index)
+                {
                     expression.find_binding(byte_index)
                 } else {
                     None
@@ -372,7 +374,11 @@ impl FindBinding for hir::Declaration {
                 if type_.type_.span.contains(byte_index) {
                     type_.type_.find_binding(byte_index)
                 } else if let Some(constructors) = &type_.constructors {
-                    let index = constructors.binary_search_by(|constructor| byte_index.relate(constructor.span).reverse()).ok()?;
+                    let index = constructors
+                        .binary_search_by(|constructor| {
+                            byte_index.relate(constructor.span).reverse()
+                        })
+                        .ok()?;
                     constructors[index].find_binding(byte_index)
                 } else {
                     None
@@ -386,7 +392,10 @@ impl FindBinding for hir::Declaration {
                 }
             }
             Module(module) => {
-                let index = module.declarations.binary_search_by(|declaration| byte_index.relate(declaration.span).reverse()).ok()?;
+                let index = module
+                    .declarations
+                    .binary_search_by(|declaration| byte_index.relate(declaration.span).reverse())
+                    .ok()?;
                 module.declarations[index].find_binding(byte_index)
             }
             Use(use_) => {
@@ -394,7 +403,9 @@ impl FindBinding for hir::Declaration {
                 // @Note I assume this won't work if we click on path segments that aren't the last segment
                 if use_.target.span().contains(byte_index) {
                     Some(use_.target)
-                } else if let Some(binder) = use_.binder && binder.span().contains(byte_index) {
+                } else if let Some(binder) = use_.binder
+                    && binder.span().contains(byte_index)
+                {
                     Some(binder)
                 } else {
                     None
@@ -446,9 +457,13 @@ impl FindBinding for hir::Expression {
                 }
             }
             Lambda(lambda) => {
-                if let Some(type_annotation) = &lambda.domain && type_annotation.span.contains(byte_index) {
+                if let Some(type_annotation) = &lambda.domain
+                    && type_annotation.span.contains(byte_index)
+                {
                     type_annotation.find_binding(byte_index)
-                } else if let Some(type_annotation) = &lambda.codomain && type_annotation.span.contains(byte_index) {
+                } else if let Some(type_annotation) = &lambda.codomain
+                    && type_annotation.span.contains(byte_index)
+                {
                     type_annotation.find_binding(byte_index)
                 } else if lambda.body.span.contains(byte_index) {
                     lambda.body.find_binding(byte_index)
@@ -467,7 +482,7 @@ impl FindBinding for hir::Expression {
             Substituted(_) => None,          // @Task
             IntrinsicApplication(_) => None, // @Task
             Projection(_) => None,           // @Task
-            Record(_) => None, // @Task
+            Record(_) => None,               // @Task
             IO(_) => None,                   // @Task
             Error(_) => None,                // @Task
         }

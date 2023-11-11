@@ -31,7 +31,9 @@ impl Path {
     }
 
     pub fn join(mut self, other: Self) -> Result<Self, Hanger> {
-        if let Some(hanger) = other.hanger && !matches!(hanger.bare, BareHanger::Self_) {
+        if let Some(hanger) = other.hanger
+            && !matches!(hanger.bare, BareHanger::Self_)
+        {
             return Err(hanger);
         }
         self.segments.extend(other.segments);
