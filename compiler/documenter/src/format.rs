@@ -3,7 +3,7 @@ use super::{
     node::{Attributable, Element},
 };
 use hir::DeclarationIndex;
-use hir_format::{ComponentExt, Display, SessionExt};
+use hir_format::{Display, SessionExt as _};
 use joinery::JoinableIterator;
 use session::Session;
 use std::fmt::Write;
@@ -257,10 +257,8 @@ impl<'a> Formatter<'a> {
     }
 
     fn module_url_fragment(&self, index: DeclarationIndex) -> String {
-        let component = self.session.component_of(index);
-
-        let mut segments = component.local_index_to_path_segments(index.local_unchecked());
-        segments.push_front(component.name().into_inner());
+        let mut segments = self.session.index_to_path_segments(index);
+        segments.push_front(self.session.component_of(index).name().into_inner());
 
         format!(
             "{}{}/index.html",

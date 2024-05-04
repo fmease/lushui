@@ -11,12 +11,11 @@ use crossbeam::thread::Scope;
 use derivation::Elements;
 use diagnostics::error::Result;
 use hir::{Attribute, AttributeName, Attributes, BareAttribute};
-use hir_format::ComponentExt;
+use hir_format::SessionExt;
 use joinery::JoinableIterator;
 use lexer::word::Word;
 use node::{Attributable, Document, Element, Node, VoidElement};
 use session::{
-    component::{DeclarationIndexExt, IdentifierExt},
     package::{ManifestPath, Package},
     Context, Session, OUTPUT_FOLDER_NAME,
 };
@@ -203,11 +202,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                         // incorrect on top of that!)
                         let path = self
                             .session
-                            .component()
-                            .local_index_with_root_to_extern_path(
-                                index.local(self.session).unwrap(),
-                                component_name.to_owned(),
-                            );
+                            .index_with_root_to_extern_path(index, component_name.to_owned());
 
                         write!(
                             search_index,
@@ -534,10 +529,10 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
     }
 
     fn add_module_page(&self, module: &hir::Module, attributes: &Attributes) -> Page {
-        let index = module.binder.local_declaration_index(self.session).unwrap();
+        let index = module.binder.declaration_index().unwrap();
         let component_name = self.session.component().name();
 
-        let mut segments = self.session.component().local_index_to_path_segments(index);
+        let mut segments = self.session.index_to_path_segments(index);
         segments.push_front(component_name.into_inner());
         let page_depth = segments.len();
         let url_prefix = format!("./{}", "../".repeat(page_depth));
@@ -571,7 +566,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
             {
                 let mut heading = Element::new("h1");
 
-                heading.add_child(match index == self.session.component().root_local() {
+                heading.add_child(match index.is_root() {
                     true => "Component",
                     false => "Module",
                 });
@@ -613,8 +608,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
 
         let title = self
             .session
-            .component()
-            .local_index_with_root_to_extern_path(index, component_name.to_string());
+            .index_with_root_to_extern_path(index, component_name.to_string());
 
         Page {
             path: segments

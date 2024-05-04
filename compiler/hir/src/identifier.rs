@@ -149,6 +149,8 @@ impl fmt::Debug for Index {
 pub struct DeclarationIndex(u64);
 
 impl DeclarationIndex {
+    pub const ROOT: Self = Self(0);
+
     pub fn new(component_index: ComponentIndex, local_index: LocalDeclarationIndex) -> Self {
         Self((u64::from(component_index.0) << LocalDeclarationIndex::BIT_WIDTH) | local_index.0)
     }
@@ -160,6 +162,10 @@ impl DeclarationIndex {
 
     pub fn local_unchecked(self) -> LocalDeclarationIndex {
         LocalDeclarationIndex(self.0 & LocalDeclarationIndex::MAX)
+    }
+
+    pub fn is_root(self) -> bool {
+        self == Self::ROOT
     }
 }
 
@@ -183,10 +189,16 @@ impl LocalDeclarationIndex {
     const BIT_WIDTH: u32 = 48;
     const MAX: u64 = 2_u64.pow(Self::BIT_WIDTH) - 1;
 
-    pub fn new(index: u64) -> Self {
+    pub const ROOT: Self = Self(0);
+
+    pub const fn new(index: u64) -> Self {
         assert!(index < Self::MAX);
 
         Self(index)
+    }
+
+    pub fn is_root(self) -> bool {
+        self == Self::ROOT
     }
 }
 

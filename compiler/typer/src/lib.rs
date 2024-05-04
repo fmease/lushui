@@ -336,7 +336,7 @@ impl<'sess, 'ctx> Typer<'sess, 'ctx> {
                 let function = self
                     .session
                     .specials()
-                    .get(index.global(self.session))
+                    .get(index.global(&*self.session))
                     .unwrap();
                 let special::Binding::Function(function) = function else {
                     unreachable!()

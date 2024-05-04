@@ -10,15 +10,10 @@ use ast::Render;
 use cli::{Backend, BuildMode, Command, PassRestriction};
 use diagnostics::{error::Result, reporter::ErasedReportedError, Diagnostic, ErrorCode, Reporter};
 use hir_format::Display as _;
-use index_map::IndexMap;
 use lo_ast::Display as _;
 use package::{find_package, resolve_file, resolve_package};
 use resolver::ProgramEntryExt;
-use session::{
-    package::ManifestPath,
-    unit::{BuildUnit, ComponentType},
-    Context, Session,
-};
+use session::{package::ManifestPath, unit::ComponentType, Context, Session};
 use span::SourceMap;
 use std::{
     borrow::Cow,
@@ -32,7 +27,7 @@ use std::{
 use utility::{
     default, displayed,
     paint::{epaint, paint, AnsiColor, ColorChoice},
-    ComponentIndex, FormatError, PROGRAM_ENTRY,
+    FormatError, PROGRAM_ENTRY,
 };
 
 mod cli;
@@ -78,15 +73,13 @@ fn execute_command(
     map: &Arc<RwLock<SourceMap>>,
     reporter: Reporter,
 ) -> Result {
-    use Command::*;
-
     match command {
-        BuildPackage { mode, options } => {
-            let (components, mut context) = match &options.path {
+        Command::BuildPackage { mode, options } => {
+            let mut context = match &options.path {
                 Some(path) => {
-                    // intentionally not `!path.is_dir()` to exclude broken symlinks
+                    // Intentionally not `!path.is_dir()` to exclude broken symlinks.
                     if path.is_file() {
-                        // give a more useful diagnostic than the generic "could not load" one
+                        // Give a more useful diagnostic than the generic "could not load" one.
                         return Err(Diagnostic::error()
                             .path(path.clone())
                             .message("the path does not refer to a folder")
@@ -106,7 +99,7 @@ fn execute_command(
                     let current_folder_path = match std::env::current_dir() {
                         Ok(path) => path,
                         Err(error) => {
-                            // @Task improve message
+                            // FIXME: Improve this diagnostic.
                             return Err(Diagnostic::error()
                                 .message("could not read the current folder")
                                 .note(error.format())
@@ -129,18 +122,12 @@ fn execute_command(
                 }
             };
 
-            build_units(
-                components,
-                &mode,
-                &options.general,
-                global_options,
-                &mut context,
-            )
+            build_components(&mode, &options.general, global_options, &mut context)
         }
-        BuildFile { mode, options } => {
-            // intentionally not `!path.is_file()` to exclude broken symlinks
+        Command::BuildFile { mode, options } => {
+            // Intentionally not `!path.is_file()` to exclude broken symlinks.
             if options.path.is_dir() {
-                // give a more useful diagnostic than the generic "could not load" one
+                // Give a more useful diagnostic than the generic “could not load” one.
                 return Err(Diagnostic::error()
                     .path(options.path.clone())
                     .message("the path does not refer to a file")
@@ -154,7 +141,7 @@ fn execute_command(
                     .report(&reporter));
             }
 
-            let (components, mut context) = resolve_file(
+            let mut context = resolve_file(
                 &options.path,
                 None,
                 options.component_type.unwrap_or(ComponentType::Executable),
@@ -163,16 +150,49 @@ fn execute_command(
                 reporter,
             )?;
 
-            build_units(
-                components,
-                &mode,
-                &options.general,
-                global_options,
-                &mut context,
-            )
+            build_components(&mode, &options.general, global_options, &mut context)
+        }
+        // FIXME: Support package paths.
+        // FIXME: Add filter options
+        // FIXME: Use `https://lib.rs/crates/termtree`
+        Command::Tree => {
+            let current_folder_path = match std::env::current_dir() {
+                Ok(path) => path,
+                Err(error) => {
+                    // FIXME: Improve this diagnostic.
+                    return Err(Diagnostic::error()
+                        .message("could not read the current folder")
+                        .note(error.format())
+                        .report(&reporter));
+                }
+            };
+
+            let Some(path) = find_package(&current_folder_path) else {
+                return Err(Diagnostic::error()
+                    .message("neither the current folder nor any of its parents is a package")
+                    .note(format!(
+                        "none of the folders contain a package manifest file named ‘{}’",
+                        ManifestPath::FILE_NAME,
+                    ))
+                    .report(&reporter));
+            };
+            let _context = resolve_package(path, &default(), map, reporter)?;
+
+            // let index = context.root_component().index;
+            // let unit = &units[index];
+            // eprintln!(
+            //     "index={:?}  name={:?}  path={:?}",
+            //     index, unit.name, unit.path
+            // );
+
+            // for dependency in &unit.dependencies {
+            //     eprintln!(">> {dependency:?}");
+            // }
+
+            Ok(())
         }
         #[cfg(feature = "lsp")]
-        Serve => {
+        Command::Serve => {
             tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
                 .build()
@@ -180,10 +200,10 @@ fn execute_command(
                 .block_on(server::serve(map.clone()));
             Ok(())
         }
-        Explain => Err(Diagnostic::error()
+        Command::Explain => Err(Diagnostic::error()
             .message("the subcommand ‘explain’ is not implemented yet")
             .report(&reporter)),
-        CreatePackage { mode, options } => match mode {
+        Command::CreatePackage { mode, options } => match mode {
             cli::PackageCreationMode::Initialize => Err(Diagnostic::error()
                 .message("the subcommand ‘initialize’ is not implemented yet")
                 .report(&reporter)),
@@ -191,21 +211,19 @@ fn execute_command(
                 create::create_package(package_name, &options, &reporter)
             }
         },
-        Recnot { path } => check_recnot_file(&path, map, &reporter),
+        Command::Recnot { path } => check_recnot_file(&path, map, &reporter),
     }
 }
 
-fn build_units(
-    units: IndexMap<ComponentIndex, BuildUnit>,
+fn build_components(
     mode: &cli::BuildMode,
     options: &cli::BuildOptions,
     global_options: &cli::GlobalOptions,
     context: &mut Context,
 ) -> Result {
-    for unit in units.into_values() {
-        context.at(unit, |unit, session| {
-            build_unit(unit, mode, options, global_options, session)
-        })?;
+    for component in context.components().keys() {
+        let mut session = Session::new(component, context);
+        build_component(mode, options, global_options, &mut session)?;
     }
 
     if let BuildMode::Document { options } = mode
@@ -224,8 +242,7 @@ fn build_units(
 }
 
 #[allow(clippy::needless_pass_by_value)] // by design
-fn build_unit(
-    unit: BuildUnit,
+fn build_component(
     mode: &cli::BuildMode,
     options: &cli::BuildOptions,
     global_options: &cli::GlobalOptions,
@@ -234,19 +251,25 @@ fn build_unit(
     // @Task abstract over this as print_status_report and report w/ label="Running" for
     // root component if mode==Run (in addition to initial "Building")
     if !global_options.quiet {
+        let label = match mode {
+            BuildMode::Check => "Checking",
+            BuildMode::Compile { .. } | BuildMode::Run { .. } => "Building",
+            // FIXME: This shouldn't be printed for non-root components and `--no-deps`.
+            BuildMode::Document { .. } => "Documenting",
+        };
+
         paint(
             |stdout| {
-                let label = match mode {
-                    BuildMode::Check => "Checking",
-                    BuildMode::Compile { .. } | BuildMode::Run { .. } => "Building",
-                    // FIXME: This shouldn't be printed for non-root components and `--no-deps`.
-                    BuildMode::Document { .. } => "Documenting",
-                };
                 stdout.set(AnsiColor::Green.on_default().bold())?;
                 write!(stdout, "   {label} ")?;
                 stdout.unset()?;
 
-                writeln!(stdout, "{} ({})", unit.name, unit.path.bare.display())
+                writeln!(
+                    stdout,
+                    "{} ({})",
+                    session.component().name,
+                    session.component().path.bare.display()
+                )
             },
             global_options.color,
         )
@@ -254,7 +277,8 @@ fn build_unit(
     }
 
     macro restriction_point($restriction:ident) {
-        if unit.is_root(&session) && options.pass_restriction == Some(PassRestriction::$restriction)
+        if session.is_root_component()
+            && options.pass_restriction == Some(PassRestriction::$restriction)
         {
             return Ok(());
         }
@@ -274,20 +298,21 @@ fn build_unit(
         eprintln!("Execution times by pass:");
     }
 
-    let path = unit.path.as_deref();
+    let path = session.component().path.as_deref();
 
     // @Task don't unconditionally halt execution on failure here but continue (with tainted health)
     // and mark the component as "erroneous" (not yet implemented) so we can print more errors.
     // "Erroneous" components should not lead to further errors in the name resolver etc.
     let file = session
         .map()
-        .load(path.bare, Some(unit.index))
+        .load(path.bare, Some(session.component().index))
         .map_err(|error| {
             use std::fmt::Write;
 
             let mut message = format!(
                 "could not load the {} component ‘{}’",
-                unit.type_, unit.name,
+                session.component().type_,
+                session.component().name,
             );
             if let Some(package) = session.package() {
                 write!(message, " in package ‘{}’", session[package].name).unwrap();
@@ -308,7 +333,7 @@ fn build_unit(
         let tokens = syntax::lex(file, session);
     };
 
-    if unit.is_root(session) && options.emit_tokens {
+    if session.is_root_component() && options.emit_tokens {
         for token in &tokens.tokens {
             eprintln!("{token:?}");
         }
@@ -322,7 +347,7 @@ fn build_unit(
         let component_root = syntax::parse_root_module_file(tokens, file, session)?;
     }
 
-    if unit.is_root(session) && options.emit_ast {
+    if session.is_root_component() && options.emit_ast {
         epaint(
             |painter| component_root.render(default(), painter),
             global_options.color,
@@ -335,7 +360,7 @@ fn build_unit(
 
     // @Task get rid of this! move into session / component of root package!
     let lowering_options = lowerer::Options {
-        internal_features_enabled: options.internals || unit.is_core_library(session),
+        internal_features_enabled: options.internals || session.is_core_library(),
         keep_documentation_comments: matches!(mode, BuildMode::Document { .. }),
     };
 
@@ -346,7 +371,7 @@ fn build_unit(
             lowerer::lower_file(component_root, lowering_options, session)?;
     }
 
-    if unit.is_root(session) && options.emit_lo_ast {
+    if session.is_root_component() && options.emit_lo_ast {
         eprintln!("{}", displayed(|f| component_root.write(f)));
     }
 
@@ -359,10 +384,10 @@ fn build_unit(
             resolver::resolve_declarations(component_root, session)?;
     }
 
-    if unit.is_root(session) && options.emit_hir {
+    if session.is_root_component() && options.emit_hir {
         eprintln!("{}", displayed(|f| component_root.write(session, f)));
     }
-    if unit.is_root(session) && options.emit_untyped_bindings {
+    if session.is_root_component() && options.emit_untyped_bindings {
         eprintln!("{}", displayed(|f| session.component().write(session, f)));
     }
 
@@ -374,18 +399,20 @@ fn build_unit(
         typer::check(&component_root, session)?;
     }
 
-    if unit.is_root(session) && options.emit_bindings {
+    if session.is_root_component() && options.emit_bindings {
         eprintln!("{}", displayed(|f| session.component().write(session, f)));
     }
 
     // @Task move out of main.rs
     // @Update @Task move into respective backends: LLVM and interpreter!
-    if unit.type_ == ComponentType::Executable && session.look_up_program_entry().is_none() {
+    if session.component().type_ == ComponentType::Executable
+        && session.look_up_program_entry().is_none()
+    {
         return Err(Diagnostic::error()
             .code(ErrorCode::E050)
             .message(format!(
                 "the component ‘{}’ does not contain a ‘{PROGRAM_ENTRY}’ function in its root module",
-                unit.name
+                session.component().name
             ))
             .unlabeled_span(&session.shared_map()[file])
             .report(session.reporter()));
@@ -393,8 +420,8 @@ fn build_unit(
 
     match &mode {
         BuildMode::Run { options } => {
-            if unit.is_root(session) {
-                if unit.type_ != ComponentType::Executable {
+            if session.is_root_component() {
+                if session.component().type_ != ComponentType::Executable {
                     // @Question code?
                     // @Note I don't like this code here at all, it's hacky and not principled!
                     // @Question why should the message differ??
@@ -442,7 +469,7 @@ fn build_unit(
             }
             #[cfg(feature = "cranelift")]
             Backend::Cranelift => {
-                if !unit.is_root(session) {
+                if !session.is_root_component() {
                     return Err(Diagnostic::error()
                         .message("extern components cannot be built yet with the Cranelift backend")
                         .report(session.reporter()));
@@ -459,7 +486,7 @@ fn build_unit(
             }
             #[cfg(feature = "llvm")]
             Backend::Llvm => {
-                if !unit.is_root(session) {
+                if !session.is_root_component() {
                     return Err(Diagnostic::error()
                         .message("extern components cannot be built yet with the LLVM backend")
                         .report(session.reporter()));
@@ -477,7 +504,7 @@ fn build_unit(
         },
         BuildMode::Document { options } => {
             // @Bug leads to broken links, @Task the documenter has to handle this itself
-            if options.no_dependencies && !unit.is_root(session) {
+            if options.no_dependencies && !session.is_root_component() {
                 return Ok(());
             }
 

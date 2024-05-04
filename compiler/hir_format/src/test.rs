@@ -5,7 +5,7 @@ use hir::{
     LocalDeclarationIndex, Number, Text,
 };
 use session::{
-    component::{Component, IdentifierExt, LocalDeclarationIndexExt},
+    component::{ComponentMetadata, IdentifierExt, LocalDeclarationIndexExt},
     Context, Session,
 };
 use span::Span;
@@ -35,10 +35,10 @@ fn assert_format(expected: &str, actual: &Expression, session: &Session<'_>) {
     }
 }
 
-trait ComponentExt {
+trait SessionExt {
     fn add(&mut self, name: &str, kind: EntityKind) -> Identifier;
 
-    fn add_below(
+    fn add_inside(
         &mut self,
         name: &str,
         kind: EntityKind,
@@ -46,12 +46,12 @@ trait ComponentExt {
     ) -> Identifier;
 }
 
-impl ComponentExt for Component {
+impl SessionExt for Session<'_> {
     fn add(&mut self, name: &str, kind: EntityKind) -> Identifier {
-        self.add_below(name, kind, self.root_local())
+        self.add_inside(name, kind, ComponentMetadata::ROOT)
     }
 
-    fn add_below(
+    fn add_inside(
         &mut self,
         name: &str,
         kind: EntityKind,
@@ -65,8 +65,8 @@ impl ComponentExt for Component {
             attributes: default(),
             kind,
         };
-        let index = self.bindings.insert(entity);
-        Identifier::new(index.global(self), identifier)
+        let index = self.context.bindings[self.component].insert(entity);
+        Identifier::new(index.global(&*self), identifier)
     }
 }
 
@@ -79,19 +79,17 @@ fn parameter(name: &str) -> Identifier {
 
 #[test]
 fn pi_type_application_argument() {
-    let mut component = Component::mock();
-    let array = component
+    let mut context = Context::mock();
+    let mut session = Session::mock(&mut context);
+    let array = session
         .add("Array", EntityKind::untyped_data_type())
         .to_item();
-    let int = component
+    let int = session
         .add("Int", EntityKind::untyped_data_type())
         .to_item();
-    let type_ = component
+    let type_ = session
         .add("Type", EntityKind::untyped_data_type())
         .to_item();
-
-    let mut context = Context::mock();
-    let session = Session::new(component, &mut context);
 
     assert_format(
         "topmost.Array topmost.Int -> topmost.Type",
@@ -117,14 +115,12 @@ fn pi_type_application_argument() {
 
 #[test]
 fn pi_type_named_parameter() {
-    let mut component = Component::mock();
-    let array = component.add("Array", EntityKind::untyped_data_type());
-    let int = component.add("Int", EntityKind::untyped_data_type());
-    let container = component.add("Container", EntityKind::untyped_data_type());
-    let alpha = parameter("alpha");
-
     let mut context = Context::mock();
-    let session = Session::new(component, &mut context);
+    let mut session = Session::mock(&mut context);
+    let array = session.add("Array", EntityKind::untyped_data_type());
+    let int = session.add("Int", EntityKind::untyped_data_type());
+    let container = session.add("Container", EntityKind::untyped_data_type());
+    let alpha = parameter("alpha");
 
     assert_format(
         "For (alpha: topmost.Array topmost.Int) -> topmost.Container alpha",
@@ -157,13 +153,11 @@ fn pi_type_named_parameter() {
 
 #[test]
 fn pi_type_implicit_parameter() {
-    let mut component = Component::mock();
-    let type_ = component
+    let mut context = Context::mock();
+    let mut session = Session::mock(&mut context);
+    let type_ = session
         .add("Type", EntityKind::untyped_data_type())
         .to_item();
-
-    let mut context = Context::mock();
-    let session = Session::new(component, &mut context);
 
     assert_format(
         "For '(whatever: topmost.Type) -> topmost.Type",
@@ -183,13 +177,11 @@ fn pi_type_implicit_parameter() {
 /// Compare with [`pi_type_two_curried_arguments`].
 #[test]
 fn pi_type_higher_order_argument() {
-    let mut component = Component::mock();
-    let int = component
+    let mut context = Context::mock();
+    let mut session = Session::mock(&mut context);
+    let int = session
         .add("Int", EntityKind::untyped_data_type())
         .to_item();
-
-    let mut context = Context::mock();
-    let session = Session::new(component, &mut context);
 
     assert_format(
         "(topmost.Int -> topmost.Int) -> topmost.Int",
@@ -217,19 +209,17 @@ fn pi_type_higher_order_argument() {
 /// Compare with [`pi_type_higher_order_argument`].
 #[test]
 fn pi_type_two_curried_arguments() {
-    let mut component = Component::mock();
-    let int = component
+    let mut context = Context::mock();
+    let mut session = Session::mock(&mut context);
+    let int = session
         .add("Int", EntityKind::untyped_data_type())
         .to_item();
-    let text = component
+    let text = session
         .add("Text", EntityKind::untyped_data_type())
         .to_item();
-    let type_ = component
+    let type_ = session
         .add("Type", EntityKind::untyped_data_type())
         .to_item();
-
-    let mut context = Context::mock();
-    let session = Session::new(component, &mut context);
 
     assert_format(
         "topmost.Int -> topmost.Text -> topmost.Type",
@@ -257,14 +247,12 @@ fn pi_type_two_curried_arguments() {
 /// Compare with [`lambda_pi_type_body`].
 #[test]
 fn pi_type_lambda_domain() {
-    let mut component = Component::mock();
-    let type_ = component
+    let mut context = Context::mock();
+    let mut session = Session::mock(&mut context);
+    let type_ = session
         .add("Type", EntityKind::untyped_data_type())
         .to_item();
     let x = parameter("x");
-
-    let mut context = Context::mock();
-    let session = Session::new(component, &mut context);
 
     assert_format(
         "(for x => x) -> topmost.Type",
@@ -292,14 +280,12 @@ fn pi_type_lambda_domain() {
 
 #[test]
 fn application_three_curried_arguments() {
-    let mut component = Component::mock();
-    let beta = component.add("beta", EntityKind::UntypedFunction);
-    let type_ = component
+    let mut context = Context::mock();
+    let mut session = Session::mock(&mut context);
+    let beta = session.add("beta", EntityKind::UntypedFunction);
+    let type_ = session
         .add("Type", EntityKind::untyped_data_type())
         .to_item();
-
-    let mut context = Context::mock();
-    let session = Session::new(component, &mut context);
 
     assert_format(
         "alpha topmost.beta (gamma topmost.Type) 0",
@@ -339,12 +325,10 @@ fn application_three_curried_arguments() {
 /// Compare with [`application_lambda_argument`].
 #[test]
 fn application_lambda_last_argument() {
-    let mut component = Component::mock();
-    let take = component.add("take", EntityKind::UntypedFunction);
-    let it = parameter("it");
-
     let mut context = Context::mock();
-    let session = Session::new(component, &mut context);
+    let mut session = Session::mock(&mut context);
+    let take = session.add("take", EntityKind::UntypedFunction);
+    let it = parameter("it");
 
     // we might want to format this special case as `topmost.take for it => it` in the future
     assert_format(
@@ -374,12 +358,10 @@ fn application_lambda_last_argument() {
 /// Compare with [`application_lambda_last_argument`].
 #[test]
 fn application_lambda_argument() {
-    let mut component = Component::mock();
-    let take = component.add("take", EntityKind::UntypedFunction);
-    let it = parameter("it");
-
     let mut context = Context::mock();
-    let session = Session::new(component, &mut context);
+    let mut session = Session::mock(&mut context);
+    let take = session.add("take", EntityKind::UntypedFunction);
+    let it = parameter("it");
 
     assert_format(
         r#"topmost.take (for it => it) "who""#,
@@ -414,14 +396,12 @@ fn application_lambda_argument() {
 
 #[test]
 fn application_implicit_argument() {
-    let mut component = Component::mock();
-    let identity = component.add("identity", EntityKind::UntypedFunction);
-    let type_ = component
+    let mut context = Context::mock();
+    let mut session = Session::mock(&mut context);
+    let identity = session.add("identity", EntityKind::UntypedFunction);
+    let type_ = session
         .add("Type", EntityKind::untyped_data_type())
         .to_item();
-
-    let mut context = Context::mock();
-    let session = Session::new(component, &mut context);
 
     assert_format(
         r"topmost.identity 'topmost.Type",
@@ -439,12 +419,10 @@ fn application_implicit_argument() {
 
 #[test]
 fn application_complex_implicit_argument() {
-    let mut component = Component::mock();
-    let identity = component.add("identity", EntityKind::UntypedFunction);
-    let text = component.add("Text", EntityKind::untyped_data_type());
-
     let mut context = Context::mock();
-    let session = Session::new(component, &mut context);
+    let mut session = Session::mock(&mut context);
+    let identity = session.add("identity", EntityKind::UntypedFunction);
+    let text = session.add("Text", EntityKind::untyped_data_type());
 
     assert_format(
         r"topmost.identity '(prepare topmost.Text)",
@@ -470,7 +448,7 @@ fn application_complex_implicit_argument() {
 #[test]
 fn application_intrinsic_application_callee() {
     let mut context = Context::mock();
-    let session = Session::new(Component::mock(), &mut context);
+    let session = Session::mock(&mut context);
 
     assert_format(
         "eta 10 omicron",
@@ -494,11 +472,9 @@ fn application_intrinsic_application_callee() {
 
 #[test]
 fn lambda_body_type_annotation() {
-    let mut component = Component::mock();
-    let output = component.add("Output", EntityKind::untyped_data_type());
-
     let mut context = Context::mock();
-    let session = Session::new(component, &mut context);
+    let mut session = Session::mock(&mut context);
+    let output = session.add("Output", EntityKind::untyped_data_type());
 
     assert_format(
         "for input: topmost.Output => 0",
@@ -518,15 +494,13 @@ fn lambda_body_type_annotation() {
 
 #[test]
 fn lambda_parameter_type_annotation_body_type_annotation() {
-    let mut component = Component::mock();
-    let input = component.add("Input", EntityKind::untyped_data_type());
-    let output = component.add("Output", EntityKind::untyped_data_type());
-    let type_ = component
+    let mut context = Context::mock();
+    let mut session = Session::mock(&mut context);
+    let input = session.add("Input", EntityKind::untyped_data_type());
+    let output = session.add("Output", EntityKind::untyped_data_type());
+    let type_ = session
         .add("Type", EntityKind::untyped_data_type())
         .to_item();
-
-    let mut context = Context::mock();
-    let session = Session::new(component, &mut context);
 
     assert_format(
         "for (input: topmost.Input): topmost.Output => topmost.Type",
@@ -546,13 +520,11 @@ fn lambda_parameter_type_annotation_body_type_annotation() {
 
 #[test]
 fn lambda_implicit_parameter() {
-    let mut component = Component::mock();
-    let type_ = component
+    let mut context = Context::mock();
+    let mut session = Session::mock(&mut context);
+    let type_ = session
         .add("Type", EntityKind::untyped_data_type())
         .to_item();
-
-    let mut context = Context::mock();
-    let session = Session::new(component, &mut context);
 
     assert_format(
         "for '(Input: topmost.Type) => topmost.Type",
@@ -572,10 +544,9 @@ fn lambda_implicit_parameter() {
 
 #[test]
 fn lambda_implicit_unannotated_parameter() {
-    let a = parameter("a");
-
     let mut context = Context::mock();
-    let session = Session::new(Component::mock(), &mut context);
+    let session = Session::mock(&mut context);
+    let a = parameter("a");
 
     assert_format(
         "for 'A => for a => a",
@@ -605,14 +576,12 @@ fn lambda_implicit_unannotated_parameter() {
 /// Compare with [`pi_type_lambda_domain`].
 #[test]
 fn lambda_pi_type_body() {
-    let mut component = Component::mock();
-    let type_ = component
+    let mut context = Context::mock();
+    let mut session = Session::mock(&mut context);
+    let type_ = session
         .add("Type", EntityKind::untyped_data_type())
         .to_item();
     let x = parameter("x");
-
-    let mut context = Context::mock();
-    let session = Session::new(component, &mut context);
 
     assert_format(
         r"for x => x -> topmost.Type",
@@ -640,11 +609,9 @@ fn lambda_pi_type_body() {
 
 #[test]
 fn intrinsic_application_no_arguments() {
-    let mut component = Component::mock();
-    let add = component.add("add", EntityKind::UntypedFunction);
-
     let mut context = Context::mock();
-    let session = Session::new(component, &mut context);
+    let mut session = Session::mock(&mut context);
+    let add = session.add("add", EntityKind::UntypedFunction);
 
     assert_format(
         "add",
@@ -661,11 +628,9 @@ fn intrinsic_application_no_arguments() {
 
 #[test]
 fn intrinsic_application_two_arguments() {
-    let mut component = Component::mock();
-    let add = component.add("add", EntityKind::UntypedFunction);
-
     let mut context = Context::mock();
-    let session = Session::new(component, &mut context);
+    let mut session = Session::mock(&mut context);
+    let add = session.add("add", EntityKind::UntypedFunction);
 
     assert_format(
         "add (add 1 3000) 0",
@@ -695,7 +660,7 @@ fn intrinsic_application_two_arguments() {
 #[test]
 fn attributes() {
     let mut context = Context::mock();
-    let session = Session::new(Component::mock(), &mut context);
+    let session = Session::mock(&mut context);
 
     assert_format(
         "== @static @unsafe 3 @static (increment 1)",
@@ -736,47 +701,49 @@ fn attributes() {
 
 #[test]
 fn path() {
-    let mut component = Component::mock();
-    let overarching = component.add("overarching", EntityKind::module());
-    let middle = component.add_below(
+    let mut context = Context::mock();
+    let mut session = Session::mock(&mut context);
+    let overarching = session.add("overarching", EntityKind::module());
+    let middle = session.add_inside(
         "middle",
         EntityKind::module(),
-        overarching.local_declaration_index(&component).unwrap(),
+        overarching
+            .local_declaration_index(session.component())
+            .unwrap(),
     );
-    let sink = component.add_below(
+    let sink = session.add_inside(
         "sink",
         EntityKind::UntypedFunction,
-        middle.local_declaration_index(&component).unwrap(),
+        middle.local_declaration_index(session.component()).unwrap(),
     );
-
-    let mut context = Context::mock();
-    let session = Session::new(component, &mut context);
 
     assert_format("topmost.overarching.middle.sink", &sink.to_item(), &session);
 }
 
 #[test]
 fn path_identifier_symbol_symbol_identifier_segments() {
-    let mut component = Component::mock();
-    let overarching = component.add("overarching", EntityKind::module());
-    let noisy = component.add_below(
+    let mut context = Context::mock();
+    let mut session = Session::mock(&mut context);
+    let overarching = session.add("overarching", EntityKind::module());
+    let noisy = session.add_inside(
         "&/.~##",
         EntityKind::module(),
-        overarching.local_declaration_index(&component).unwrap(),
+        overarching
+            .local_declaration_index(session.component())
+            .unwrap(),
     );
-    let zickzack = component.add_below(
+    let zickzack = session.add_inside(
         "^^^",
         EntityKind::module(),
-        noisy.local_declaration_index(&component).unwrap(),
+        noisy.local_declaration_index(session.component()).unwrap(),
     );
-    let sink = component.add_below(
+    let sink = session.add_inside(
         "sink",
         EntityKind::UntypedFunction,
-        zickzack.local_declaration_index(&component).unwrap(),
+        zickzack
+            .local_declaration_index(session.component())
+            .unwrap(),
     );
-
-    let mut context = Context::mock();
-    let session = Session::new(component, &mut context);
 
     assert_format(
         "topmost.overarching.&/.~## . ^^^ .sink",

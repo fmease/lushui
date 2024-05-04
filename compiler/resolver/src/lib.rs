@@ -24,11 +24,11 @@ use hir::{
     AttributeName, Attributes, DeBruijnIndex, DeclarationIndex, Entity, EntityKind, Exposure,
     ExposureReach, Identifier, Index, LocalDeclarationIndex, PartiallyResolvedPath,
 };
-use hir_format::{Display, SessionExt};
+use hir_format::{Display, SessionExt as _};
 use lexer::word::Word;
 use lo_ast::DeBruijnLevel;
 use session::{
-    component::{Component, DeclarationIndexExt, IdentifierExt, LocalDeclarationIndexExt},
+    component::{ComponentMetadata, DeclarationIndexExt, IdentifierExt, LocalDeclarationIndexExt},
     Session,
 };
 use span::{Span, Spanned, Spanning};
@@ -175,7 +175,7 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
                     Some(module),
                 )?;
 
-                let binder = Identifier::new(index.global(self.session), function.binder);
+                let binder = Identifier::new(index.global(&*self.session), function.binder);
 
                 if let Some(intrinsic) =
                     declaration.attributes.get::<{ AttributeName::Intrinsic }>()
@@ -207,7 +207,7 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
                     Some(module),
                 )?;
 
-                let binder = Identifier::new(index.global(self.session), type_.binder);
+                let binder = Identifier::new(index.global(&*self.session), type_.binder);
 
                 let known = declaration.attributes.get::<{ AttributeName::Known }>();
                 if let Some(known) = known
@@ -293,7 +293,7 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
                     Some(namespace),
                 )?;
 
-                let binder = Identifier::new(index.global(self.session), constructor.binder);
+                let binder = Identifier::new(index.global(&*self.session), constructor.binder);
 
                 // @Task support `@(known name)` on constructors
                 if let Some(known) = known
@@ -376,28 +376,27 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
         binding: EntityKind,
         namespace: Option<LocalDeclarationIndex>,
     ) -> Result<LocalDeclarationIndex, DefinitionError> {
-        if let Some(namespace) = namespace {
-            if let Some(index) = self.session[namespace]
+        if let Some(namespace) = namespace
+            && let Some(index) = self.session[namespace]
                 .namespace()
                 .unwrap()
                 .binders
                 .iter()
-                .map(|&index| index.local(self.session).unwrap())
+                .map(|&index| index.local(&*self.session).unwrap())
                 .find(|&index| self.session[index].source == binder)
-            {
-                let previous = &self.session.component().bindings[index].source;
+        {
+            let previous = &self.session[index].source;
 
-                self.naming_conflicts
-                    .entry(index)
-                    .or_insert_with(|| smallvec![previous.span()])
-                    .push(binder.span());
+            self.naming_conflicts
+                .entry(index)
+                .or_insert_with(|| smallvec![previous.span()])
+                .push(binder.span());
 
-                // @Beacon @Bug that's not how new_unchecked
-                // is supposed to be used! get rid of the ERE here! it's a lie!
-                return Err(DefinitionError::ConflictingDefinition(
-                    ErasedReportedError::new_unchecked(),
-                ));
-            }
+            // @Beacon @Bug that's not how new_unchecked
+            // is supposed to be used! get rid of the ERE here! it's a lie!
+            return Err(DefinitionError::ConflictingDefinition(
+                ErasedReportedError::new_unchecked(),
+            ));
         }
 
         let index = self.session.define(Entity {
@@ -409,7 +408,7 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
         });
 
         if let Some(namespace) = namespace {
-            let index = index.global(self.session);
+            let index = index.global(&*self.session);
             self.session[namespace]
                 .namespace_mut()
                 .unwrap()
@@ -543,9 +542,9 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
                     Some(module) => self
                         .as_ref()
                         .reobtain_resolved_identifier::<target::Module>(submodule.binder, module)
-                        .local(self.session)
+                        .local(&*self.session)
                         .unwrap(),
-                    None => self.session.component().root_local(),
+                    None => ComponentMetadata::ROOT,
                 };
 
                 let declarations = submodule
@@ -564,7 +563,7 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
                     declaration.attributes,
                     declaration.span,
                     hir::Module {
-                        binder: Identifier::new(index.global(self.session), submodule.binder),
+                        binder: Identifier::new(index.global(&*self.session), submodule.binder),
                         file: submodule.file,
                         declarations,
                     }
@@ -593,7 +592,7 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
             let mut partially_resolved_use_bindings = HashMap::default();
 
             for (&index, item) in &self.partially_resolved_use_bindings {
-                let namespace = item.target.namespace.global(self.session);
+                let namespace = item.target.namespace.global(&*self.session);
 
                 match self.as_ref().resolve_path::<target::Any>(
                     &item.target.path,
@@ -617,7 +616,7 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
                             PartiallyResolvedUseBinding {
                                 // unwrap: The binder should always be local since external components
                                 //         always contain resolved bindings.
-                                binder: binder.local(self.session).unwrap(),
+                                binder: binder.local(&*self.session).unwrap(),
                                 target: item.target.clone(),
                             },
                         );
@@ -655,10 +654,10 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
     }
 
     fn resolve_exposure_reaches(&mut self) {
-        for (index, entity) in &self.session.component().bindings {
+        for (index, entity) in &self.session.context.bindings[self.session.component] {
             if let Exposure::Restricted(exposure) = &entity.exposure {
                 // unwrap: root always has Exposure::Unrestricted, it won't reach this branch
-                let definition_site_namespace = entity.parent.unwrap().global(self.session);
+                let definition_site_namespace = entity.parent.unwrap().global(&*self.session);
 
                 if let Err(error) = self
                     .as_ref()
@@ -675,9 +674,7 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
             {
                 let target = &self.session[target_index];
 
-                if entity
-                    .exposure
-                    .compare(&target.exposure, self.session.component())
+                if entity.exposure.compare(&target.exposure, self.session)
                     == Some(Ordering::Greater)
                 {
                     let error = Diagnostic::error()
@@ -1502,7 +1499,7 @@ impl<'a> Resolver<'a> {
                             .into());
                     };
 
-                    let component = &self.session.look_up_component(component);
+                    let component = &self.session[component];
                     let root = component.root();
 
                     return match &*path.segments {
@@ -1649,7 +1646,7 @@ impl<'a> Resolver<'a> {
                 definition_site_namespace.global(self.session),
             )?;
 
-            if !self.session.component().is_allowed_to_access(
+            if !self.session.is_allowed_to_access(
                 origin_namespace,
                 definition_site_namespace.global(self.session),
                 reach,
@@ -1715,7 +1712,6 @@ impl<'a> Resolver<'a> {
 
                 let reach_is_ancestor = self
                     .session
-                    .component()
                     .some_ancestor_equals(definition_site_namespace, reach);
 
                 if !reach_is_ancestor {
@@ -2164,7 +2160,7 @@ enum IdentifierUsage {
     Unqualified,
 }
 
-trait ComponentExt {
+trait SessionExt {
     fn some_ancestor_equals(&self, index: DeclarationIndex, namespace: DeclarationIndex) -> bool;
 
     /// Indicate if the definition-site namespace can be accessed from the given namespace.
@@ -2179,8 +2175,7 @@ trait ComponentExt {
     }
 }
 
-impl ComponentExt for Component {
-    // @Beacon @Question shouldn't `index` be a LocalDeclarationIndex?
+impl SessionExt for Session<'_> {
     fn some_ancestor_equals(
         &self,
         mut index: DeclarationIndex,
@@ -2202,11 +2197,11 @@ impl ComponentExt for Component {
 
 // @Task better name
 trait ExposureCompare {
-    fn compare(&self, other: &Self, component: &Component) -> Option<Ordering>;
+    fn compare(&self, other: &Self, session: &Session<'_>) -> Option<Ordering>;
 }
 
 impl ExposureCompare for Exposure {
-    fn compare(&self, other: &Self, component: &Component) -> Option<Ordering> {
+    fn compare(&self, other: &Self, session: &Session<'_>) -> Option<Ordering> {
         use Exposure::*;
 
         match (self, other) {
@@ -2216,24 +2211,24 @@ impl ExposureCompare for Exposure {
             (Restricted(this), Restricted(other)) => {
                 let this = this.lock().unwrap();
                 let other = other.lock().unwrap();
-                this.compare(&other, component)
+                this.compare(&other, session)
             }
         }
     }
 }
 
 impl ExposureCompare for ExposureReach {
-    fn compare(&self, other: &Self, component: &Component) -> Option<Ordering> {
+    fn compare(&self, other: &Self, session: &Session<'_>) -> Option<Ordering> {
         Some(match (self, other) {
             (&ExposureReach::Resolved(this), &ExposureReach::Resolved(other)) => {
-                let this = this.global(component);
-                let other = other.global(component);
+                let this = this.global(session);
+                let other = other.global(session);
 
                 if this == other {
                     Ordering::Equal
-                } else if component.some_ancestor_equals(other, this) {
+                } else if session.some_ancestor_equals(other, this) {
                     Ordering::Greater
-                } else if component.some_ancestor_equals(this, other) {
+                } else if session.some_ancestor_equals(this, other) {
                     Ordering::Less
                 } else {
                     return None;

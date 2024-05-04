@@ -1,11 +1,9 @@
 #![feature(decl_macro, lazy_cell)]
 
-use component::{Component, DeclarationIndexExt};
+use component::{Bindings, ComponentMetadata, DeclarationIndexExt};
 use diagnostics::{error::Result, Diagnostic, Reporter};
-use hir::{
-    special::{self, Bindings},
-    DeclarationIndex, LocalDeclarationIndex,
-};
+use hir::{special, DeclarationIndex, LocalDeclarationIndex};
+use index_map::IndexMap;
 use lexer::word::Word;
 use package::{ManifestPath, Package};
 use span::{SourceMap, Span};
@@ -13,6 +11,7 @@ use std::{
     ops::{Index, IndexMut},
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
+use unit::ComponentType;
 use utility::{default, ComponentIndex, HashMap};
 
 pub mod component;
@@ -23,12 +22,22 @@ pub mod unit;
 pub const OUTPUT_FOLDER_NAME: &str = "build";
 
 pub struct Session<'ctx> {
-    component: Component,
-    context: &'ctx mut Context,
+    // @Temporary pub
+    pub component: ComponentIndex,
+    // @Temporary pub
+    pub context: &'ctx mut Context,
 }
 
 impl<'ctx> Session<'ctx> {
-    pub fn new(component: Component, context: &'ctx mut Context) -> Self {
+    #[cfg(feature = "test")]
+    pub fn mock(context: &'ctx mut Context) -> Self {
+        Self {
+            component: ComponentIndex(0),
+            context,
+        }
+    }
+
+    pub fn new(component: ComponentIndex, context: &'ctx mut Context) -> Self {
         Self { component, context }
     }
 
@@ -45,7 +54,7 @@ impl<'ctx> Session<'ctx> {
     }
 
     pub fn package(&self) -> Option<ManifestPath> {
-        self.context.package_of(self.component.index())
+        self.context.package_of(self.component)
     }
 
     pub fn in_root_package(&self, component: ComponentIndex) -> bool {
@@ -53,8 +62,22 @@ impl<'ctx> Session<'ctx> {
             .map_or(false, |package| self.root_package() == Some(package))
     }
 
+    // FIXME: can this be simplified now?
+    pub fn is_core_library(&self) -> bool {
+        self.package_of(self.component).map_or(false, |package| {
+            self[package].is_core()
+                && self.context.components[self.component].type_ == ComponentType::Library
+        })
+    }
+
+    // FIXME: can this be simplified now?
+    // FIXME: bad name
+    pub fn is_root_component(&self) -> bool {
+        self.component == self.context.root_component.index
+    }
+
     pub fn define(&mut self, entity: hir::Entity) -> LocalDeclarationIndex {
-        self.component.bindings.insert(entity)
+        self.context.bindings[self.component].insert(entity)
     }
 
     pub fn parent_of(&self, index: DeclarationIndex) -> Option<DeclarationIndex> {
@@ -64,16 +87,12 @@ impl<'ctx> Session<'ctx> {
         ))
     }
 
-    // @Task make this an Index::index fn again
-    pub fn look_up_component(&self, index: ComponentIndex) -> &Component {
-        &self.context.components[&index]
-    }
-
-    pub fn component_of(&self, index: DeclarationIndex) -> &Component {
-        if index.is_local(&self.component) {
-            &self.component
+    // FIXME: how is this used??? this is no longer correct in the local case (bindings is empty)
+    pub fn component_of(&self, index: DeclarationIndex) -> &ComponentMetadata {
+        if index.is_local(self.component) {
+            &self.context.components[self.component]
         } else {
-            self.look_up_component(index.component())
+            &self[index.component()]
         }
     }
 
@@ -91,7 +110,11 @@ impl<'ctx> Session<'ctx> {
             binder,
             match style {
                 Implicit { namespace } => Implicit {
-                    namespace: namespace.map(|namespace| self.component[namespace].source.bare()),
+                    namespace: namespace.map(|namespace| {
+                        self.context.bindings[self.component][namespace]
+                            .source
+                            .bare()
+                    }),
                 },
                 Explicit { name } => Explicit { name },
             },
@@ -112,11 +135,11 @@ impl<'ctx> Session<'ctx> {
             .ok_or_else(|| error::missing_binding(special, user).report(self.reporter()))
     }
 
-    pub fn component(&self) -> &Component {
-        &self.component
+    pub fn component(&self) -> &ComponentMetadata {
+        &self.context.components[self.component]
     }
 
-    pub fn specials(&self) -> &Bindings {
+    pub fn specials(&self) -> &special::Bindings {
         &self.context.specials
     }
 
@@ -145,14 +168,23 @@ impl Index<ManifestPath> for Session<'_> {
     }
 }
 
+impl Index<ComponentIndex> for Session<'_> {
+    type Output = ComponentMetadata;
+
+    fn index(&self, index: ComponentIndex) -> &Self::Output {
+        &self.context.components[index]
+    }
+}
+
 impl Index<DeclarationIndex> for Session<'_> {
     type Output = hir::Entity;
 
     fn index(&self, index: DeclarationIndex) -> &Self::Output {
-        match index.local(&self.component) {
-            Some(index) => &self.component[index],
-            None => &self.context[index],
-        }
+        // match index.local(self.component) {
+        //     Some(index) => &self.bindings[index],
+        //     None => &self.context[index],
+        // }
+        &self.context.bindings[index.component()][index.local_unchecked()]
     }
 }
 
@@ -160,19 +192,19 @@ impl Index<LocalDeclarationIndex> for Session<'_> {
     type Output = hir::Entity;
 
     fn index(&self, index: LocalDeclarationIndex) -> &Self::Output {
-        &self.component[index]
+        &self.context.bindings[self.component][index]
     }
 }
 
 impl IndexMut<LocalDeclarationIndex> for Session<'_> {
     fn index_mut(&mut self, index: LocalDeclarationIndex) -> &mut Self::Output {
-        &mut self.component[index]
+        &mut self.context.bindings[self.component][index]
     }
 }
 
+// FIXME: Don't use any HashMaps here, they're unordered!
 pub struct Context {
-    /// The components which have already been built in this session.
-    components: HashMap<ComponentIndex, Component>,
+    components: IndexMap<ComponentIndex, ComponentMetadata>,
     /// The packages whose components have not necessarily been built yet in this session but are about to.
     packages: HashMap<ManifestPath, Package>,
     /// The mapping from component to corresponding package.
@@ -180,25 +212,31 @@ pub struct Context {
     component_packages: HashMap<ComponentIndex, ManifestPath>,
     // @Task support multiple root components (depending on a user-supplied component filter)
     root_component: ComponentOutline,
+    // @Temporary pub
+    pub bindings: IndexMap<ComponentIndex, Bindings>,
     /// Intrinsic and known bindings.
     // @Temporary pub
-    pub specials: Bindings,
+    pub specials: special::Bindings,
     map: Arc<RwLock<SourceMap>>,
     reporter: Reporter,
 }
 
 impl Context {
     pub fn new(
+        components: IndexMap<ComponentIndex, ComponentMetadata>,
         packages: HashMap<ManifestPath, Package>,
         component_packages: HashMap<ComponentIndex, ManifestPath>,
         root_component: ComponentOutline,
         map: &Arc<RwLock<SourceMap>>,
         reporter: Reporter,
     ) -> Self {
+        let bindings = IndexMap::bare(vec![Bindings::default(); components.len()]);
+
         Self {
-            components: default(),
+            components,
             packages,
             component_packages,
+            bindings,
             root_component,
             specials: default(),
             map: map.clone(),
@@ -213,6 +251,7 @@ impl Context {
 
         let map: Arc<RwLock<SourceMap>> = default();
 
+        // FIXME: empty units/components is incorrect technically speaking
         Self {
             components: default(),
             packages: default(),
@@ -221,34 +260,11 @@ impl Context {
                 name: Word::new_unchecked("test".into()),
                 index: ComponentIndex::new(0),
             },
+            bindings: default(),
             specials: default(),
             map: map.clone(),
             reporter: Reporter::stderr(ColorChoice::Auto).with_map(map),
         }
-    }
-
-    // @Task find a better name!
-    pub fn at<T>(
-        &mut self,
-        mut unit: unit::BuildUnit,
-        handler: impl FnOnce(unit::BuildUnit, &mut Session<'_>) -> T,
-    ) -> T {
-        let component = Component::new(
-            unit.name,
-            unit.index,
-            None,
-            std::mem::take(&mut unit.dependencies),
-        );
-        let mut session = Session::new(component, self);
-
-        let result = handler(unit, &mut session);
-
-        session
-            .context
-            .components
-            .insert(session.component.index(), session.component);
-
-        result
     }
 
     pub fn root_package(&self) -> Option<ManifestPath> {
@@ -261,6 +277,10 @@ impl Context {
 
     pub fn package_of(&self, component: ComponentIndex) -> Option<ManifestPath> {
         self.component_packages.get(&component).copied()
+    }
+
+    pub fn components(&self) -> &IndexMap<ComponentIndex, ComponentMetadata> {
+        &self.components
     }
 
     pub fn reporter(&self) -> &Reporter {
@@ -280,7 +300,7 @@ impl Index<DeclarationIndex> for Context {
     type Output = hir::Entity;
 
     fn index(&self, index: DeclarationIndex) -> &Self::Output {
-        &self.components[&index.component()][index.local_unchecked()]
+        &self.bindings[index.component()][index.local_unchecked()]
     }
 }
 

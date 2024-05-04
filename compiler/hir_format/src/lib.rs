@@ -4,7 +4,7 @@
 use joinery::JoinableIterator;
 use lexer::{token::INDENTATION, CharExt};
 use session::{
-    component::{Component, DeclarationIndexExt, LocalDeclarationIndexExt},
+    component::{ComponentMetadata, DeclarationIndexExt, LocalDeclarationIndexExt},
     Session,
 };
 use std::{collections::VecDeque, fmt};
@@ -466,6 +466,23 @@ pub trait SessionExt {
     fn index_to_path(&self, index: hir::DeclarationIndex) -> String;
 
     fn local_index_to_path(&self, index: hir::LocalDeclarationIndex) -> String;
+
+    fn index_with_root_to_path(&self, index: hir::DeclarationIndex, root: String) -> String;
+
+    /// XXX The textual representation of the path to the given binding relative to a component root
+    /// prefixed with name of the corresponding component.
+    ///
+    /// Rephrased, it returns a path that could be used in any dependent components (reverse dependencies)
+    /// to refer to the binding ignoring exposure as long as one would prepend the path hanger `extern`.
+    ///
+    /// # Example Output
+    ///
+    /// * `core.nat.Nat` (`core` referring to a component)
+    /// * `json.parse` (`json` referring to a component)
+    fn index_with_root_to_extern_path(&self, index: hir::DeclarationIndex, root: String) -> String;
+
+    // @Task add documentation
+    fn index_to_path_segments(&self, index: hir::DeclarationIndex) -> VecDeque<Atom>;
 }
 
 impl SessionExt for Session<'_> {
@@ -479,75 +496,39 @@ impl SessionExt for Session<'_> {
     }
 
     fn index_to_path(&self, index: hir::DeclarationIndex) -> String {
-        let root = ast::BareHanger::Topmost.name().to_owned();
-
-        self.component().index_with_root_to_path(index, root, self)
+        self.index_with_root_to_path(index, ast::BareHanger::Topmost.name().to_owned())
     }
 
     // @Question can we rewrite this function to not rely on Session?
     fn local_index_to_path(&self, index: hir::LocalDeclarationIndex) -> String {
         self.index_to_path(index.global(self))
     }
-}
 
-pub trait ComponentExt {
-    fn index_with_root_to_path(
-        &self,
-        index: hir::DeclarationIndex,
-        root: String,
-        session: &Session<'_>,
-    ) -> String;
+    fn index_with_root_to_path(&self, index: hir::DeclarationIndex, root: String) -> String {
+        if index.is_local(self) {
+            self.index_with_root_to_extern_path(index, root)
+        } else {
+            let component = index.component();
+            let root = format!(
+                "{}.{}",
+                ast::BareHanger::Extern.name(),
+                self[component].name(),
+            );
 
-    /// The textual representation of the path to the given binding relative to a component root
-    /// prefixed with name of the corresponding component.
-    ///
-    /// Rephrased, it returns a path that could be used in any dependent components (reverse dependencies)
-    /// to refer to the binding ignoring exposure as long as one would prepend the path hanger `extern`.
-    ///
-    /// # Example Output
-    ///
-    /// * `core.nat.Nat` (`core` referring to a component)
-    /// * `json.parse` (`json` referring to a component)
-    fn local_index_with_root_to_extern_path(
-        &self,
-        index: hir::LocalDeclarationIndex,
-        root: String,
-    ) -> String;
-
-    // @Task add documentation
-    fn local_index_to_path_segments(&self, index: hir::LocalDeclarationIndex) -> VecDeque<Atom>;
-}
-
-impl ComponentExt for Component {
-    fn index_with_root_to_path(
-        &self,
-        index: hir::DeclarationIndex,
-        root: String,
-        session: &Session<'_>,
-    ) -> String {
-        match index.local(self) {
-            Some(index) => self.local_index_with_root_to_extern_path(index, root),
-            None => {
-                let component = &session.look_up_component(index.component());
-                let root = format!("{}.{}", ast::BareHanger::Extern.name(), component.name());
-
-                component.index_with_root_to_path(index, root, session)
-            }
+            self.index_with_root_to_path(index, root)
         }
     }
 
-    fn local_index_with_root_to_extern_path(
-        &self,
-        index: hir::LocalDeclarationIndex,
-        root: String,
-    ) -> String {
+    fn index_with_root_to_extern_path(&self, index: hir::DeclarationIndex, root: String) -> String {
+        // FIXME
         let entity = &self[index];
         // @Task rewrite this recursive approach to an iterative one!
         let Some(parent) = entity.parent else {
             return root;
         };
 
-        let mut parent_path = self.local_index_with_root_to_extern_path(parent, root);
+        let mut parent_path =
+            self.index_with_root_to_extern_path(parent.global(index.component()), root);
 
         let parent_is_symbol = parent_path.chars().next_back().unwrap().is_symbol();
 
@@ -565,32 +546,33 @@ impl ComponentExt for Component {
         parent_path
     }
 
-    fn local_index_to_path_segments(
-        &self,
-        mut index: hir::LocalDeclarationIndex,
-    ) -> VecDeque<Atom> {
+    // FIXME: is this correct for non-local indices?
+    fn index_to_path_segments(&self, mut index: hir::DeclarationIndex) -> VecDeque<Atom> {
         let mut segments = VecDeque::new();
 
+        // FIXME
         while let Some(parent) = self[index].parent {
+            // FIXME
             segments.push_front(self[index].source.bare());
-            index = parent;
+            index = parent.global(index.component());
         }
 
         segments
     }
 }
 
-impl Display for Component {
-    fn write(&self, session: &Session<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for ComponentMetadata {
+    fn write(&self, _session: &Session<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "{} ({:?})", self.name(), self.index())?;
 
         writeln!(f, "  bindings:")?;
 
-        for (index, entity) in &self.bindings {
-            write!(f, "    {index:?}: ")?;
-            entity.write(session, f)?;
-            writeln!(f)?;
-        }
+        // FIXME
+        // for (index, entity) in &self.bindings {
+        //     write!(f, "    {index:?}: ")?;
+        //     entity.write(session, f)?;
+        //     writeln!(f)?;
+        // }
 
         Ok(())
     }
