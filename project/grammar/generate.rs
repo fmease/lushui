@@ -1,5 +1,8 @@
-#!/usr/bin/sh
-//usr/bin/env rustc $0 ; ./generate ; rm ./generate ; exit
+#!/usr/bin/env -S cargo -Zscript
+---
+[package]
+edition = "2021"
+---
 //! Extract `grammar` snippets from the parser.
 
 // @Task either make this part of `build.rs` (accepting a flag) or another
@@ -27,8 +30,7 @@ const PREAMBLE: &str = "\
 ";
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let program_directory_path = Path::new(file!()).parent().unwrap();
-    let input_base_path = program_directory_path.join(INPUT_BASE_PATH);
+    let input_base_path = Path::new(env!("CARGO_MANIFEST_DIR")).join(INPUT_BASE_PATH);
 
     let mut grammar = String::from(PREAMBLE);
     let mut grammar_snippets = 0;
@@ -45,7 +47,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
-    fs::write(program_directory_path.join(OUTPUT_PATH), grammar)?;
+    fs::write(Path::new(env!("CARGO_MANIFEST_DIR")).join(OUTPUT_PATH), grammar)?;
 
     println!("OK. Collection of grammar snippets successful.");
     println!("  Processed grammar snippets: {grammar_snippets}");
