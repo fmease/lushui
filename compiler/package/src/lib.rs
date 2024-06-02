@@ -11,8 +11,9 @@ use lexer::word::Word;
 use manifest::{DependencyDeclaration, DependencyProvider, PackageManifest, PackageProfile};
 use recnot::Record;
 use session::{
+    component::ComponentMetadata,
     package::{ManifestPath, Package, PossiblyUnresolvedComponent::*, CORE_PACKAGE_NAME},
-    unit::{BuildUnit, ComponentType},
+    unit::ComponentType,
     Context,
 };
 use span::{SourceMap, Spanned, WeaklySpanned};
@@ -47,7 +48,7 @@ pub fn resolve_package(
     filter: &ComponentFilter,
     map: &Arc<RwLock<SourceMap>>,
     reporter: Reporter,
-) -> Result<(IndexMap<ComponentIndex, BuildUnit>, Context)> {
+) -> Result<Context> {
     let mut queue = BuildQueue::new(map, reporter);
     queue.resolve_package(path, filter)?;
     Ok(queue.finalize())
@@ -61,7 +62,7 @@ pub fn resolve_file(
     no_core: bool,
     map: &Arc<RwLock<SourceMap>>,
     reporter: Reporter,
-) -> Result<(IndexMap<ComponentIndex, BuildUnit>, Context)> {
+) -> Result<Context> {
     let mut queue = BuildQueue::new(map, reporter);
     queue.resolve_file(path, content, type_, no_core)?;
     Ok(queue.finalize())
@@ -86,9 +87,10 @@ impl PackageExt for Package {
     }
 }
 
+// FIXME: Don't use any HashMaps here, they're unordered
 struct BuildQueue {
     /// The components which have not been built yet.
-    components: IndexMap<ComponentIndex, BuildUnit>,
+    components: IndexMap<ComponentIndex, ComponentMetadata>,
     packages: HashMap<ManifestPath, Package>,
     /// The mapping from component to corresponding package.
     component_packages: HashMap<ComponentIndex, ManifestPath>,
@@ -204,18 +206,18 @@ impl BuildQueue {
                     }
 
                     let component = self.components.insert_with(|index| {
-                        BuildUnit {
-                            name: name.bare,
+                        ComponentMetadata::new(
+                            name.bare,
                             index,
                             // @Beacon @Temporary new_unchecked @Bug its use is incorrect! @Task canonicalize (I guess?)
-                            path: component.bare.path.as_ref().map(|relative_path| {
+                            component.bare.path.as_ref().map(|relative_path| {
                                 CanonicalPathBuf::new_unchecked(
                                     manifest_path.folder().join(relative_path),
                                 )
                             }),
-                            type_: type_.bare,
+                            type_.bare,
                             dependencies,
-                        }
+                        )
                     });
 
                     self.register_package_component(manifest_path, name.bare, component);
@@ -310,14 +312,14 @@ impl BuildQueue {
         }
 
         self.components.insert_with(|index| {
-            BuildUnit {
+            ComponentMetadata::new(
                 name,
                 index,
                 // @Task don't use bare
-                path: Spanned::bare(file_path),
+                Spanned::bare(file_path),
                 type_,
                 dependencies,
-            }
+            )
         });
 
         Ok(())
@@ -587,12 +589,14 @@ impl BuildQueue {
         let dependencies =
             self.resolve_dependencies(name, manifest_path, library.dependencies.as_ref())?;
 
-        let library = self.components.insert_with(|index| BuildUnit {
-            name,
-            index,
-            path: library_component_path,
-            type_: library.type_.bare,
-            dependencies,
+        let library = self.components.insert_with(|index| {
+            ComponentMetadata::new(
+                name,
+                index,
+                library_component_path,
+                library.type_.bare,
+                dependencies,
+            )
         });
 
         self.register_package_component(manifest_path, name, library);
@@ -702,20 +706,24 @@ impl BuildQueue {
         }
     }
 
-    fn finalize(self) -> (IndexMap<ComponentIndex, BuildUnit>, Context) {
+    // FIXME: simplify
+    fn finalize(self) -> Context {
         // @Task Support the existence of more than one root component
         //       dependending on a component filter provided by the user
-        let root = self.components.last().unwrap();
+        let root = self
+            .components
+            .last()
+            .expect("failed to obtain root component");
+        let root = root.outline();
 
-        let context = Context::new(
+        Context::new(
+            self.components,
             self.packages,
             self.component_packages,
-            root.outline(),
+            root,
             &self.map,
             self.reporter,
-        );
-
-        (self.components, context)
+        )
     }
 
     fn shared_map(&self) -> RwLockReadGuard<'_, SourceMap> {
@@ -765,7 +773,7 @@ fn parse_component_name_from_file_path(path: &Path, reporter: &Reporter) -> Resu
 }
 
 impl Index<ComponentIndex> for BuildQueue {
-    type Output = BuildUnit;
+    type Output = ComponentMetadata;
 
     fn index(&self, index: ComponentIndex) -> &Self::Output {
         &self.components[index]

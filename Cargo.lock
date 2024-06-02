@@ -534,7 +534,6 @@ dependencies = [
  "diagnostics",
  "documenter",
  "hir_format",
- "index_map",
  "lexer",
  "lo_ast",
  "lowerer",

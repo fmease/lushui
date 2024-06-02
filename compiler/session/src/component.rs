@@ -1,58 +1,73 @@
-use crate::{ComponentOutline, Session};
+use crate::{unit::ComponentType, ComponentOutline, Session};
 use hir::{DeclarationIndex, Entity, LocalDeclarationIndex};
 use index_map::IndexMap;
 use lexer::word::Word;
-use std::sync::Arc;
-use utility::{default, ComponentIndex, HashMap};
+use span::Spanned;
+use utility::{path::CanonicalPathBuf, ComponentIndex, HashMap};
+
+/// All bindings inside of the component.
+///
+/// The first item has to be the root module.
+pub type Bindings = IndexMap<LocalDeclarationIndex, Entity>;
 
 /// A sealed container of modules regarded as one unit.
-pub struct Component {
-    name: Word,
-    index: ComponentIndex,
-    // @Task document this! @Note this is used by the lang-server which gets the document content by the client
-    //       and which should not open the file at the given path to avoid TOC-TOU bugs / data races
-    pub content: Option<Arc<String>>,
+// FIXME: make most fields private again + use accessors
+pub struct ComponentMetadata {
+    pub name: Word,
+    pub index: ComponentIndex,
+    // FIXME: path to what??
+    pub path: Spanned<CanonicalPathBuf>,
+    pub type_: ComponentType,
     dependencies: HashMap<Word, ComponentIndex>,
-    /// All bindings inside of the component.
-    ///
-    /// The first item has to be the root module.
-    pub bindings: IndexMap<LocalDeclarationIndex, Entity>,
 }
 
 // @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Task improve naming scheme around "root" (root component vs component root vs …)
 
-impl Component {
+impl ComponentMetadata {
+    /// The root module / the component root as a local index.
+    pub const ROOT: LocalDeclarationIndex = LocalDeclarationIndex::ROOT;
+
     pub fn new(
         name: Word,
         index: ComponentIndex,
-        content: Option<Arc<String>>,
+        path: Spanned<CanonicalPathBuf>,
+        type_: ComponentType,
         dependencies: HashMap<Word, ComponentIndex>,
     ) -> Self {
         Self {
             name,
             index,
-            content,
+            path,
+            type_,
             dependencies,
-            bindings: default(),
         }
     }
 
     #[cfg(feature = "test")]
     pub fn mock() -> Self {
-        use hir::Exposure;
-        use span::Spanned;
+        // use hir::Exposure;
+        use std::path::PathBuf;
 
         const NAME: &str = "test";
         let name = Word::new_unchecked(NAME.into());
+        // FIXME: this gross!
+        let path = Spanned::bare(CanonicalPathBuf::new_unchecked(PathBuf::new()));
 
-        let mut component = Self::new(name, ComponentIndex(0), None, HashMap::default());
-        component.bindings.insert(Entity {
-            source: Spanned::bare(name).into(),
-            parent: None,
-            exposure: Exposure::Unrestricted,
-            kind: hir::EntityKind::module(),
-            attributes: default(),
-        });
+        let component = Self::new(
+            name,
+            ComponentIndex(0),
+            path,
+            ComponentType::Library,
+            HashMap::default(),
+        );
+        // FIXME:
+        // component.bindings.insert(Entity {
+        //     source: Spanned::bare(name).into(),
+        //     parent: None,
+        //     exposure: Exposure::Unrestricted,
+        //     kind: hir::EntityKind::module(),
+        //     attributes: default(),
+        // });
 
         component
     }
@@ -67,13 +82,7 @@ impl Component {
 
     /// The root module / the component root.
     pub fn root(&self) -> DeclarationIndex {
-        self.root_local().global(self)
-    }
-
-    /// The root module / the component root as a local index.
-    #[allow(clippy::unused_self)] // leads to a more legible API
-    pub fn root_local(&self) -> LocalDeclarationIndex {
-        LocalDeclarationIndex::new(0)
+        Self::ROOT.global(self)
     }
 
     pub fn dependencies(&self) -> &HashMap<Word, ComponentIndex> {
@@ -88,28 +97,15 @@ impl Component {
     }
 }
 
-impl std::ops::Index<LocalDeclarationIndex> for Component {
-    type Output = Entity;
-
-    #[track_caller]
-    fn index(&self, index: LocalDeclarationIndex) -> &Self::Output {
-        &self.bindings[index]
-    }
-}
-
-impl std::ops::IndexMut<LocalDeclarationIndex> for Component {
-    #[track_caller]
-    fn index_mut(&mut self, index: LocalDeclarationIndex) -> &mut Self::Output {
-        &mut self.bindings[index]
-    }
-}
-
 pub trait IdentifierExt<C> {
     fn local_declaration_index(&self, component: &C) -> Option<LocalDeclarationIndex>;
 }
 
-impl IdentifierExt<Component> for hir::Identifier {
-    fn local_declaration_index(&self, component: &Component) -> Option<LocalDeclarationIndex> {
+impl IdentifierExt<ComponentMetadata> for hir::Identifier {
+    fn local_declaration_index(
+        &self,
+        component: &ComponentMetadata,
+    ) -> Option<LocalDeclarationIndex> {
         self.declaration_index()?.local(component)
     }
 }
@@ -122,22 +118,32 @@ impl IdentifierExt<Session<'_>> for hir::Identifier {
 
 pub trait DeclarationIndexExt<C> {
     #[allow(clippy::wrong_self_convention)] // false positive IMO, @Task report
-    fn is_local(self, context: &C) -> bool;
+    fn is_local(self, context: C) -> bool;
 
-    fn local(self, context: &C) -> Option<LocalDeclarationIndex>;
+    fn local(self, context: C) -> Option<LocalDeclarationIndex>;
 }
 
-impl DeclarationIndexExt<Component> for DeclarationIndex {
-    fn is_local(self, component: &Component) -> bool {
-        self.component() == component.index()
+impl DeclarationIndexExt<ComponentIndex> for DeclarationIndex {
+    fn is_local(self, component: ComponentIndex) -> bool {
+        self.component() == component
     }
 
-    fn local(self, component: &Component) -> Option<LocalDeclarationIndex> {
+    fn local(self, component: ComponentIndex) -> Option<LocalDeclarationIndex> {
         self.is_local(component).then(|| self.local_unchecked())
     }
 }
 
-impl DeclarationIndexExt<Session<'_>> for DeclarationIndex {
+impl DeclarationIndexExt<&ComponentMetadata> for DeclarationIndex {
+    fn is_local(self, component: &ComponentMetadata) -> bool {
+        self.is_local(component.index)
+    }
+
+    fn local(self, component: &ComponentMetadata) -> Option<LocalDeclarationIndex> {
+        self.local(component.index)
+    }
+}
+
+impl DeclarationIndexExt<&Session<'_>> for DeclarationIndex {
     fn is_local(self, session: &Session<'_>) -> bool {
         self.is_local(session.component())
     }
@@ -148,16 +154,22 @@ impl DeclarationIndexExt<Session<'_>> for DeclarationIndex {
 }
 
 pub trait LocalDeclarationIndexExt<C> {
-    fn global(self, context: &C) -> DeclarationIndex;
+    fn global(self, context: C) -> DeclarationIndex;
 }
 
-impl LocalDeclarationIndexExt<Component> for LocalDeclarationIndex {
-    fn global(self, component: &Component) -> DeclarationIndex {
-        DeclarationIndex::new(component.index(), self)
+impl LocalDeclarationIndexExt<ComponentIndex> for LocalDeclarationIndex {
+    fn global(self, component: ComponentIndex) -> DeclarationIndex {
+        DeclarationIndex::new(component, self)
     }
 }
 
-impl LocalDeclarationIndexExt<Session<'_>> for LocalDeclarationIndex {
+impl LocalDeclarationIndexExt<&ComponentMetadata> for LocalDeclarationIndex {
+    fn global(self, component: &ComponentMetadata) -> DeclarationIndex {
+        self.global(component.index())
+    }
+}
+
+impl LocalDeclarationIndexExt<&Session<'_>> for LocalDeclarationIndex {
     fn global(self, session: &Session<'_>) -> DeclarationIndex {
         self.global(session.component())
     }

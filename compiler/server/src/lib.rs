@@ -12,14 +12,9 @@ use index_map::IndexMap;
 use package::resolve_file;
 use resolver::ProgramEntryExt;
 use session::Context;
-use session::{
-    component::Component,
-    unit::{BuildUnit, ComponentType},
-    Session,
-};
+use session::{component::ComponentMetadata, unit::ComponentType, Session};
 use std::{
     collections::BTreeSet,
-    mem,
     path::Path,
     sync::{Arc, RwLock},
 };
@@ -100,7 +95,7 @@ impl Server {
             Reporter::buffer(diagnostics.clone()),
         );
 
-        let diagnostics = mem::take(&mut *diagnostics.lock().unwrap());
+        let diagnostics = std::mem::take(&mut *diagnostics.lock().unwrap());
         self.report(diagnostics, uri, version).await;
     }
 
@@ -252,7 +247,7 @@ fn check_file(
     map: &Arc<RwLock<SourceMap>>,
     reporter: Reporter,
 ) -> Result<(Context, HashMap<ComponentIndex, hir::Declaration>)> {
-    let (units, mut context) = resolve_file(
+    let mut context = resolve_file(
         path,
         Some(content),
         ComponentType::Executable,
@@ -263,10 +258,10 @@ fn check_file(
 
     let mut component_roots = HashMap::default();
 
-    for unit in units.into_values() {
-        let index = unit.index;
-        let root = context.at(unit, build_unit)?;
-        component_roots.insert(index, root);
+    for component in context.components().keys() {
+        let mut session = Session::new(component, &mut context);
+        let root = build_component(&mut session)?;
+        component_roots.insert(component, root);
     }
 
     Ok((context, component_roots))
@@ -274,28 +269,31 @@ fn check_file(
 
 // @Task keep going even with errors!
 #[allow(clippy::needless_pass_by_value)] // by design
-fn build_unit(unit: BuildUnit, session: &mut Session<'_>) -> Result<hir::Declaration> {
+fn build_component(session: &mut Session<'_>) -> Result<hir::Declaration> {
     // let content = component.content.take();
     // @Beacon @Beacon @Beacon @Temporary
     let content = Some(std::sync::Arc::new(String::new()));
-    let path = unit.path.as_deref();
+    let path = session.component().path.as_deref();
 
     // @Beacon @Task this shouldm't need to be that ugly!!!
 
     let file = match content {
-        Some(content) => session
-            .map()
-            .add(path.bare.to_owned(), content, Some(unit.index)),
+        Some(content) => session.map().add(
+            path.bare.to_owned(),
+            content,
+            Some(session.component().index),
+        ),
         None => {
             session
                 .map()
-                .load(path.bare, Some(unit.index))
+                .load(path.bare, Some(session.component().index))
                 .map_err(|error| {
                     use std::fmt::Write;
 
                     let mut message = format!(
                         "could not load the {} component ‘{}’",
-                        unit.type_, unit.name
+                        session.component().type_,
+                        session.component().name
                     );
 
                     if let Some(package) = session.package() {
@@ -319,7 +317,7 @@ fn build_unit(unit: BuildUnit, session: &mut Session<'_>) -> Result<hir::Declara
     let component_root = lowerer::lower_file(
         component_root,
         lowerer::Options {
-            internal_features_enabled: unit.is_core_library(session),
+            internal_features_enabled: session.is_core_library(),
             keep_documentation_comments: false,
         },
         session,
@@ -330,12 +328,14 @@ fn build_unit(unit: BuildUnit, session: &mut Session<'_>) -> Result<hir::Declara
     typer::check(&component_root, session)?;
 
     // @Bug this is duplication with main.rs!!
-    if unit.type_ == ComponentType::Executable && session.look_up_program_entry().is_none() {
+    if session.component().type_ == ComponentType::Executable
+        && session.look_up_program_entry().is_none()
+    {
         return Err(Diagnostic::error()
             .code(ErrorCode::E050)
             .message(format!(
                 "the component ‘{}’ does not contain a ‘{PROGRAM_ENTRY}’ function in its root module",
-                unit.name,
+                session.component().name,
             ))
             .unlabeled_span(&session.shared_map()[file])
             .report(session.reporter()));

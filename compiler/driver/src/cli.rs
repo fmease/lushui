@@ -14,10 +14,6 @@ use utility::{
     paint::{paint_to_string, AnsiColor, ColorChoice},
 };
 
-// @Task update the color scheme of the `-Zhelp` output from clap-3-style to clap-4-style
-//       i.e. from upper-case section titles and the use of yellow & green to
-//       bold & underlined section titles and the use of bold letters
-
 pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
     let short_version = format!(
         "{} ({} {})",
@@ -134,7 +130,7 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
         .action(ArgAction::Append)
         .help("Set an unstable option. See ‘-Z help’ for details");
 
-    // @Task use `try_get_matches` (no real block, just def an error type and smh exit with code 2 instead of 1 on error)
+    // @Task use `try_get_matches` (just define an error type and smh exit with code 2 instead of 1 on error)
     let matches = clap::Command::new("lushui")
         .bin_name("lushui")
         .version(short_version)
@@ -238,6 +234,8 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
                         .required(true)
                         .help("The path to the Recnot file"),
                 ),
+            clap::Command::new(subcommand::TREE)
+                .about("Display a tree visualization of a dependency graph"),
         ])
         .get_matches();
 
@@ -341,6 +339,7 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
         (subcommand::RECNOT, matches) => Command::Recnot {
             path: matches.get_one(argument::PATH).cloned().unwrap(),
         },
+        (subcommand::TREE, _matches) => Command::Tree,
         _ => unreachable!(),
     };
 
@@ -359,6 +358,7 @@ mod subcommand {
     pub(super) const RUN: &str = "run";
     #[cfg(feature = "lsp")]
     pub(super) const SERVE: &str = "serve";
+    pub(super) const TREE: &str = "tree";
 }
 
 mod argument {
@@ -396,16 +396,17 @@ pub(crate) enum Command {
         mode: BuildMode,
         options: FileBuildOptions,
     },
-    #[cfg(feature = "lsp")]
-    Serve,
-    Explain,
     CreatePackage {
         mode: PackageCreationMode,
         options: PackageCreationOptions,
     },
+    Explain,
     Recnot {
         path: PathBuf,
     },
+    #[cfg(feature = "lsp")]
+    Serve,
+    Tree,
 }
 
 pub(crate) struct GlobalOptions {

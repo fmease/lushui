@@ -111,7 +111,7 @@ impl<I: Index, T> IndexMap<I, T> {
         self.values.iter_mut().enumerate().map(map_entry)
     }
 
-    pub fn indices(&self) -> impl Iterator<Item = I> {
+    pub fn keys(&self) -> KeysIntoIter<I> {
         (0..self.len()).map(I::new)
     }
 }
@@ -208,9 +208,11 @@ fn map_entry<I: Index, T>((index, value): (usize, T)) -> (I, T) {
     (I::new(index), value)
 }
 
-pub type IntoIter<I: Index, T> = impl Iterator<Item = (I, T)>;
-pub type Iter<'a, I: Index, T: 'a> = impl Iterator<Item = (I, &'a T)>;
-pub type IterMut<'a, I: Index, T: 'a> = impl Iterator<Item = (I, &'a mut T)>;
+pub type IntoIter<I: Index, T> = impl DoubleEndedIterator<Item = (I, T)>;
+pub type Iter<'a, I: Index, T: 'a> = impl DoubleEndedIterator<Item = (I, &'a T)>;
+pub type IterMut<'a, I: Index, T: 'a> = impl DoubleEndedIterator<Item = (I, &'a mut T)>;
+
+pub type KeysIntoIter<I: Index> = impl DoubleEndedIterator<Item = I>;
 
 pub trait Index {
     fn new(index: usize) -> Self;
