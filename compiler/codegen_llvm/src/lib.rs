@@ -13,6 +13,7 @@ use inkwell::{
     types::{FunctionType, IntType},
     values::{BasicValueEnum, FunctionValue, GlobalValue, IntValue, UnnamedAddress},
 };
+use llvm_sys as _;
 use session::{Session, OUTPUT_FOLDER_NAME};
 use std::{
     cell::RefCell,
@@ -331,7 +332,8 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
                         let value = self.compile_expression(expression, Vec::new());
 
                         self.builder
-                            .build_return(value.as_ref().map(|value| value as _));
+                            .build_return(value.as_ref().map(|value| value as _))
+                            .unwrap();
                     }
                     Entity::UnaryFunction {
                         value: unary_function,
@@ -346,7 +348,8 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
                         );
 
                         self.builder
-                            .build_return(value.as_ref().map(|value| value as _));
+                            .build_return(value.as_ref().map(|value| value as _))
+                            .unwrap();
                     }
                 }
             }
@@ -428,6 +431,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
 
                         self.builder
                             .build_call(function, &[argument.into()], "")
+                            .unwrap()
                             .try_as_basic_value()
                             .left()
                             .unwrap()
@@ -448,12 +452,14 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
                 match binding.0.index {
                     Declaration(index) => {
                         let value = match self.bindings.borrow()[&index] {
-                            Entity::Constant { value, type_ } => {
-                                self.builder.build_load(type_, value.as_pointer_value(), "")
-                            }
+                            Entity::Constant { value, type_ } => self
+                                .builder
+                                .build_load(type_, value.as_pointer_value(), "")
+                                .unwrap(),
                             Entity::Thunk(thunk) => self
                                 .builder
                                 .build_call(thunk, &[], "")
+                                .unwrap()
                                 .try_as_basic_value()
                                 .left()
                                 .unwrap(),

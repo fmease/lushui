@@ -589,7 +589,7 @@ fn lex_string(source: String) -> Outcome {
 enum Section {
     /// The top-level section.
     ///
-    /// Basically the same as [Section::Indented] except that it does not call
+    /// Basically the same as [`Section::Indented`] except that it does not call
     /// for adding any dendentation tokens since the indentation level is zero.
     #[default]
     Top,

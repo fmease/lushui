@@ -4,6 +4,7 @@ use std::{
     fmt, io,
     ops::Deref,
     path::{Path, PathBuf},
+    ptr,
 };
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -14,7 +15,7 @@ impl CanonicalPath {
     where
         P: ?Sized + AsRef<Path>,
     {
-        unsafe { &*(path.as_ref() as *const Path as *const Self) }
+        unsafe { &*(ptr::from_ref(path.as_ref()) as *const Self) }
     }
 
     pub fn as_path(&self) -> &Path {

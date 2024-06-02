@@ -312,4 +312,4 @@ impl fmt::Display for DependencyProvider {
 }
 
 #[derive(Clone, Debug)]
-pub(super) struct VersionRequirement(pub(crate) String);
+pub(super) struct VersionRequirement(#[allow(dead_code)] pub(crate) String);

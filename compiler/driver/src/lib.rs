@@ -1,10 +1,4 @@
-#![feature(
-    decl_macro,
-    let_chains,
-    associated_type_bounds,
-    impl_trait_in_assoc_type,
-    never_type
-)]
+#![feature(decl_macro, let_chains, impl_trait_in_assoc_type, never_type)]
 
 use ast::Render;
 use cli::{Backend, BuildMode, Command, PassRestriction};

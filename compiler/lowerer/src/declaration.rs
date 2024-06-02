@@ -413,9 +413,7 @@ the body containing a set of constructors
                 };
 
                 let type_ = {
-                    let Some(type_) = field.type_.clone() else {
-                        return None;
-                    };
+                    let type_ = field.type_.clone()?;
 
                     // @Beacon @Task don't lower the field type twice (here & in lower_fields)!
                     // (this is why we currently need to clone here)

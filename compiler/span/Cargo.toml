@@ -4,6 +4,9 @@ version = "0.0.0"
 edition = "2021"
 publish = false
 
+[features]
+lsp = []
+
 [dependencies]
 index_map = { path = "../../project/library/index_map" }
 unicode-width = "0.1.10"

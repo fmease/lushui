@@ -11,8 +11,9 @@ hir = { path = "../hir" }
 hir_format = { path = "../hir_format" }
 session = { path = "../session" }
 utility = { path = "../utility" }
+llvm-sys = { version = "170", features = ["prefer-static"] }
 
 [dependencies.inkwell]
 git = "https://github.com/TheDan64/inkwell"
-rev = "aa370b54629b276f9d78802674eff494c96c8e50"
-features = ["llvm15-0"]
+rev = "5c9f7fcbb0a667f7391b94beb65f1a670ad13221"
+features = ["llvm17-0"]

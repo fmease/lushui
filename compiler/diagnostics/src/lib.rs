@@ -1,5 +1,5 @@
 //! The diagnostics system.
-#![feature(adt_const_params, associated_type_bounds, negative_impls)]
+#![feature(adt_const_params, negative_impls)]
 #![allow(incomplete_features)] // adt_const_params
 
 use derivation::Str;

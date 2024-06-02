@@ -1,6 +1,5 @@
 //! Utility functionality and definitions.
 #![feature(
-    associated_type_bounds,
     decl_macro,
     lazy_cell,
     macro_metavar_expr,
