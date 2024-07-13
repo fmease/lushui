@@ -1,9 +1,9 @@
 //! The definition of the textual representation(s) of the AST.
 
-use super::{Identifier, ParameterKind};
+use super::{Ident, ParamKind};
 use index_map::Index as _;
 use joinery::JoinableIterator;
-use span::{SourceFileIndex, Span, Spanned, Spanning};
+use span::{Span, Spanned, Spanning, SrcFileIdx};
 use std::{
     fmt::{self, Formatter},
     io::{self, Write},
@@ -14,52 +14,52 @@ use utility::{
     SmallVec,
 };
 
-pub use indentation::Indentation;
+pub use indent::Indent;
 
-mod indentation {
+mod indent {
     use std::fmt;
 
-    const INDENTATION_IN_SPACES: Representation = 4;
-    type Representation = usize;
+    const INDENT_IN_SPACES: Repr = 4;
+    type Repr = usize;
 
     #[derive(Clone, Copy, Default)]
-    pub struct Indentation(Representation);
+    pub struct Indent(Repr);
 
-    impl Indentation {
-        fn map(self, mapper: impl FnOnce(Representation) -> Representation) -> Self {
+    impl Indent {
+        fn map(self, mapper: impl FnOnce(Repr) -> Repr) -> Self {
             Self(mapper(self.0))
         }
 
         pub(super) fn increased(self) -> Self {
-            self.map(|indentation| indentation + INDENTATION_IN_SPACES)
+            self.map(|indent| indent + INDENT_IN_SPACES)
         }
     }
 
-    impl fmt::Display for Indentation {
-        fn fmt(&self, painter: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(painter, "{}", " ".repeat(self.0))
+    impl fmt::Display for Indent {
+        fn fmt(&self, p: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(p, "{}", " ".repeat(self.0))
         }
     }
 }
 
 mod struct_ {
-    use super::{palette, Indentation, Render};
+    use super::{palette, Indent, Render};
     use std::io::{self, Write};
     use utility::paint::Painter;
 
     pub(super) struct Struct<'p> {
-        painter: &'p mut Painter,
-        indentation: Indentation,
+        p: &'p mut Painter,
+        indent: Indent,
         has_fields: bool,
         inline: bool,
         result: io::Result<()>,
     }
 
     impl<'p> Struct<'p> {
-        pub(super) fn new(indentation: Indentation, painter: &'p mut Painter) -> Self {
+        pub(super) fn new(indent: Indent, p: &'p mut Painter) -> Self {
             Self {
-                painter,
-                indentation,
+                p,
+                indent,
                 has_fields: false,
                 inline: false,
                 result: Ok(()),
@@ -68,9 +68,9 @@ mod struct_ {
 
         pub(super) fn name(mut self, name: &str) -> Self {
             self.result = self.result.and_then(|()| {
-                self.painter.set(palette::NAME.on_default().bold())?;
-                write!(self.painter, "{name}")?;
-                self.painter.unset()
+                self.p.set(palette::NAME.on_default().bold())?;
+                write!(self.p, "{name}")?;
+                self.p.unset()
             });
 
             self
@@ -79,27 +79,27 @@ mod struct_ {
         pub(super) fn field(mut self, name: &str, field: &impl Render) -> Self {
             if !self.has_fields {
                 self.has_fields = true;
-                self.indentation = self.indentation.increased();
+                self.indent = self.indent.increased();
             }
 
             self.result = self.result.and_then(|()| {
                 if self.inline {
-                    write!(self.painter, " ")
+                    write!(self.p, " ")
                 } else {
-                    writeln!(self.painter)
+                    writeln!(self.p)
                 }
             });
 
             self.result = self.result.and_then(|()| {
                 if !self.inline {
-                    write!(self.painter, "{}", self.indentation)?;
+                    write!(self.p, "{}", self.indent)?;
                 }
 
-                self.painter.set(palette::FIELD)?;
-                write!(self.painter, "{name}")?;
-                self.painter.unset()?;
-                write!(self.painter, ": ")?;
-                field.render(self.indentation, self.painter)
+                self.p.set(palette::FIELD)?;
+                write!(self.p, "{name}")?;
+                self.p.unset()?;
+                write!(self.p, ": ")?;
+                field.render(self.indent, self.p)
             });
 
             self
@@ -112,34 +112,34 @@ mod struct_ {
 }
 
 pub trait Render {
-    fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()>;
+    fn render(&self, indent: Indent, p: &mut Painter) -> io::Result<()>;
 }
 
 impl<T: Render> Render for Option<T> {
-    fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
+    fn render(&self, indent: Indent, p: &mut Painter) -> io::Result<()> {
         match self {
-            Some(value) => value.render(indentation, painter),
+            Some(value) => value.render(indent, p),
             None => {
-                painter.set(palette::SPECIAL_SYMBOL)?;
-                write!(painter, "none")?;
-                painter.unset()
+                p.set(palette::SPECIAL_SYMBOL)?;
+                write!(p, "none")?;
+                p.unset()
             }
         }
     }
 }
 
 impl<T: Render> Render for [T] {
-    fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
+    fn render(&self, indent: Indent, p: &mut Painter) -> io::Result<()> {
         if self.is_empty() {
-            painter.set(palette::SPECIAL_SYMBOL)?;
-            write!(painter, "empty")?;
-            return painter.unset();
+            p.set(palette::SPECIAL_SYMBOL)?;
+            write!(p, "empty")?;
+            return p.unset();
         }
 
-        let mut struct_ = Struct::new(indentation, painter);
+        let mut struct_ = Struct::new(indent, p);
 
-        for (index, declaration) in self.iter().enumerate() {
-            struct_ = struct_.field(&index.to_string(), declaration);
+        for (index, decl) in self.iter().enumerate() {
+            struct_ = struct_.field(&index.to_string(), decl);
         }
 
         struct_.finish()
@@ -147,20 +147,20 @@ impl<T: Render> Render for [T] {
 }
 
 impl<T: Render> Render for Vec<T> {
-    fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
-        (**self).render(indentation, painter)
+    fn render(&self, indent: Indent, p: &mut Painter) -> io::Result<()> {
+        (**self).render(indent, p)
     }
 }
 
 impl<T: Render, const N: usize> Render for SmallVec<T, N> {
-    fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
-        (**self).render(indentation, painter)
+    fn render(&self, indent: Indent, p: &mut Painter) -> io::Result<()> {
+        (**self).render(indent, p)
     }
 }
 
 impl<T: Render, U: Render> Render for (T, U) {
-    fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
-        Struct::new(indentation, painter)
+    fn render(&self, indent: Indent, p: &mut Painter) -> io::Result<()> {
+        Struct::new(indent, p)
             .field("0", &self.0)
             .field("1", &self.1)
             .finish()
@@ -168,123 +168,119 @@ impl<T: Render, U: Render> Render for (T, U) {
 }
 
 impl Render for Span {
-    fn render(&self, _: Indentation, painter: &mut Painter) -> io::Result<()> {
-        painter.set(palette::SPAN)?;
-        write!(painter, "{self:?}")?;
-        painter.unset()
+    fn render(&self, _: Indent, p: &mut Painter) -> io::Result<()> {
+        p.set(palette::SPAN)?;
+        write!(p, "{self:?}")?;
+        p.unset()
     }
 }
 
 impl<K: Render> Render for Spanned<K> {
-    fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
-        self.span.render(indentation, painter)?;
-        write!(painter, " ")?;
-        self.bare.render(indentation, painter)
+    fn render(&self, indent: Indent, p: &mut Painter) -> io::Result<()> {
+        self.span.render(indent, p)?;
+        write!(p, " ")?;
+        self.bare.render(indent, p)
     }
 }
 
 impl<I: Render> Render for super::Item<I> {
-    fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
-        self.span.render(indentation, painter)?;
-        write!(painter, " ")?;
-        self.bare.render(indentation, painter)?;
+    fn render(&self, indent: Indent, p: &mut Painter) -> io::Result<()> {
+        self.span.render(indent, p)?;
+        write!(p, " ")?;
+        self.bare.render(indent, p)?;
 
-        if !self.attributes.is_empty() {
-            let indentation = indentation.increased();
-            writeln!(painter)?;
-            write!(painter, "{indentation}")?;
-            painter.set(palette::FIELD)?;
-            write!(painter, "attributes")?;
-            painter.unset()?;
-            write!(painter, ":")?;
-            self.attributes.render(indentation, painter)?;
+        if !self.attrs.is_empty() {
+            let indent = indent.increased();
+            writeln!(p)?;
+            write!(p, "{indent}")?;
+            p.set(palette::FIELD)?;
+            write!(p, "attributes")?;
+            p.unset()?;
+            write!(p, ":")?;
+            self.attrs.render(indent, p)?;
         }
 
         Ok(())
     }
 }
 
-impl Render for super::BareDeclaration {
-    fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
+impl Render for super::BareDecl {
+    fn render(&self, indent: Indent, p: &mut Painter) -> io::Result<()> {
         match self {
-            Self::Function(function) => function.render(indentation, painter),
-            Self::Data(type_) => type_.render(indentation, painter),
-            Self::Module(module) => module.render(indentation, painter),
-            Self::ModuleHeader => Struct::new(indentation, painter)
-                .name("Module-Header")
-                .finish(),
-            Self::Use(use_) => use_.render(indentation, painter),
-            Self::Given(given) => given.render(indentation, painter),
+            Self::Func(func) => func.render(indent, p),
+            Self::DataTy(ty) => ty.render(indent, p),
+            Self::Module(module) => module.render(indent, p),
+            Self::ModuleHeader => Struct::new(indent, p).name("Decl.Module-Header").finish(),
+            Self::Use(use_) => use_.render(indent, p),
+            Self::Given(given) => given.render(indent, p),
         }
     }
 }
 
-impl Render for super::Function {
-    fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
-        Struct::new(indentation, painter)
-            .name("Function-Declaration")
+impl Render for super::Func {
+    fn render(&self, indent: Indent, p: &mut Painter) -> io::Result<()> {
+        Struct::new(indent, p)
+            .name("Decl.Fn")
             .field("binder", &self.binder)
-            .field("parameters", &self.parameters)
-            .field("type", &self.type_)
+            .field("params", &self.params)
+            .field("type", &self.ty)
             .field("body", &self.body)
             .finish()
     }
 }
 
-impl Render for super::Data {
-    fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
-        Struct::new(indentation, painter)
-            .name("Data-Declaration")
+impl Render for super::DataTy {
+    fn render(&self, indent: Indent, p: &mut Painter) -> io::Result<()> {
+        Struct::new(indent, p)
+            .name("Decl.Data")
             .field("binder", &self.binder)
-            .field("parameters", &self.parameters)
-            .field("type", &self.type_)
-            .field("constructors", &self.declarations)
+            .field("params", &self.params)
+            .field("type", &self.ty)
+            .field("constructors", &self.decls)
             .finish()
     }
 }
 
 impl Render for super::Module {
-    fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
-        Struct::new(indentation, painter)
-            .name("Module-Declaration")
+    fn render(&self, indent: Indent, p: &mut Painter) -> io::Result<()> {
+        Struct::new(indent, p)
+            .name("Decl.Module")
             .field("binder", &self.binder)
             .field("file", &self.file)
-            .field("declarations", &self.declarations)
+            .field("decls", &self.decls)
             .finish()
     }
 }
 
-impl Render for SourceFileIndex {
-    fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
-        Struct::new(indentation, painter)
-            .name("Source-File-Index")
-            .finish()?;
-        painter.set(palette::VERBATIM)?;
-        write!(painter, " {}", self.value())?;
-        painter.unset()
+impl Render for SrcFileIdx {
+    fn render(&self, indent: Indent, p: &mut Painter) -> io::Result<()> {
+        Struct::new(indent, p).name("SrcFileIdx").finish()?;
+        p.set(palette::VERBATIM)?;
+        write!(p, " {}", self.value())?;
+        p.unset()
     }
 }
 
 impl Render for super::Use {
-    fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
-        Struct::new(indentation, painter)
-            .name("Use-Declaration")
+    fn render(&self, indent: Indent, p: &mut Painter) -> io::Result<()> {
+        Struct::new(indent, p)
+            .name("Decl.Use")
             .field("bindings", &self.bindings)
             .finish()
     }
 }
 
 impl Render for super::BareUsePathTree {
-    fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
-        let struct_ = Struct::new(indentation, painter);
+    fn render(&self, indent: Indent, p: &mut Painter) -> io::Result<()> {
+        let struct_ = Struct::new(indent, p);
 
         match self {
             Self::Single { target, binder } => struct_
-                .name("Use-Path-Tree.Single")
+                .name("UsePathTree.Single")
                 .field("target", target)
                 .field("binder", binder),
             Self::Multiple { path, subpaths } => struct_
-                .name("Use-Path-Tree.Multiple")
+                .name("UsePathTree.Multiple")
                 .field("path", path)
                 .field("subpaths", subpaths),
         }
@@ -293,143 +289,143 @@ impl Render for super::BareUsePathTree {
 }
 
 impl Render for super::Given {
-    fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
-        Struct::new(indentation, painter)
-            .name("Given-Declaration")
+    fn render(&self, indent: Indent, p: &mut Painter) -> io::Result<()> {
+        Struct::new(indent, p)
+            .name("Decl.Given")
             .field("binder", &self.binder)
-            .field("parameters", &self.parameters)
-            .field("type", &self.type_)
+            .field("params", &self.params)
+            .field("type", &self.ty)
             .field("body", &self.body)
             .finish()
     }
 }
 
 impl Render for super::Body {
-    fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
-        let struct_ = Struct::new(indentation, painter);
+    fn render(&self, indent: Indent, p: &mut Painter) -> io::Result<()> {
+        let struct_ = Struct::new(indent, p);
 
         match self {
             Self::Block { fields } => struct_.name("Block").field("fields", fields),
-            Self::Expression { body } => struct_.name("Expression").field("body", body),
+            Self::Expr { body } => struct_.name("Expr").field("body", body),
         }
         .finish()
     }
 }
 
-impl Render for super::BareExpression {
-    fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
+impl Render for super::BareExpr {
+    fn render(&self, indent: Indent, p: &mut Painter) -> io::Result<()> {
         match self {
-            Self::QuantifiedType(type_) => type_.render(indentation, painter),
-            Self::Application(application) => application.render(indentation, painter),
-            Self::NumberLiteral(number) => number.render(indentation, painter),
-            Self::TextLiteral(text) => text.render(indentation, painter),
-            Self::Wildcard(hole) => hole.render(indentation, painter),
-            Self::Path(path) => path.render(indentation, painter),
-            Self::Projection(field) => field.render(indentation, painter),
-            Self::LambdaLiteral(lambda) => lambda.render(indentation, painter),
-            Self::LetBinding(binding) => binding.render(indentation, painter),
-            Self::UseBinding(binding) => binding.render(indentation, painter),
-            Self::CaseAnalysis(analysis) => analysis.render(indentation, painter),
-            Self::DoBlock(do_) => do_.render(indentation, painter),
-            Self::SequenceLiteral(sequence) => sequence.render(indentation, painter),
-            Self::RecordLiteral(record) => record.render(indentation, painter),
+            Self::QuantifiedTy(ty) => ty.render(indent, p),
+            Self::App(app) => app.render(indent, p),
+            Self::NumLit(num) => num.render(indent, p),
+            Self::TextLit(text) => text.render(indent, p),
+            Self::Wildcard(hole) => hole.render(indent, p),
+            Self::Path(path) => path.render(indent, p),
+            Self::Proj(field) => field.render(indent, p),
+            Self::LamLit(lamda) => lamda.render(indent, p),
+            Self::LetBinding(binding) => binding.render(indent, p),
+            Self::UseBinding(binding) => binding.render(indent, p),
+            Self::CaseAnalysis(analysis) => analysis.render(indent, p),
+            Self::DoBlock(do_) => do_.render(indent, p),
+            Self::SeqLit(sequence) => sequence.render(indent, p),
+            Self::RecLit(record) => record.render(indent, p),
             Self::Error(_) => {
-                painter.set(palette::INVALID)?;
-                write!(painter, "invalid")?;
-                painter.unset()
+                p.set(palette::INVALID)?;
+                write!(p, "invalid")?;
+                p.unset()
             }
         }
     }
 }
 
-impl Render for super::QuantifiedType {
-    fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
-        Struct::new(indentation, painter)
-            .name("Quantified-Type")
+impl Render for super::QuantifiedTy {
+    fn render(&self, indent: Indent, p: &mut Painter) -> io::Result<()> {
+        Struct::new(indent, p)
+            .name("QuantifiedTy")
             .field("quantifier", &self.quantifier)
-            .field("parameters", &self.parameters)
+            .field("params", &self.params)
             .field("codomain", &self.codomain)
             .finish()
     }
 }
 
 impl Render for super::Quantifier {
-    fn render(&self, _: Indentation, painter: &mut Painter) -> io::Result<()> {
-        painter.set(palette::SPECIAL_SYMBOL)?;
+    fn render(&self, _: Indent, p: &mut Painter) -> io::Result<()> {
+        p.set(palette::SPECIAL_SYMBOL)?;
         match self {
-            Self::Pi => write!(painter, "pi")?,
-            Self::Sigma => write!(painter, "sigma")?,
+            Self::Pi => write!(p, "pi")?,
+            Self::Sigma => write!(p, "sigma")?,
         }
-        painter.unset()
+        p.unset()
     }
 }
 
-impl<T: Render> Render for super::Application<T> {
-    fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
-        Struct::new(indentation, painter)
-            .name("Application")
+impl<T: Render> Render for super::App<T> {
+    fn render(&self, indent: Indent, p: &mut Painter) -> io::Result<()> {
+        Struct::new(indent, p)
+            .name("App")
             .field("kind", &self.kind)
             .field("binder", &self.binder)
             .field("callee", &self.callee)
-            .field("argument", &self.argument)
+            .field("arg", &self.arg)
             .finish()
     }
 }
 
-impl Render for super::NumberLiteral {
-    fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
-        Struct::new(indentation, painter)
-            .name("Number-Literal")
+impl Render for super::NumLit {
+    fn render(&self, indent: Indent, p: &mut Painter) -> io::Result<()> {
+        Struct::new(indent, p)
+            .name("NumLit")
             .field("path", &self.path)
             .field(
                 "literal",
                 // FIXME: Render the span of the literal as well.
-                &AdHoc(|_, painter| {
-                    painter.set(palette::INVALID)?;
-                    write!(painter, "{}", self.literal.bare)?;
-                    painter.unset()
+                &AdHoc(|_, p| {
+                    p.set(palette::INVALID)?;
+                    write!(p, "{}", self.lit.bare)?;
+                    p.unset()
                 }),
             )
             .finish()
     }
 }
 
-impl fmt::Display for super::NumberLiteral {
-    fn fmt(&self, painter: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl fmt::Display for super::NumLit {
+    fn fmt(&self, p: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.path {
-            Some(path) => write!(painter, "{path}.{}", self.literal),
-            None => write!(painter, "{}", self.literal),
+            Some(path) => write!(p, "{path}.{}", self.lit),
+            None => write!(p, "{}", self.lit),
         }
     }
 }
 
-impl Render for super::TextLiteral {
-    fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
-        Struct::new(indentation, painter)
-            .name("Text-Literal")
+impl Render for super::TextLit {
+    fn render(&self, indent: Indent, p: &mut Painter) -> io::Result<()> {
+        Struct::new(indent, p)
+            .name("TextLit")
             .field("path", &self.path)
             .field(
                 "literal",
                 // FIXME: Render the span of the literal as well.
-                &AdHoc(|_, painter| render_text_literal(self.literal.bare.to_str(), painter)),
+                &AdHoc(|_, p| render_text_lit(self.lit.bare.to_str(), p)),
             )
             .finish()
     }
 }
 
-impl fmt::Display for super::TextLiteral {
-    fn fmt(&self, painter: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl fmt::Display for super::TextLit {
+    fn fmt(&self, p: &mut fmt::Formatter<'_>) -> fmt::Result {
         // @Bug this doesn't escape anything at all!
         match &self.path {
-            Some(path) => write!(painter, "{path}.\"{}\"", self.literal),
-            None => write!(painter, "\"{}\"", self.literal),
+            Some(path) => write!(p, "{path}.\"{}\"", self.lit),
+            None => write!(p, "\"{}\"", self.lit),
         }
     }
 }
 
 impl Render for super::Wildcard {
-    fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
-        let struct_ = Struct::new(indentation, painter);
+    fn render(&self, indent: Indent, p: &mut Painter) -> io::Result<()> {
+        let struct_ = Struct::new(indent, p);
 
         match self {
             Self::Silent => struct_.name("Wildcard.Silent"),
@@ -440,8 +436,8 @@ impl Render for super::Wildcard {
 }
 
 impl Render for super::Path {
-    fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
-        Struct::new(indentation, painter)
+    fn render(&self, indent: Indent, p: &mut Painter) -> io::Result<()> {
+        Struct::new(indent, p)
             .name("Path")
             .field("hanger", &self.hanger)
             .field("segments", &self.segments)
@@ -449,10 +445,10 @@ impl Render for super::Path {
     }
 }
 
-impl Render for super::Projection {
-    fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
-        Struct::new(indentation, painter)
-            .name("Projection")
+impl Render for super::Proj {
+    fn render(&self, indent: Indent, p: &mut Painter) -> io::Result<()> {
+        Struct::new(indent, p)
+            .name("Proj")
             .field("basis", &self.basis)
             .field("field", &self.field)
             .finish()
@@ -460,19 +456,19 @@ impl Render for super::Projection {
 }
 
 impl Render for super::BareHanger {
-    fn render(&self, _: Indentation, painter: &mut Painter) -> io::Result<()> {
+    fn render(&self, _: Indent, p: &mut Painter) -> io::Result<()> {
         // FIXME: Add the color to the palette.
-        painter.set(AnsiColor::BrightYellow)?;
-        write!(painter, "{self}")?;
-        painter.unset()
+        p.set(AnsiColor::BrightYellow)?;
+        write!(p, "{self}")?;
+        p.unset()
     }
 }
 
-impl Render for super::LambdaLiteral {
-    fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
-        Struct::new(indentation, painter)
-            .name("Lambda-Literal")
-            .field("parameters", &self.parameters)
+impl Render for super::LamLit {
+    fn render(&self, indent: Indent, p: &mut Painter) -> io::Result<()> {
+        Struct::new(indent, p)
+            .name("LamLit")
+            .field("params", &self.params)
             .field("codomain", &self.codomain)
             .field("body", &self.body)
             .finish()
@@ -480,12 +476,12 @@ impl Render for super::LambdaLiteral {
 }
 
 impl Render for super::LetBinding {
-    fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
-        Struct::new(indentation, painter)
-            .name("Let-Binding")
+    fn render(&self, indent: Indent, p: &mut Painter) -> io::Result<()> {
+        Struct::new(indent, p)
+            .name("LetBinding")
             .field("binder", &self.binder)
-            .field("parameters", &self.parameters)
-            .field("type", &self.type_)
+            .field("params", &self.params)
+            .field("type", &self.ty)
             .field("body", &self.body)
             .field("scope", &self.scope)
             .finish()
@@ -493,9 +489,9 @@ impl Render for super::LetBinding {
 }
 
 impl Render for super::UseBinding {
-    fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
-        Struct::new(indentation, painter)
-            .name("Use-Binding")
+    fn render(&self, indent: Indent, p: &mut Painter) -> io::Result<()> {
+        Struct::new(indent, p)
+            .name("UseBinding")
             .field("bindings", &self.bindings)
             .field("scope", &self.scope)
             .finish()
@@ -503,9 +499,9 @@ impl Render for super::UseBinding {
 }
 
 impl Render for super::CaseAnalysis {
-    fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
-        Struct::new(indentation, painter)
-            .name("Case-Analysis")
+    fn render(&self, indent: Indent, p: &mut Painter) -> io::Result<()> {
+        Struct::new(indent, p)
+            .name("CaseAnalysis")
             .field("scrutinee", &self.scrutinee)
             .field("cases", &self.cases)
             .finish()
@@ -513,8 +509,8 @@ impl Render for super::CaseAnalysis {
 }
 
 impl Render for super::Case {
-    fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
-        Struct::new(indentation, painter)
+    fn render(&self, indent: Indent, p: &mut Painter) -> io::Result<()> {
+        Struct::new(indent, p)
             .name("Case")
             .field("pattern", &self.pattern)
             .field("body", &self.body)
@@ -523,28 +519,28 @@ impl Render for super::Case {
 }
 
 impl Render for super::DoBlock {
-    fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
-        Struct::new(indentation, painter)
+    fn render(&self, indent: Indent, p: &mut Painter) -> io::Result<()> {
+        Struct::new(indent, p)
             .name("Do-Block")
             .field("statements", &self.statements)
             .finish()
     }
 }
 
-impl<T: Render> Render for super::SequenceLiteral<T> {
-    fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
-        Struct::new(indentation, painter)
-            .name("Sequence-Literal")
+impl<T: Render> Render for super::SeqLit<T> {
+    fn render(&self, indent: Indent, p: &mut Painter) -> io::Result<()> {
+        Struct::new(indent, p)
+            .name("SeqLit")
             .field("path", &self.path)
-            .field("elements", &self.elements)
+            .field("elems", &self.elems)
             .finish()
     }
 }
 
-impl<T: Render> Render for super::RecordLiteral<T> {
-    fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
-        Struct::new(indentation, painter)
-            .name("Record-Literal")
+impl<T: Render> Render for super::RecLit<T> {
+    fn render(&self, indent: Indent, p: &mut Painter) -> io::Result<()> {
+        Struct::new(indent, p)
+            .name("RecLit")
             .field("path", &self.path)
             .field("fields", &self.fields)
             .field("base", &self.base)
@@ -553,8 +549,8 @@ impl<T: Render> Render for super::RecordLiteral<T> {
 }
 
 impl<T: Render> Render for super::Field<T> {
-    fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
-        Struct::new(indentation, painter)
+    fn render(&self, indent: Indent, p: &mut Painter) -> io::Result<()> {
+        Struct::new(indent, p)
             .name("Field")
             .field("binder", &self.binder)
             .field("body", &self.body)
@@ -562,26 +558,26 @@ impl<T: Render> Render for super::Field<T> {
     }
 }
 
-impl Render for super::BareParameter {
-    fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
-        Struct::new(indentation, painter)
-            .name("Parameter")
+impl Render for super::BareParam {
+    fn render(&self, indent: Indent, p: &mut Painter) -> io::Result<()> {
+        Struct::new(indent, p)
+            .name("Param")
             .field("kind", &self.kind)
             .field("binder", &self.binder)
-            .field("type", &self.type_)
+            .field("type", &self.ty)
             .finish()
     }
 }
 
 impl Render for super::LocalBinder {
-    fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
+    fn render(&self, indent: Indent, p: &mut Painter) -> io::Result<()> {
         match self {
-            Self::Named(binder) => binder.render(indentation, painter),
+            Self::Named(binder) => binder.render(indent, p),
             Self::Discarded(span) => {
-                span.render(indentation, painter)?;
-                painter.set(palette::SPECIAL_SYMBOL)?;
-                write!(painter, " discarded")?;
-                painter.unset()
+                span.render(indent, p)?;
+                p.set(palette::SPECIAL_SYMBOL)?;
+                write!(p, " discarded")?;
+                p.unset()
             }
         }
     }
@@ -590,151 +586,145 @@ impl Render for super::LocalBinder {
 // @Bug this does not properly handle symbols in paths
 // @Task take a look at `Component::index_to_path`
 impl fmt::Display for super::Path {
-    fn fmt(&self, painter: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, p: &mut Formatter<'_>) -> fmt::Result {
         if let Some(hanger) = &self.hanger {
-            write!(painter, "{hanger}")?;
+            write!(p, "{hanger}")?;
 
             if !self.segments.is_empty() {
-                write!(painter, ".")?;
+                write!(p, ".")?;
             }
         }
 
-        write!(painter, "{}", self.segments.iter().join_with("."))
+        write!(p, "{}", self.segments.iter().join_with("."))
     }
 }
 
 impl fmt::Display for super::BareHanger {
-    fn fmt(&self, painter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(painter, "{}", self.name())
+    fn fmt(&self, p: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(p, "{}", self.name())
     }
 }
 
 impl Render for super::Statement {
-    fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
+    fn render(&self, indent: Indent, p: &mut Painter) -> io::Result<()> {
         match self {
-            Self::Let(let_) => let_.render(indentation, painter),
-            Self::Use(use_) => use_.render(indentation, painter),
-            Self::Expression(expression) => expression.render(indentation, painter),
+            Self::Let(let_) => let_.render(indent, p),
+            Self::Use(use_) => use_.render(indent, p),
+            Self::Expr(expression) => expression.render(indent, p),
         }
     }
 }
 
 impl Render for super::LetStatement {
-    fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
-        Struct::new(indentation, painter)
-            .name("Let-Statement")
+    fn render(&self, indent: Indent, p: &mut Painter) -> io::Result<()> {
+        Struct::new(indent, p)
+            .name("LetStatement")
             .field("binder", &self.binder)
-            .field("parameters", &self.parameters)
-            .field("type", &self.type_)
+            .field("params", &self.params)
+            .field("type", &self.ty)
             .field("body", &self.body)
             .finish()
     }
 }
 
 impl Render for super::BindingMode {
-    fn render(&self, _: Indentation, painter: &mut Painter) -> io::Result<()> {
-        painter.set(palette::SPECIAL_SYMBOL)?;
+    fn render(&self, _: Indent, p: &mut Painter) -> io::Result<()> {
+        p.set(palette::SPECIAL_SYMBOL)?;
         match self {
-            Self::Plain => write!(painter, "plain")?,
-            Self::Effectful => write!(painter, "effectful")?,
+            Self::Plain => write!(p, "plain")?,
+            Self::Effectful => write!(p, "effectful")?,
         }
-        painter.unset()
+        p.unset()
     }
 }
 
-impl Render for super::BarePattern {
-    fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
+impl Render for super::BarePat {
+    fn render(&self, indent: Indent, p: &mut Painter) -> io::Result<()> {
         match self {
-            Self::Wildcard(wildcard) => wildcard.render(indentation, painter),
-            Self::NumberLiteral(number) => number.render(indentation, painter),
-            Self::TextLiteral(text) => text.render(indentation, painter),
-            Self::SequenceLiteral(sequence) => sequence.render(indentation, painter),
-            Self::RecordLiteral(record) => record.render(indentation, painter),
-            Self::Path(path) => path.render(indentation, painter),
-            Self::LetBinding(binder) => binder.render(indentation, painter),
-            Self::Application(application) => application.render(indentation, painter),
+            Self::Wildcard(wildcard) => wildcard.render(indent, p),
+            Self::NumLit(num) => num.render(indent, p),
+            Self::TextLit(text) => text.render(indent, p),
+            Self::SeqLit(sequence) => sequence.render(indent, p),
+            Self::RecLit(record) => record.render(indent, p),
+            Self::Path(path) => path.render(indent, p),
+            Self::LetBinding(binder) => binder.render(indent, p),
+            Self::App(app) => app.render(indent, p),
         }
     }
 }
 
-impl Render for Identifier {
-    fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
-        self.span().render(indentation, painter)?;
-        write!(painter, " ")?;
-        Struct::new(indentation, painter)
-            .name("Identifier")
-            .finish()?;
-        painter.set(palette::VERBATIM)?;
-        write!(painter, " {self}")?;
-        painter.unset()
+impl Render for Ident {
+    fn render(&self, indent: Indent, p: &mut Painter) -> io::Result<()> {
+        self.span().render(indent, p)?;
+        write!(p, " ")?;
+        Struct::new(indent, p).name("Ident").finish()?;
+        p.set(palette::VERBATIM)?;
+        write!(p, " {self}")?;
+        p.unset()
     }
 }
 
-impl fmt::Display for Identifier {
-    fn fmt(&self, painter: &mut Formatter<'_>) -> fmt::Result {
+impl fmt::Display for Ident {
+    fn fmt(&self, p: &mut Formatter<'_>) -> fmt::Result {
         write!(
-            painter,
+            p,
             "{:width$}",
             self.to_str(),
-            width = painter.width().unwrap_or_default()
+            width = p.width().unwrap_or_default()
         )
     }
 }
 
-impl Render for ParameterKind {
-    fn render(&self, _: Indentation, painter: &mut Painter) -> io::Result<()> {
-        painter.set(palette::SPECIAL_SYMBOL)?;
+impl Render for ParamKind {
+    fn render(&self, _: Indent, p: &mut Painter) -> io::Result<()> {
+        p.set(palette::SPECIAL_SYMBOL)?;
         match self {
-            Self::Explicit => write!(painter, "explicit")?,
-            Self::Implicit => write!(painter, "implicit")?,
-            Self::Context => write!(painter, "context")?,
+            Self::Explicit => write!(p, "explicit")?,
+            Self::Implicit => write!(p, "implicit")?,
+            Self::Context => write!(p, "context")?,
         }
-        painter.unset()
+        p.unset()
     }
 }
 
-impl Render for super::BareAttribute {
-    fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
-        let struct_ = Struct::new(indentation, painter);
+impl Render for super::BareAttr {
+    fn render(&self, indent: Indent, p: &mut Painter) -> io::Result<()> {
+        let struct_ = Struct::new(indent, p);
         match self {
-            Self::Regular { binder, arguments } => struct_
-                .name("Attribute")
+            Self::Reg { binder, args } => struct_
+                .name("Attr")
                 .field("binder", binder)
-                .field("arguments", arguments),
-            Self::Documentation => struct_.name("Documentation"),
+                .field("args", args),
+            Self::Doc => struct_.name("Doc"),
         }
         .finish()
     }
 }
 
-impl Render for super::BareAttributeArgument {
-    fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
+impl Render for super::BareAttrArg {
+    fn render(&self, indent: Indent, p: &mut Painter) -> io::Result<()> {
         match self {
-            Self::NumberLiteral(number) => {
-                Struct::new(indentation, painter)
-                    .name("Number-Literal")
-                    .finish()?;
-                painter.set(palette::VERBATIM)?;
-                write!(painter, " {number}")?;
-                painter.unset()
+            Self::NumLit(num) => {
+                Struct::new(indent, p).name("NumLit").finish()?;
+                p.set(palette::VERBATIM)?;
+                write!(p, " {num}")?;
+                p.unset()
             }
-            Self::TextLiteral(text) => {
-                Struct::new(indentation, painter)
-                    .name("Text-Literal")
-                    .finish()?;
-                write!(painter, " ")?;
-                render_text_literal(text.to_str(), painter)
+            Self::TextLit(text) => {
+                Struct::new(indent, p).name("TextLit").finish()?;
+                write!(p, " ")?;
+                render_text_lit(text.to_str(), p)
             }
-            Self::Path(path) => path.render(indentation, painter),
-            Self::Named(named) => named.render(indentation, painter),
+            Self::Path(path) => path.render(indent, p),
+            Self::Named(named) => named.render(indent, p),
         }
     }
 }
 
-impl Render for super::NamedAttributeArgument {
-    fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
-        Struct::new(indentation, painter)
-            .name("Named-Attribute-Argument")
+impl Render for super::NamedAttrArg {
+    fn render(&self, indent: Indent, p: &mut Painter) -> io::Result<()> {
+        Struct::new(indent, p)
+            .name("NamedAttrArg")
             .field("binder", &self.binder)
             .field("value", &self.value)
             .finish()
@@ -743,7 +733,7 @@ impl Render for super::NamedAttributeArgument {
 
 // FIXME: Only shorten the text literal if we are printing to a TTY.
 // FIXME: Consider making whitespace visible.
-fn render_text_literal(content: &str, painter: &mut Painter) -> io::Result<()> {
+fn render_text_lit(content: &str, p: &mut Painter) -> io::Result<()> {
     const MAXIMUM_LENGTH: usize = 20;
     #[allow(clippy::assertions_on_constants)]
     const _: () = assert!(MAXIMUM_LENGTH % 2 == 0);
@@ -759,41 +749,41 @@ fn render_text_literal(content: &str, painter: &mut Painter) -> io::Result<()> {
         (left, Some(right))
     };
 
-    painter.set(palette::VERBATIM)?;
-    render_text_literal_part(left, painter)?;
+    p.set(palette::VERBATIM)?;
+    render_text_literal_part(left, p)?;
     if let Some(right) = right {
-        painter.set(AnsiColor::Black.on(palette::SPECIAL_SYMBOL_INSIDE_VERBATIM))?;
-        write!(painter, "{ELLIPSIS}")?;
-        painter.unset()?;
+        p.set(AnsiColor::Black.on(palette::SPECIAL_SYMBOL_INSIDE_VERBATIM))?;
+        write!(p, "{ELLIPSIS}")?;
+        p.unset()?;
 
-        render_text_literal_part(right, painter)?;
+        render_text_literal_part(right, p)?;
     }
-    painter.unset()
+    p.unset()
 }
 
-fn render_text_literal_part(content: &str, painter: &mut Painter) -> io::Result<()> {
+fn render_text_literal_part(content: &str, p: &mut Painter) -> io::Result<()> {
     let mut lines = content.split('\n');
 
     if let Some(line) = lines.next() {
-        write!(painter, "{line}")?;
+        write!(p, "{line}")?;
     }
 
     for line in lines {
-        painter.set(palette::SPECIAL_SYMBOL_INSIDE_VERBATIM)?;
-        write!(painter, "{LINE_BREAK}")?;
-        painter.unset()?;
+        p.set(palette::SPECIAL_SYMBOL_INSIDE_VERBATIM)?;
+        write!(p, "{LINE_BREAK}")?;
+        p.unset()?;
 
-        write!(painter, "{line}")?;
+        write!(p, "{line}")?;
     }
 
     Ok(())
 }
 
-struct AdHoc<P: Fn(Indentation, &mut Painter) -> io::Result<()>>(P);
+struct AdHoc<P: Fn(Indent, &mut Painter) -> io::Result<()>>(P);
 
-impl<P: Fn(Indentation, &mut Painter) -> io::Result<()>> Render for AdHoc<P> {
-    fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
-        (self.0)(indentation, painter)
+impl<P: Fn(Indent, &mut Painter) -> io::Result<()>> Render for AdHoc<P> {
+    fn render(&self, indent: Indent, p: &mut Painter) -> io::Result<()> {
+        (self.0)(indent, p)
     }
 }
 

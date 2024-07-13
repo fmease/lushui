@@ -1,4 +1,4 @@
-use super::{format::declaration_url_fragment, node::Node};
+use super::{format::decl_url_fragment, node::Node};
 use crossbeam::thread::{Scope, ScopedJoinHandle};
 use diagnostics::error::Result;
 use resolver::resolve_path;
@@ -27,12 +27,12 @@ pub(super) enum TextProcessor<'env> {
 impl<'scope> TextProcessor<'scope> {
     pub(super) fn new<'a>(
         folder: &Path,
-        options: &super::Options,
-        session: &'a Session<'_>,
+        opts: &super::Options,
+        sess: &'a Session<'_>,
         scope: &'scope Scope<'a>,
     ) -> Result<Self, Error> {
-        if options.asciidoc {
-            let doctor = Asciidoctor::new(folder, session, scope)?;
+        if opts.asciidoc {
+            let doctor = Asciidoctor::new(folder, sess, scope)?;
             Ok(Self::AsciiDoctor(Box::new(RefCell::new(doctor))))
         } else {
             Ok(Self::None)
@@ -65,7 +65,7 @@ impl<'scope> TextProcessor<'scope> {
 pub(super) struct Asciidoctor<'scope> {
     watcher: ScopedJoinHandle<'scope, ()>,
     process: Command,
-    response_context: Arc<Mutex<ResponseContext>>,
+    response_cx: Arc<Mutex<ResponseContext>>,
     should_watch: Arc<AtomicBool>,
     input_file: File,
     output_file: File,
@@ -82,7 +82,7 @@ impl<'scope> Asciidoctor<'scope> {
     /// Create an Asciidoctor text processor with the path to the documentation folder.
     pub(super) fn new<'a>(
         path: &Path,
-        session: &'a Session<'_>,
+        sess: &'a Session<'_>,
         scope: &'scope Scope<'a>,
     ) -> Result<Self, Error> {
         let input_path = path.join(Self::INPUT_FILE_NAME);
@@ -115,13 +115,13 @@ impl<'scope> Asciidoctor<'scope> {
         File::create(&request_log_path)?;
         File::create(&response_log_path)?;
 
-        let response_context: Arc<Mutex<ResponseContext>> = default();
+        let response_cx: Arc<Mutex<ResponseContext>> = default();
         let should_watch: Arc<AtomicBool> = default();
 
         let watcher = scope.spawn({
             let request_log_path = request_log_path.clone();
             let response_log_path = response_log_path.clone();
-            let response_context = response_context.clone();
+            let response_context = response_cx.clone();
             let should_watch = should_watch.clone();
 
             move |_| {
@@ -130,7 +130,7 @@ impl<'scope> Asciidoctor<'scope> {
                     &response_log_path,
                     &response_context,
                     &should_watch,
-                    session,
+                    sess,
                 );
             }
         });
@@ -138,7 +138,7 @@ impl<'scope> Asciidoctor<'scope> {
         Ok(Self {
             watcher,
             process,
-            response_context,
+            response_cx,
             should_watch,
             input_file,
             output_file,
@@ -156,9 +156,9 @@ impl<'scope> Asciidoctor<'scope> {
     fn watch_requests(
         request_log_path: &Path,
         response_log_path: &Path,
-        response_context: &Mutex<ResponseContext>,
+        response_cx: &Mutex<ResponseContext>,
         should_watch: &AtomicBool,
-        session: &Session<'_>,
+        sess: &Session<'_>,
     ) {
         let mut handled_requests: HashSet<String> = default();
         let mut last_log_size = 0;
@@ -177,7 +177,7 @@ impl<'scope> Asciidoctor<'scope> {
                     .split_terminator('\x1E')
                     .map(|request| request.split_once('\x1F').unwrap())
                     .rev()
-                    .filter(|&(identifier, _)| !handled_requests.contains(identifier))
+                    .filter(|&(ident, _)| !handled_requests.contains(ident))
                     .collect();
 
                 if !unhandled_requests.is_empty() {
@@ -189,14 +189,14 @@ impl<'scope> Asciidoctor<'scope> {
                     );
 
                     // @Question correctness: should this be moved into the loop?
-                    let response_context = response_context.lock().unwrap();
+                    let response_context = response_cx.lock().unwrap();
 
                     for (identifier, message) in unhandled_requests {
                         // @Beacon @Task don't unwrap the Result of response() @Update don't match explicitply
                         // but send `ok\x1F{result}` or `err\x1F{message}` "over the wire"
                         let response = match Request::parse(message)
                             .unwrap()
-                            .response(&response_context.url_prefix, session)
+                            .response(&response_context.url_prefix, sess)
                         {
                             Ok(response) => response,
                             // @Temporary
@@ -221,7 +221,7 @@ impl<'scope> Asciidoctor<'scope> {
         write!(input_file, "{description}")?;
         input_file.flush()?;
 
-        self.response_context.lock().unwrap().url_prefix = url_prefix;
+        self.response_cx.lock().unwrap().url_prefix = url_prefix;
         let status = self.process.status()?;
 
         if !status.success() {
@@ -267,17 +267,17 @@ impl<'a> Request<'a> {
         })
     }
 
-    pub fn response(self, url_prefix: &str, session: &Session<'_>) -> Result<String> {
+    pub fn response(self, url_prefix: &str, sess: &Session<'_>) -> Result<String> {
         Ok(match self {
             Request::DeclarationUrl(path) => {
-                let file = session.map().add(
-                    FileName::Anonymous,
+                let file = sess.map().add(
+                    FileName::Anon,
                     Arc::new(path.to_owned()),
-                    Some(session.component().index()),
+                    Some(sess.comp().idx()),
                 );
-                let path = parse_path(file, session)?;
-                let index = resolve_path(&path, session.component().root(), session)?;
-                let url_suffix = declaration_url_fragment(index, session);
+                let path = parse_path(file, sess)?;
+                let index = resolve_path(&path, sess.comp().root(), sess)?;
+                let url_suffix = decl_url_fragment(index, sess);
                 format!("{url_prefix}{url_suffix}")
             }
         })

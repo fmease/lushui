@@ -1,4 +1,4 @@
-use crate::Identifier;
+use crate::Ident;
 use span::{Span, Spanned, Spanning};
 use std::fmt;
 use utility::{smallvec, SmallVec};
@@ -8,11 +8,11 @@ pub struct Path {
     pub hanger: Option<Hanger>,
     /// Has to be non-empty if the `hanger` is `None`.
     // @Task make it impossible to construct with an empty vector
-    pub segments: SmallVec<Identifier, 1>,
+    pub segments: SmallVec<Ident, 1>,
 }
 
 impl Path {
-    pub fn hung(hanger: Hanger, segments: SmallVec<Identifier, 1>) -> Self {
+    pub fn hung(hanger: Hanger, segments: SmallVec<Ident, 1>) -> Self {
         debug_assert_ne!(segments.len(), 0);
 
         Self {
@@ -21,7 +21,7 @@ impl Path {
         }
     }
 
-    pub fn unhung(segments: SmallVec<Identifier, 1>) -> Self {
+    pub fn unhung(segments: SmallVec<Ident, 1>) -> Self {
         debug_assert_ne!(segments.len(), 0);
 
         Self {
@@ -47,7 +47,7 @@ impl Path {
     }
 
     /// The path head if it is an identifier.
-    pub fn identifier_head(&self) -> Option<Identifier> {
+    pub fn ident_head(&self) -> Option<Ident> {
         if self.hanger.is_some() {
             return None;
         }
@@ -63,11 +63,11 @@ impl fmt::Debug for Path {
     }
 }
 
-impl From<Identifier> for Path {
-    fn from(identifier: Identifier) -> Self {
+impl From<Ident> for Path {
+    fn from(ident: Ident) -> Self {
         Self {
             hanger: None,
-            segments: smallvec![identifier],
+            segments: smallvec![ident],
         }
     }
 }

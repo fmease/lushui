@@ -11,19 +11,19 @@ pub trait Target: Spanning {
     type Context: Copy;
 
     /// Used in diagnostics.
-    fn name(&self, context: Self::Context) -> &'static str;
+    fn name(&self, cx: Self::Context) -> &'static str;
 
-    fn targets(&self, context: Self::Context) -> Targets;
+    fn targets(&self, cx: Self::Context) -> Targets;
 }
 
-impl Target for ast::Declaration {
+impl Target for ast::Decl {
     type Context = ParentDeclarationKind;
 
     fn name(&self, parent: ParentDeclarationKind) -> &'static str {
-        use ast::BareDeclaration::*;
+        use ast::BareDecl::*;
 
         match &self.bare {
-            Function(_) => {
+            Func(_) => {
                 use ParentDeclarationKind::*;
 
                 match parent {
@@ -32,7 +32,7 @@ impl Target for ast::Declaration {
                     Record | Trait | Given => "a field declaration",
                 }
             }
-            Data(type_) => match type_.kind {
+            DataTy(ty) => match ty.kind {
                 ast::DataKind::Data => "a data declaration",
                 ast::DataKind::Record => "a record declaration",
                 ast::DataKind::Trait => "a trait declaration",
@@ -40,7 +40,7 @@ impl Target for ast::Declaration {
             // @Task it would be better (= less confusing) if we didn't mention "inline" and "out-of-line"
             // unconditionally, only for relevant target mismatches
             Module(module) => {
-                if module.declarations.is_some() {
+                if module.decls.is_some() {
                     "an inline module declaration"
                 } else {
                     "an out-of-line module declaration"
@@ -53,10 +53,10 @@ impl Target for ast::Declaration {
     }
 
     fn targets(&self, parent: ParentDeclarationKind) -> Targets {
-        use ast::BareDeclaration::*;
+        use ast::BareDecl::*;
 
         match &self.bare {
-            Function(_) => {
+            Func(_) => {
                 use ParentDeclarationKind::*;
 
                 match parent {
@@ -65,13 +65,13 @@ impl Target for ast::Declaration {
                     Record | Trait | Given => Targets::FIELD_DECLARATION,
                 }
             }
-            Data(data) => match data.kind {
+            DataTy(ty) => match ty.kind {
                 ast::DataKind::Data => Targets::DATA_DECLARATION,
                 ast::DataKind::Record => Targets::RECORD_DECLARATION,
                 ast::DataKind::Trait => Targets::TRAIT_DECLARATION,
             },
             Module(module) => {
-                if module.declarations.is_some() {
+                if module.decls.is_some() {
                     Targets::INLINE_MODULE_DECLARATION
                 } else {
                     Targets::OUT_OF_LINE_MODULE_DECLARATION
@@ -93,87 +93,87 @@ pub enum ParentDeclarationKind {
     Given,
 }
 
-impl Target for ast::Expression {
+impl Target for ast::Expr {
     type Context = ();
 
     fn name(&self, (): ()) -> &'static str {
-        use ast::BareExpression::*;
+        use ast::BareExpr::*;
 
         match &self.bare {
             Wildcard(_) => "a wildcard",
-            NumberLiteral(_) => "a number literal",
-            TextLiteral(_) => "a text literal",
+            NumLit(_) => "a number literal",
+            TextLit(_) => "a text literal",
             Path(_) => "a path",
-            Application(_) => "a function application",
-            QuantifiedType(type_) => match type_.quantifier {
+            App(_) => "a function application",
+            QuantifiedTy(ty) => match ty.quantifier {
                 ast::Quantifier::Pi => "a function type",
                 ast::Quantifier::Sigma => "a pair type",
             },
-            Projection(_) => "a record field projection",
-            LambdaLiteral(_) => "a lambda literal",
+            Proj(_) => "a record field projection",
+            LamLit(_) => "a lambda literal",
             LetBinding(_) => "a let-binding",
             UseBinding(_) => "a use-binding",
             CaseAnalysis(_) => "a case analysis",
             DoBlock(_) => "a do block",
-            SequenceLiteral(_) => "a sequence literal",
-            RecordLiteral(_) => "a record literal",
+            SeqLit(_) => "a sequence literal",
+            RecLit(_) => "a record literal",
             Error(_) => "an error",
         }
     }
 
     fn targets(&self, (): ()) -> Targets {
-        use ast::BareExpression::*;
+        use ast::BareExpr::*;
 
         match self.bare {
-            QuantifiedType(_) => Targets::QUANTIFIED_TYPE_EXPRESSION,
-            Application(_) => Targets::APPLICATION_EXPRESSION,
-            NumberLiteral(_) => Targets::NUMBER_LITERAL_EXPRESSION,
-            TextLiteral(_) => Targets::TEXT_LITERAL_EXPRESSION,
+            QuantifiedTy(_) => Targets::QUANTIFIED_TYPE_EXPRESSION,
+            App(_) => Targets::APPLICATION_EXPRESSION,
+            NumLit(_) => Targets::NUMBER_LITERAL_EXPRESSION,
+            TextLit(_) => Targets::TEXT_LITERAL_EXPRESSION,
             Wildcard(_) => Targets::WILDCARD_EXPRESSION,
             Path(_) => Targets::PATH_EXPRESSION,
-            Projection(_) => Targets::PROJECTION_EXPRESSION,
-            LambdaLiteral(_) => Targets::LAMBDA_LITERAL_EXPRESSION,
+            Proj(_) => Targets::PROJECTION_EXPRESSION,
+            LamLit(_) => Targets::LAMBDA_LITERAL_EXPRESSION,
             LetBinding(_) => Targets::LET_BINDING_EXPRESSION,
             UseBinding(_) => Targets::USE_BINDING_EXPRESSION,
             CaseAnalysis(_) => Targets::CASE_ANALYSIS_EXPRESSION,
             DoBlock(_) => Targets::DO_BLOCK_EXPRESSION,
-            SequenceLiteral(_) => Targets::SEQUENCE_LITERAL_EXPRESSION,
-            RecordLiteral(_) => Targets::RECORD_LITERAL_EXPRESSION,
+            SeqLit(_) => Targets::SEQUENCE_LITERAL_EXPRESSION,
+            RecLit(_) => Targets::RECORD_LITERAL_EXPRESSION,
             Error(_) => Targets::empty(),
         }
     }
 }
 
-impl Target for ast::Pattern {
+impl Target for ast::Pat {
     type Context = ();
 
     fn name(&self, (): ()) -> &'static str {
-        use ast::BarePattern::*;
+        use ast::BarePat::*;
 
         match self.bare {
             Wildcard(_) => "a wildcard",
-            NumberLiteral(_) => "a number literal",
-            TextLiteral(_) => "a text literal",
+            NumLit(_) => "a number literal",
+            TextLit(_) => "a text literal",
             LetBinding(_) => "a let-binding",
             Path(_) => "a path",
-            Application(_) => "a function application",
-            SequenceLiteral(_) => "a sequence literal",
-            RecordLiteral(_) => "a record literal",
+            App(_) => "a function application",
+            SeqLit(_) => "a sequence literal",
+            RecLit(_) => "a record literal",
         }
     }
 
     fn targets(&self, (): ()) -> Targets {
-        use ast::BarePattern::*;
+        use ast::BarePat::*;
 
         match self.bare {
             Wildcard(_) => Targets::WILDCARD_PATTERN,
-            NumberLiteral(_) => Targets::NUMBER_LITERAL_PATTERN,
-            TextLiteral(_) => Targets::TEXT_LITERAL_PATTERN,
-            SequenceLiteral(_) => Targets::SEQUENCE_LITERAL_PATTERN,
-            RecordLiteral(_) => Targets::RECORD_LITERAL_PATTERN,
+            NumLit(_) => Targets::NUMBER_LITERAL_PATTERN,
+            TextLit(_) => Targets::TEXT_LITERAL_PATTERN,
+            SeqLit(_) => Targets::SEQUENCE_LITERAL_PATTERN,
+            RecLit(_) => Targets::RECORD_LITERAL_PATTERN,
             Path(_) => Targets::PATH_PATTERN,
             LetBinding(_) => Targets::BINDER_PATTERN,
-            Application(_) => Targets::APPLICATION_PATTERN,
+            App(_) => Targets::APPLICATION_PATTERN,
         }
     }
 }
@@ -181,7 +181,7 @@ impl Target for ast::Pattern {
 // excluded: crate::syntax::ast::DeclarationKind::ModuleHeader
 // @Task get rid of this
 bitflags::bitflags! {
-    /// Attribute targets.
+    /// Attr targets.
     #[derive(PartialEq, Eq, Clone, Copy)]
     pub struct Targets: u64 {
         const FUNCTION_DECLARATION = 1 << 0;
@@ -293,41 +293,37 @@ impl Targets {
                 | Self::CONSTRUCTOR_DECLARATION
                 | Self::EXPRESSION
                 | Self::PATTERN => "function declarations, constructors, expressions or patterns",
-            // the particular description is not needed for `AttributeKind::targets` and thus it is not defined
+            // the particular description is not needed for `AttriKind::targets` and thus it is not defined
             else => unreachable!(),
         }
     }
 }
 
 #[derive(Clone, Default)]
-pub struct Attributes(pub Vec<Attribute>);
+pub struct Attrs(pub Vec<Attr>);
 
-impl Attributes {
+impl Attrs {
     pub fn has<Q: Query>(&self, query: Q) -> bool {
-        self.0
-            .iter()
-            .any(move |attribute| query.matches(&attribute.bare))
+        self.0.iter().any(move |attr| query.matches(&attr.bare))
     }
 
-    pub fn filter<Q: Query>(&self, query: Q) -> impl Iterator<Item = &Attribute> {
-        self.0
-            .iter()
-            .filter(move |attribute| query.matches(&attribute.bare))
+    pub fn filter<Q: Query>(&self, query: Q) -> impl Iterator<Item = &Attr> {
+        self.0.iter().filter(move |attr| query.matches(&attr.bare))
     }
 
-    pub fn get<const NAME: AttributeName>(&self) -> Option<Spanned<&DataQueryOutput<NAME>>>
+    pub fn get<const NAME: AttrName>(&self) -> Option<Spanned<&DataQueryOutput<NAME>>>
     where
         NameQuery<NAME>: DataQuery,
     {
-        self.0.iter().find_map(move |attribute| {
+        self.0.iter().find_map(move |attr| {
             Some(Spanned::new(
-                attribute.span,
-                NameQuery::<NAME>::obtain(&attribute.bare)?,
+                attr.span,
+                NameQuery::<NAME>::obtain(&attr.bare)?,
             ))
         })
     }
 
-    pub fn select<const NAME: AttributeName>(
+    pub fn select<const NAME: AttrName>(
         &self,
     ) -> impl Iterator<Item = &DataQueryOutput<NAME>> + Clone
     where
@@ -335,29 +331,31 @@ impl Attributes {
     {
         self.0
             .iter()
-            .filter_map(move |attribute| NameQuery::<NAME>::obtain(&attribute.bare))
+            .filter_map(move |attr| NameQuery::<NAME>::obtain(&attr.bare))
     }
 
     pub fn span<Q: Query>(&self, query: Q) -> Option<Span> {
         self.0
             .iter()
-            .find(move |attribute| query.matches(&attribute.bare))
-            .map(Attribute::span)
+            .find(move |attr| query.matches(&attr.bare))
+            .map(Attr::span)
     }
 }
 
-pub type Attribute = Spanned<BareAttribute>;
+/// An attribute.
+pub type Attr = Spanned<BareAttr>;
 
-// @Task try to get rid of AttributeName
+/// A location-less attribute.
+// @Task try to get rid of AttrName
 #[derive(Clone, PartialEq, Eq, Hash, Discriminant)]
 #[discriminant(
     name:
         #[derive(Elements, Str, ConstParamTy)]
         #[format(dash_case)]
         #[str(to_str)]
-        AttributeName
+        AttrName
 )]
-pub enum BareAttribute {
+pub enum BareAttr {
     /// Hide the constructors of a (public) data type.
     Abstract,
     /// Allow a [lint](Lint).
@@ -513,9 +511,9 @@ pub enum BareAttribute {
     Warn { lint: Lint },
 }
 
-impl BareAttribute {
+impl BareAttr {
     pub fn targets(&self) -> Targets {
-        use BareAttribute::*;
+        use BareAttr::*;
 
         // when updating, update `Targets::description` accordingly
         match self {
@@ -573,7 +571,7 @@ impl BareAttribute {
     }
 }
 
-impl fmt::Display for BareAttribute {
+impl fmt::Display for BareAttr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "@")?;
 
@@ -641,7 +639,7 @@ impl fmt::Display for BareAttribute {
     }
 }
 
-impl AttributeName {
+impl AttrName {
     pub fn parse(name: Atom) -> Option<Self> {
         Some(match name {
             Atom::ABSTRACT => Self::Abstract,
@@ -685,14 +683,14 @@ impl AttributeName {
     }
 }
 
-impl fmt::Display for AttributeName {
+impl fmt::Display for AttrName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.to_str())
     }
 }
 
 pub trait Query: Copy {
-    fn matches(self, attribute: &BareAttribute) -> bool;
+    fn matches(self, attr: &BareAttr) -> bool;
 
     fn or<Q: Query>(self, other: Q) -> Or<Self, Q> {
         Or {
@@ -702,9 +700,9 @@ pub trait Query: Copy {
     }
 }
 
-impl Query for AttributeName {
-    fn matches(self, attribute: &BareAttribute) -> bool {
-        attribute.name() == self
+impl Query for AttrName {
+    fn matches(self, attr: &BareAttr) -> bool {
+        attr.name() == self
     }
 }
 
@@ -715,50 +713,50 @@ pub struct Or<L: Query, R: Query> {
 }
 
 impl<L: Query, R: Query> Query for Or<L, R> {
-    fn matches(self, attribute: &BareAttribute) -> bool {
-        self.left.matches(attribute) || self.right.matches(attribute)
+    fn matches(self, attr: &BareAttr) -> bool {
+        self.left.matches(attr) || self.right.matches(attr)
     }
 }
 
-impl<F: Fn(&BareAttribute) -> bool + Copy> Query for Predicate<F> {
-    fn matches(self, attribute: &BareAttribute) -> bool {
-        self.0(attribute)
+impl<F: Fn(&BareAttr) -> bool + Copy> Query for Predicate<F> {
+    fn matches(self, attr: &BareAttr) -> bool {
+        self.0(attr)
     }
 }
 
 #[derive(Clone, Copy)]
-pub struct Predicate<F: Fn(&BareAttribute) -> bool>(pub F);
+pub struct Predicate<F: Fn(&BareAttr) -> bool>(pub F);
 
 pub trait DataQuery: Copy {
     type Output: ?Sized;
 
-    fn obtain(attribute: &BareAttribute) -> Option<&Self::Output>;
+    fn obtain(attr: &BareAttr) -> Option<&Self::Output>;
 }
 
 #[derive(Clone, Copy)]
-pub struct NameQuery<const NAME: AttributeName>;
+pub struct NameQuery<const NAME: AttrName>;
 
-pub type DataQueryOutput<const NAME: AttributeName> = <NameQuery<NAME> as DataQuery>::Output;
+pub type DataQueryOutput<const NAME: AttrName> = <NameQuery<NAME> as DataQuery>::Output;
 
 macro data_queries($( $name:ident: $Output:ty = $pat:pat => $expr:expr ),+ $(,)?) {
     $(
-        impl DataQuery for NameQuery<{ AttributeName::$name }> {
+        impl DataQuery for NameQuery<{ AttrName::$name }> {
             type Output = $Output;
 
-            fn obtain(attribute: &BareAttribute) -> Option<&Self::Output> {
-                obtain!(attribute, $pat => $expr)
+            fn obtain(attr: &BareAttr) -> Option<&Self::Output> {
+                obtain!(attr, $pat => $expr)
             }
         }
     )+
 }
 
 data_queries! {
-    Deprecated: Deprecated = BareAttribute::Deprecated(deprecated) => deprecated,
-    Doc: str = BareAttribute::Doc { content } => content,
-    Intrinsic: Special = BareAttribute::Intrinsic(special) => special,
-    Known: Special = BareAttribute::Known(special) => special,
-    Location: Atom = BareAttribute::Location { path } => path,
-    Public: Public = BareAttribute::Public(reach) => reach,
+    Deprecated: Deprecated = BareAttr::Deprecated(deprecated) => deprecated,
+    Doc: str = BareAttr::Doc { content } => content,
+    Intrinsic: Special = BareAttr::Intrinsic(special) => special,
+    Known: Special = BareAttr::Known(special) => special,
+    Location: Atom = BareAttr::Location { path } => path,
+    Public: Public = BareAttr::Public(reach) => reach,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]

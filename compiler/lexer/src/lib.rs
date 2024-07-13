@@ -1,7 +1,7 @@
 //! The lexical analyzer (lexer).
 #![feature(decl_macro, int_roundings, let_chains, stmt_expr_attributes)]
 
-use span::{FileName, LocalByteIndex, LocalSpan, SourceFile, SourceMap, Span, Spanned};
+use span::{FileName, LocalByteIdx, LocalSpan, SourceFile, SourceMap, Span, Spanned};
 use std::{cmp::Ordering, iter::Peekable, mem, str::CharIndices, sync::Arc};
 use token::{
     BareToken, Bracket, BracketKind, BracketOrientation, Indentation, IndentationError, Spaces,
@@ -89,7 +89,7 @@ impl<'a> Lexer<'a> {
                 character if character.is_ascii_digit() => {
                     self.take();
                     self.advance();
-                    self.lex_number_literal();
+                    self.lex_num_lit();
                 }
                 character if character.is_symbol() => {
                     self.take();
@@ -232,7 +232,7 @@ impl<'a> Lexer<'a> {
         }
 
         if is_documentation {
-            self.add(DocumentationComment);
+            self.add(DocComment);
         } else if self.options.keep_comments {
             self.add(Comment);
         }
@@ -422,7 +422,7 @@ impl<'a> Lexer<'a> {
         self.advance();
 
         match self.peek() {
-            Some(character) if character.is_ascii_digit() => self.lex_number_literal(),
+            Some(character) if character.is_ascii_digit() => self.lex_num_lit(),
             _ => self.lex_symbol(),
         }
     }
@@ -446,22 +446,22 @@ impl<'a> Lexer<'a> {
         });
     }
 
-    fn lex_number_literal(&mut self) {
-        let mut number = self.source().to_owned();
+    fn lex_num_lit(&mut self) {
+        let mut num = self.source().to_owned();
 
         while let Some(character) = self.peek() {
-            if !character.is_number_literal_middle() {
+            if !character.is_num_lit_middle() {
                 break;
             }
             self.take();
             self.advance();
 
-            if character != char::NUMERIC_SEPARATOR {
-                number.push(character);
+            if character != char::NUM_SEP {
+                num.push(character);
             }
         }
 
-        self.add(NumberLiteral(number.into()));
+        self.add(NumLit(num.into()));
     }
 
     // @Task escape sequences
@@ -493,7 +493,7 @@ impl<'a> Lexer<'a> {
             self.local_span.trim_start(TRIM_LENGTH)
         };
 
-        self.add(TextLiteral(self.file[content_span].into()));
+        self.add(TextLit(self.file[content_span].into()));
     }
 
     fn span(&self) -> Span {
@@ -521,13 +521,13 @@ impl<'a> Lexer<'a> {
         self.peek_with_index().map(|(_, character)| character)
     }
 
-    fn peek_with_index(&mut self) -> Option<(LocalByteIndex, char)> {
+    fn peek_with_index(&mut self) -> Option<(LocalByteIdx, char)> {
         self.characters
             .peek()
             .map(|&(index, character)| (index.try_into().unwrap(), character))
     }
 
-    fn index(&mut self) -> Option<LocalByteIndex> {
+    fn index(&mut self) -> Option<LocalByteIdx> {
         self.peek_with_index().map(|(index, _)| index)
     }
 
@@ -575,7 +575,7 @@ impl<'a> Lexer<'a> {
 
 fn lex_string(source: String) -> Outcome {
     let mut map = SourceMap::default();
-    let file = map.add(FileName::Anonymous, Arc::new(source), None);
+    let file = map.add(FileName::Anon, Arc::new(source), None);
     Lexer::new(
         &map[file],
         &Options {
@@ -685,16 +685,17 @@ impl Brackets {
 type Stack<T> = Vec<T>;
 
 pub trait CharExt: Copy {
-    const NUMERIC_SEPARATOR: Self;
+    /// Numeric separator.
+    const NUM_SEP: Self;
 
     fn is_word_segment_start(self) -> bool;
     fn is_word_segment_middle(self) -> bool;
-    fn is_number_literal_middle(self) -> bool;
+    fn is_num_lit_middle(self) -> bool;
     fn is_symbol(self) -> bool;
 }
 
 impl CharExt for char {
-    const NUMERIC_SEPARATOR: Self = '\'';
+    const NUM_SEP: Self = '\'';
 
     fn is_word_segment_start(self) -> bool {
         self.is_ascii_alphabetic() || self == '_'
@@ -704,8 +705,8 @@ impl CharExt for char {
         self.is_ascii_alphanumeric() || self == '_'
     }
 
-    fn is_number_literal_middle(self) -> bool {
-        self.is_ascii_digit() || self == Self::NUMERIC_SEPARATOR
+    fn is_num_lit_middle(self) -> bool {
+        self.is_ascii_digit() || self == Self::NUM_SEP
     }
 
     fn is_symbol(self) -> bool {

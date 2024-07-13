@@ -4,7 +4,7 @@
 use joinery::JoinableIterator;
 use lexer::{token::INDENTATION, CharExt};
 use session::{
-    component::{Component, DeclarationIndexExt, LocalDeclarationIndexExt},
+    component::{Comp, DeclIdxExt, LocalDeclIdxExt},
     Session,
 };
 use std::{collections::VecDeque, fmt};
@@ -17,47 +17,47 @@ mod test;
 //        `-Zemit-hir`.
 
 pub trait Display {
-    fn write(&self, session: &Session<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result;
+    fn write(&self, sess: &Session<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result;
 }
 
-impl Display for hir::Declaration {
-    fn write(&self, session: &Session<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write_declaration(self, 0, session, f)
+impl Display for hir::Decl {
+    fn write(&self, sess: &Session<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write_decl(self, 0, sess, f)
     }
 }
 
 // @Task reduce amount of (String) allocations
 // @Bug indentation not correctly handled
 // @Task display attributes
-fn write_declaration(
-    declaration: &hir::Declaration,
+fn write_decl(
+    decl: &hir::Decl,
     depth: usize,
-    session: &Session<'_>,
+    sess: &Session<'_>,
     f: &mut fmt::Formatter<'_>,
 ) -> fmt::Result {
-    use hir::BareDeclaration::*;
+    use hir::BareDecl::*;
 
-    match &declaration.bare {
-        Function(function) => {
-            write!(f, "{}: ", function.binder)?;
-            function.type_.write(session, f)?;
-            if let Some(body) = &function.body {
+    match &decl.bare {
+        Func(func) => {
+            write!(f, "{}: ", func.binder)?;
+            func.ty.write(sess, f)?;
+            if let Some(body) = &func.body {
                 f.write_str(" = ")?;
-                body.write(session, f)?;
+                body.write(sess, f)?;
             }
             writeln!(f)
         }
-        Data(type_) => {
-            write!(f, "data {}: ", type_.binder)?;
-            type_.type_.write(session, f)?;
+        DataTy(ty) => {
+            write!(f, "data {}: ", ty.binder)?;
+            ty.ty.write(sess, f)?;
 
-            if let Some(constructors) = &type_.constructors {
+            if let Some(constructors) = &ty.ctors {
                 writeln!(f, " of")?;
 
                 for constructor in constructors {
                     let depth = depth + 1;
                     write!(f, "{}", " ".repeat(depth * INDENTATION.0))?;
-                    constructor.write(session, f)?;
+                    constructor.write(sess, f)?;
                 }
             } else {
                 writeln!(f)?;
@@ -65,17 +65,17 @@ fn write_declaration(
 
             Ok(())
         }
-        Constructor(constructor) => {
-            write!(f, "{}: ", constructor.binder)?;
-            constructor.type_.write(session, f)?;
+        Ctor(ctor) => {
+            write!(f, "{}: ", ctor.binder)?;
+            ctor.ty.write(sess, f)?;
             writeln!(f)
         }
         Module(module) => {
             writeln!(f, "module {} of", module.binder)?;
-            for declaration in &module.declarations {
+            for declaration in &module.decls {
                 let depth = depth + 1;
                 write!(f, "{}", " ".repeat(depth * INDENTATION.0))?;
-                write_declaration(declaration, depth, session, f)?;
+                write_decl(declaration, depth, sess, f)?;
             }
             Ok(())
         }
@@ -87,18 +87,18 @@ fn write_declaration(
     }
 }
 
-impl Display for hir::Expression {
-    fn write(&self, session: &Session<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write_pi_type_literal_or_lower(self, session, f)
+impl Display for hir::Expr {
+    fn write(&self, sess: &Session<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write_pi_ty_or_lower(self, sess, f)
     }
 }
 
-fn write_pi_type_literal_or_lower(
-    expression: &hir::Expression,
-    session: &Session<'_>,
+fn write_pi_ty_or_lower(
+    expr: &hir::Expr,
+    sess: &Session<'_>,
     f: &mut fmt::Formatter<'_>,
 ) -> fmt::Result {
-    use hir::BareExpression::*;
+    use hir::BareExpr::*;
 
     // In here, we format `Lambda` and `CaseAnalysis` as a pi-type-literal-or-lower instead of
     // a lowered expression — which you might have expected from reading through the grammar and the parser.
@@ -122,44 +122,44 @@ fn write_pi_type_literal_or_lower(
     // See also `crate::syntax::parser::test::application_lambda_literal_argument_{lax,strict}_grouping` and the
     // comment at the grammar definition of `Pi-Type-Literal-Or-Lower` (in `/misc/grammar/lushui.grammar`)
     // for further details.
-    match &expression.bare {
-        PiType(pi) => {
-            if pi.binder.is_none() && pi.kind == hir::ParameterKind::Explicit {
-                write_application_or_lower(&pi.domain, session, f)?;
+    match &expr.bare {
+        PiTy(pi_ty) => {
+            if pi_ty.binder.is_none() && pi_ty.kind == hir::ParamKind::Explicit {
+                write_app_or_lower(&pi_ty.domain, sess, f)?;
             } else {
                 f.write_str("For ")?;
 
-                if pi.kind == hir::ParameterKind::Implicit {
+                if pi_ty.kind == hir::ParamKind::Implicit {
                     f.write_str("'")?;
                 }
-                if pi.kind == hir::ParameterKind::Context {
+                if pi_ty.kind == hir::ParamKind::Context {
                     f.write_str("[")?;
 
-                    if let Some(binder) = pi.binder {
+                    if let Some(binder) = pi_ty.binder {
                         write!(f, "{binder}: ")?;
                     }
 
-                    pi.domain.write(session, f)?;
+                    pi_ty.domain.write(sess, f)?;
                     f.write_str("]")?;
                 } else {
-                    let binder = pi.binder.map_or(Atom::UNDERSCORE, hir::Identifier::bare);
+                    let binder = pi_ty.binder.map_or(Atom::UNDERSCORE, hir::Ident::bare);
 
                     write!(f, "({binder}: ")?;
-                    pi.domain.write(session, f)?;
+                    pi_ty.domain.write(sess, f)?;
                     f.write_str(")")?;
                 }
             }
 
             f.write_str(" -> ")?;
-            write_pi_type_literal_or_lower(&pi.codomain, session, f)
+            write_pi_ty_or_lower(&pi_ty.codomain, sess, f)
         }
-        Lambda(lambda) => {
+        LamLit(lambda) => {
             f.write_str("for ")?;
 
-            if lambda.kind == hir::ParameterKind::Implicit {
+            if lambda.kind == hir::ParamKind::Implicit {
                 f.write_str("'")?;
             }
-            if lambda.kind == hir::ParameterKind::Context {
+            if lambda.kind == hir::ParamKind::Context {
                 f.write_str("[")?;
 
                 if let Some(binder) = lambda.binder {
@@ -169,18 +169,16 @@ fn write_pi_type_literal_or_lower(
                 // Although it's not statically guaranteed, the domain of context parameters has exist.
                 // Let's not unwrap though for robustness.
                 if let Some(domain) = &lambda.domain {
-                    domain.write(session, f)?;
+                    domain.write(sess, f)?;
                 }
 
                 f.write_str("]")?;
             } else {
-                let binder = lambda
-                    .binder
-                    .map_or(Atom::UNDERSCORE, hir::Identifier::bare);
+                let binder = lambda.binder.map_or(Atom::UNDERSCORE, hir::Ident::bare);
 
                 if let Some(domain) = &lambda.domain {
                     write!(f, "({binder}: ")?;
-                    domain.write(session, f)?;
+                    domain.write(sess, f)?;
                     f.write_str(")")?;
                 } else {
                     write!(f, "{binder}")?;
@@ -189,128 +187,128 @@ fn write_pi_type_literal_or_lower(
 
             if let Some(codomain) = &lambda.codomain {
                 write!(f, ": ")?;
-                codomain.write(session, f)?;
+                codomain.write(sess, f)?;
             }
 
             write!(f, " => ")?;
-            lambda.body.write(session, f)
+            lambda.body.write(sess, f)
         }
         // @Task fix indentation
         CaseAnalysis(analysis) => {
             write!(f, "case ")?;
-            analysis.scrutinee.write(session, f)?;
+            analysis.scrutinee.write(sess, f)?;
             writeln!(f, " of")?;
             for case in &analysis.cases {
-                case.pattern.write(session, f)?;
+                case.pat.write(sess, f)?;
                 writeln!(f, " => ")?;
-                case.body.write(session, f)?;
+                case.body.write(sess, f)?;
             }
             Ok(())
         }
-        _ => write_application_or_lower(expression, session, f),
+        _ => write_app_or_lower(expr, sess, f),
     }
 }
 
 // @Task write named arguments
-fn write_application_or_lower(
-    expression: &hir::Expression,
-    session: &Session<'_>,
+fn write_app_or_lower(
+    expr: &hir::Expr,
+    sess: &Session<'_>,
     f: &mut fmt::Formatter<'_>,
 ) -> fmt::Result {
-    use hir::BareExpression::*;
+    use hir::BareExpr::*;
 
-    match &expression.bare {
-        Application(application) => {
-            write_application_or_lower(&application.callee, session, f)?;
+    match &expr.bare {
+        App(app) => {
+            write_app_or_lower(&app.callee, sess, f)?;
 
             f.write_str(" ")?;
 
-            if application.kind == hir::ParameterKind::Implicit {
+            if app.kind == hir::ParamKind::Implicit {
                 f.write_str("'")?;
             }
-            if application.kind == hir::ParameterKind::Context {
+            if app.kind == hir::ParamKind::Context {
                 f.write_str("[")?;
-                application.argument.write(session, f)?;
+                app.arg.write(sess, f)?;
                 f.write_str("]")
             } else {
-                write_lower_expression(&application.argument, session, f)
+                write_lower_expr(&app.arg, sess, f)
             }
         }
-        IntrinsicApplication(application) => {
-            write!(f, "{}", application.callee)?;
+        IntrApp(app) => {
+            write!(f, "{}", app.callee)?;
 
-            for argument in &application.arguments {
+            for arg in &app.args {
                 write!(f, " ")?;
-                write_lower_expression(argument, session, f)?;
+                write_lower_expr(arg, sess, f)?;
             }
 
             Ok(())
         }
-        _ => write_lower_expression(expression, session, f),
+        _ => write_lower_expr(expr, sess, f),
     }
 }
 
-fn write_lower_expression(
-    expression: &hir::Expression,
-    session: &Session<'_>,
+fn write_lower_expr(
+    expr: &hir::Expr,
+    sess: &Session<'_>,
     f: &mut fmt::Formatter<'_>,
 ) -> fmt::Result {
-    use hir::BareExpression::*;
+    use hir::BareExpr::*;
 
-    for attribute in &expression.attributes.0 {
-        write!(f, "{attribute} ")?;
+    for attr in &expr.attrs.0 {
+        write!(f, "{attr} ")?;
     }
 
-    match &expression.bare {
-        Number(literal) => write!(f, "{literal}"),
-        Text(literal) => write!(f, "{literal}"),
-        Binding(binding) => write!(f, "{}", session.binder_to_path(binding.0)),
-        Projection(projection) => {
-            write_lower_expression(&projection.basis, session, f)?;
-            write!(f, "::{}", projection.field)
+    match &expr.bare {
+        NumLit(num) => write!(f, "{num}"),
+        TextLit(text) => write!(f, "{text}"),
+        Binding(binding) => write!(f, "{}", sess.binder_to_path(binding.0)),
+        Proj(proj) => {
+            write_lower_expr(&proj.basis, sess, f)?;
+            write!(f, "::{}", proj.field)
         }
         // @Task
-        Record(_record) => f.write_str("⟨record⟩"),
+        RecLit(_rec) => f.write_str("⟨rec-lit⟩"),
         IO(io) => {
             // @Temporary format
             write!(f, "⟨io {}", io.index)?;
-            for argument in &io.arguments {
+            for arg in &io.args {
                 f.write_str(" ")?;
-                argument.write(session, f)?;
+                arg.write(sess, f)?;
             }
             f.write_str("⟩")
         }
-        Substituted(substituted) => {
-            f.write_str("⟨subst ")?;
-            substituted.substitution.write(session, f)?;
+        Substed(substed) => {
+            f.write_str("⟨substed ")?;
+            substed.subst.write(sess, f)?;
             f.write_str(" ")?;
-            substituted.expression.write(session, f)?;
+            substed.expr.write(sess, f)?;
             f.write_str("⟩")
         }
         Error(_) => write!(f, "⟨error⟩"),
         _ => {
             write!(f, "(")?;
-            expression.write(session, f)?;
+            expr.write(sess, f)?;
             write!(f, ")")
         }
     }
 }
 
 // @Beacon @Task respect / incorporate precedence for a prettier output (just like we do with expressions)
-impl Display for hir::Pattern {
-    fn write(&self, session: &Session<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use hir::BarePattern::*;
+impl Display for hir::Pat {
+    fn write(&self, sess: &Session<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use hir::BarePat::*;
 
         match &self.bare {
-            Number(number) => write!(f, "{number}"),
-            Text(text) => write!(f, "{text}"),
-            Binding(binding) => write!(f, "{}", session.binder_to_path(binding.0)),
+            NumLit(num) => write!(f, "{num}"),
+            TextLit(text) => write!(f, "{text}"),
+            Binding(binding) => write!(f, "{}", sess.binder_to_path(binding.0)),
             LetBinding(binder) => write!(f, "(let {binder})"),
-            Application(application) => {
+            App(app) => {
                 write!(f, "(")?;
-                application.callee.write(session, f)?;
+                app.callee.write(sess, f)?;
                 write!(f, ") (")?;
-                application.argument.write(session, f)?;
+                app.arg.write(sess, f)?;
                 write!(f, ")")
             }
             Error(_) => write!(f, "⟨error⟩"),
@@ -318,14 +316,14 @@ impl Display for hir::Pattern {
     }
 }
 
-impl Display for hir::Substitution {
-    fn write(&self, session: &Session<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for hir::Subst {
+    fn write(&self, sess: &Session<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Shift(amount) => write!(f, "shift {amount}"),
             Self::Use(substitution, expression) => {
-                expression.write(session, f)?;
+                expression.write(sess, f)?;
                 write!(f, "[")?;
-                substitution.write(session, f)?;
+                substitution.write(sess, f)?;
                 write!(f, "]")
             }
         }
@@ -333,12 +331,12 @@ impl Display for hir::Substitution {
 }
 
 impl Display for hir::Exposure {
-    fn write(&self, session: &Session<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn write(&self, sess: &Session<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Unrestricted => write!(f, "unrestricted"),
             Self::Restricted(reach) => {
                 write!(f, "‘")?;
-                reach.lock().unwrap().write(session, f)?;
+                reach.lock().unwrap().write(sess, f)?;
                 write!(f, "’")
             }
         }
@@ -346,11 +344,11 @@ impl Display for hir::Exposure {
 }
 
 impl Display for hir::ExposureReach {
-    fn write(&self, session: &Session<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn write(&self, sess: &Session<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Resolved(reach) => {
-                let reach = reach.global(session);
-                write!(f, "{}", session.index_to_path(reach))
+                let reach = reach.global(sess);
+                write!(f, "{}", sess.index_to_path(reach))
             }
             // should not be reachable
             Self::PartiallyResolved(reach) => write!(f, "{reach:?}"),
@@ -359,11 +357,11 @@ impl Display for hir::ExposureReach {
 }
 
 impl Display for hir::ValueView {
-    fn write(&self, session: &Session<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn write(&self, sess: &Session<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Reducible(expression) => {
                 write!(f, "⟨reducible ")?;
-                expression.write(session, f)?;
+                expression.write(sess, f)?;
                 write!(f, "⟩")
             }
             Self::Neutral => write!(f, "⟨neutral⟩"),
@@ -372,7 +370,7 @@ impl Display for hir::ValueView {
 }
 
 impl Display for hir::Entity {
-    fn write(&self, session: &Session<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn write(&self, sess: &Session<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // @Task improve output for overly long lines (when the identifier is too long or more
         // importantly when the entity kind (esp. expressions within it) are big)
 
@@ -383,37 +381,37 @@ impl Display for hir::Entity {
         write!(
             f,
             "{:>4?}<   {:<40} ↦ ",
-            self.exposure,
-            format!("{parent}{}", self.source)
+            self.exp,
+            format!("{parent}{}", self.src)
         )?;
-        self.kind.write(session, f)
+        self.kind.write(sess, f)
     }
 }
 
 impl Display for hir::EntityKind {
-    fn write(&self, session: &Session<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn write(&self, sess: &Session<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use hir::EntityKind::*;
 
         write!(f, "{:>19}   ", self.precise_name())?;
 
         match self {
-            Module { namespace } | UntypedDataType { namespace } => write!(f, "{namespace:?}"),
+            Module { namespace } | DataTyUntyped { namespace } => write!(f, "{namespace:?}"),
             Use { target } => write!(f, "{target:?}"),
-            Function { type_, expression } => {
+            Func { ty, expression } => {
                 match expression {
-                    Some(expression) => expression.write(session, f),
+                    Some(expression) => expression.write(sess, f),
                     None => write!(f, "⟨none⟩"),
                 }?;
 
                 write!(f, " : ")?;
-                type_.write(session, f)
+                ty.write(sess, f)
             }
-            DataType {
-                type_,
-                constructors,
+            DataTy {
+                ty,
+                ctors: constructors,
                 ..
             } => {
-                type_.write(session, f)?;
+                ty.write(sess, f)?;
 
                 if !constructors.is_empty() {
                     write!(f, "; {}", constructors.iter().join_with(' '))?;
@@ -421,7 +419,7 @@ impl Display for hir::EntityKind {
 
                 Ok(())
             }
-            Constructor { type_ } | IntrinsicFunction { type_, .. } => type_.write(session, f),
+            Ctor { ty } | FuncIntr { ty, .. } => ty.write(sess, f),
             _ => Ok(()),
         }
     }
@@ -447,7 +445,7 @@ pub trait SessionExt {
     /// * `topmost.gamma.<?//`
     /// * `extern.core`
     /// * `extern.core.nat.Nat`
-    fn binder_to_path(&self, binder: hir::Identifier) -> String;
+    fn binder_to_path(&self, binder: hir::Ident) -> String;
 
     /// The textual representation of the path of the given binding relative to the root of the current component.
     ///
@@ -463,29 +461,29 @@ pub trait SessionExt {
     /// * `topmost.gamma.<?//`
     /// * `extern.core`
     /// * `extern.core.nat.Nat`
-    fn index_to_path(&self, index: hir::DeclarationIndex) -> String;
+    fn index_to_path(&self, index: hir::DeclIdx) -> String;
 
-    fn local_index_to_path(&self, index: hir::LocalDeclarationIndex) -> String;
+    fn local_index_to_path(&self, index: hir::LocalDeclIdx) -> String;
 }
 
 impl SessionExt for Session<'_> {
-    fn binder_to_path(&self, binder: hir::Identifier) -> String {
+    fn binder_to_path(&self, binder: hir::Ident) -> String {
         use hir::Index::*;
 
-        match binder.index {
-            Declaration(index) => self.index_to_path(index),
-            DeBruijn(_) | Parameter => binder.to_string(),
+        match binder.idx {
+            Decl(index) => self.index_to_path(index),
+            DeBruijn(_) | Param => binder.to_string(),
         }
     }
 
-    fn index_to_path(&self, index: hir::DeclarationIndex) -> String {
+    fn index_to_path(&self, index: hir::DeclIdx) -> String {
         let root = ast::BareHanger::Topmost.name().to_owned();
 
-        self.component().index_with_root_to_path(index, root, self)
+        self.comp().index_with_root_to_path(index, root, self)
     }
 
     // @Question can we rewrite this function to not rely on Session?
-    fn local_index_to_path(&self, index: hir::LocalDeclarationIndex) -> String {
+    fn local_index_to_path(&self, index: hir::LocalDeclIdx) -> String {
         self.index_to_path(index.global(self))
     }
 }
@@ -493,9 +491,9 @@ impl SessionExt for Session<'_> {
 pub trait ComponentExt {
     fn index_with_root_to_path(
         &self,
-        index: hir::DeclarationIndex,
+        index: hir::DeclIdx,
         root: String,
-        session: &Session<'_>,
+        sess: &Session<'_>,
     ) -> String;
 
     /// The textual representation of the path to the given binding relative to a component root
@@ -508,46 +506,38 @@ pub trait ComponentExt {
     ///
     /// * `core.nat.Nat` (`core` referring to a component)
     /// * `json.parse` (`json` referring to a component)
-    fn local_index_with_root_to_extern_path(
-        &self,
-        index: hir::LocalDeclarationIndex,
-        root: String,
-    ) -> String;
+    fn local_idx_with_root_to_extern_path(&self, index: hir::LocalDeclIdx, root: String) -> String;
 
     // @Task add documentation
-    fn local_index_to_path_segments(&self, index: hir::LocalDeclarationIndex) -> VecDeque<Atom>;
+    fn local_idx_to_path_segments(&self, index: hir::LocalDeclIdx) -> VecDeque<Atom>;
 }
 
-impl ComponentExt for Component {
+impl ComponentExt for Comp {
     fn index_with_root_to_path(
         &self,
-        index: hir::DeclarationIndex,
+        index: hir::DeclIdx,
         root: String,
-        session: &Session<'_>,
+        sess: &Session<'_>,
     ) -> String {
         match index.local(self) {
-            Some(index) => self.local_index_with_root_to_extern_path(index, root),
+            Some(index) => self.local_idx_with_root_to_extern_path(index, root),
             None => {
-                let component = &session.look_up_component(index.component());
+                let component = &sess.look_up_comp(index.comp());
                 let root = format!("{}.{}", ast::BareHanger::Extern.name(), component.name());
 
-                component.index_with_root_to_path(index, root, session)
+                component.index_with_root_to_path(index, root, sess)
             }
         }
     }
 
-    fn local_index_with_root_to_extern_path(
-        &self,
-        index: hir::LocalDeclarationIndex,
-        root: String,
-    ) -> String {
+    fn local_idx_with_root_to_extern_path(&self, index: hir::LocalDeclIdx, root: String) -> String {
         let entity = &self[index];
         // @Task rewrite this recursive approach to an iterative one!
         let Some(parent) = entity.parent else {
             return root;
         };
 
-        let mut parent_path = self.local_index_with_root_to_extern_path(parent, root);
+        let mut parent_path = self.local_idx_with_root_to_extern_path(parent, root);
 
         let parent_is_symbol = parent_path.chars().next_back().unwrap().is_symbol();
 
@@ -557,22 +547,19 @@ impl ComponentExt for Component {
 
         parent_path.push('.');
 
-        if entity.source.is_symbol() && parent_is_symbol {
+        if entity.src.is_symbol() && parent_is_symbol {
             parent_path.push(' ');
         }
 
-        parent_path += entity.source.to_str();
+        parent_path += entity.src.to_str();
         parent_path
     }
 
-    fn local_index_to_path_segments(
-        &self,
-        mut index: hir::LocalDeclarationIndex,
-    ) -> VecDeque<Atom> {
+    fn local_idx_to_path_segments(&self, mut index: hir::LocalDeclIdx) -> VecDeque<Atom> {
         let mut segments = VecDeque::new();
 
         while let Some(parent) = self[index].parent {
-            segments.push_front(self[index].source.bare());
+            segments.push_front(self[index].src.bare());
             index = parent;
         }
 
@@ -580,15 +567,15 @@ impl ComponentExt for Component {
     }
 }
 
-impl Display for Component {
-    fn write(&self, session: &Session<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "{} ({:?})", self.name(), self.index())?;
+impl Display for Comp {
+    fn write(&self, sess: &Session<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "{} ({:?})", self.name(), self.idx())?;
 
         writeln!(f, "  bindings:")?;
 
         for (index, entity) in &self.bindings {
             write!(f, "    {index:?}: ")?;
-            entity.write(session, f)?;
+            entity.write(sess, f)?;
             writeln!(f)?;
         }
 

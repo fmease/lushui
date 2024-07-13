@@ -1,7 +1,6 @@
 //! Utility functionality and definitions.
 #![feature(
     decl_macro,
-    lazy_cell,
     macro_metavar_expr,
     negative_impls,
     never_type_fallback,
@@ -311,17 +310,18 @@ impl<F: FnOnce(&mut fmt::Formatter<'_>) -> fmt::Result> fmt::Display for Formatt
     }
 }
 
+/// A component index.
 // @Note this has to reside in this crate since crate `span` depends on this definition
 #[derive(PartialEq, Eq, Clone, Copy, Hash)]
-pub struct ComponentIndex(pub u16);
+pub struct CompIdx(pub u16);
 
-impl fmt::Debug for ComponentIndex {
+impl fmt::Debug for CompIdx {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}c", self.0)
     }
 }
 
-impl index_map::Index for ComponentIndex {
+impl index_map::Index for CompIdx {
     fn new(index: usize) -> Self {
         Self(index.try_into().unwrap())
     }

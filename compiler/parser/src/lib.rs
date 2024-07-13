@@ -30,17 +30,17 @@
 #![feature(decl_macro, let_chains)]
 #![allow(clippy::unnested_or_patterns)] // false positive with macros, see #9899
 
-use ast::{Declaration, Identifier};
+use ast::{Decl, Ident};
 use base::Parser;
-use diagnostics::{error::Result, Diagnostic, ErrorCode, Reporter};
+use diagnostics::{error::Result, Diag, ErrorCode, Reporter};
 use lexer::word::Word;
-use span::{SourceFileIndex, SourceMap, Spanned};
+use span::{SourceMap, Spanned, SrcFileIdx};
 
 mod base;
 mod common;
-mod declaration;
-mod expression;
-mod pattern;
+mod decl;
+mod expr;
+mod pat;
 mod synonym;
 #[cfg(test)]
 mod test;
@@ -48,10 +48,10 @@ mod test;
 /// Parse the file of a root module / component root.
 pub fn parse_root_module_file(
     tokens: lexer::Outcome,
-    file: SourceFileIndex,
+    file: SrcFileIdx,
     map: &SourceMap,
-    reporter: &Reporter,
-) -> Result<Declaration> {
+    rep: &Reporter,
+) -> Result<Decl> {
     // @Task don't use unwrap(), handle errors properly
     let name = map[file]
         .name()
@@ -63,62 +63,62 @@ pub fn parse_root_module_file(
         .unwrap();
 
     let binder = Word::parse(name.to_owned()).map_err(|()| {
-        Diagnostic::error()
+        Diag::error()
             .code(ErrorCode::E036)
             .message(format!(
                 "the name of the root module ‘{name}’ is not a valid word"
             ))
-            .report(reporter)
+            .report(rep)
     })?;
     let binder = Spanned::bare(binder).into();
 
-    parse_module_file(tokens, file, binder, map, reporter)
+    parse_module_file(tokens, file, binder, map, rep)
 }
 
 /// Parse the file of a root module or an out-of-line module.
 pub fn parse_module_file(
     tokens: lexer::Outcome,
-    file: SourceFileIndex,
-    binder: Identifier,
+    file: SrcFileIdx,
+    binder: Ident,
     map: &SourceMap,
-    reporter: &Reporter,
-) -> Result<Declaration> {
+    rep: &Reporter,
+) -> Result<Decl> {
     parse(
         tokens,
         |parser| parser.parse_top_level(binder),
         file,
         map,
-        reporter,
+        rep,
     )
 }
 
 pub fn parse_path(
     tokens: lexer::Outcome,
-    file: SourceFileIndex,
+    file: SrcFileIdx,
     map: &SourceMap,
-    reporter: &Reporter,
+    rep: &Reporter,
 ) -> Result<ast::Path> {
-    parse(tokens, |parser| parser.parse_path(), file, map, reporter)
+    parse(tokens, |parser| parser.parse_path(), file, map, rep)
 }
 
 fn parse<T>(
     tokens: lexer::Outcome,
     parser: impl FnOnce(&mut Parser<'_>) -> Result<T>,
-    file: SourceFileIndex,
+    file: SrcFileIdx,
     map: &SourceMap,
-    reporter: &Reporter,
+    rep: &Reporter,
 ) -> Result<T> {
     let mut health = Ok(());
 
     for error in tokens.errors {
-        let error = error::invalid_token(error).report(reporter);
+        let error = error::invalid_token(error).report(rep);
 
         if health.is_ok() {
             health = Err(error);
         }
     }
 
-    let result = parser(&mut Parser::new(tokens.tokens, file, map, reporter));
+    let result = parser(&mut Parser::new(tokens.tokens, file, map, rep));
 
     health.and(result)
 }
@@ -128,11 +128,11 @@ mod error {
     use super::*;
     use lexer::token::{IndentationError, INDENTATION};
 
-    pub(super) fn invalid_token(error: lexer::Error) -> Diagnostic {
+    pub(super) fn invalid_token(error: lexer::Error) -> Diag {
         use lexer::BareError::*;
 
         match error.bare {
-            InvalidIndentation(difference, indentation_error) => Diagnostic::error()
+            InvalidIndentation(difference, indentation_error) => Diag::error()
                 .code(ErrorCode::E046)
                 .message(format!(
                     "invalid indentation consisting of {} spaces",
@@ -152,11 +152,11 @@ mod error {
                 let message = format!("found invalid character U+{:04X} ‘{token}’", token as u32);
 
                 // @Task code
-                Diagnostic::error()
+                Diag::error()
                     .message(message)
                     .span(error.span, "unexpected token")
             }
-            UnbalancedBracket(bracket) => Diagnostic::error()
+            UnbalancedBracket(bracket) => Diag::error()
                 .code(ErrorCode::E044)
                 .message(format!("unbalanced {} bracket", bracket.kind))
                 .span(
@@ -167,7 +167,7 @@ mod error {
                     ),
                 ),
             // @Task improve message, mention closing it with quotes
-            UnterminatedTextLiteral => Diagnostic::error()
+            UnterminatedTextLiteral => Diag::error()
                 .code(ErrorCode::E047)
                 .message("unterminated text literal")
                 .unlabeled_span(error.span),

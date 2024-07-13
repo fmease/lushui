@@ -77,10 +77,10 @@ alpha;;;文本
         vec![
             Token::new(span(1, 6), Word("alpha".into())),
             Token::new(span(6, 15), Comment),
-            Token::new(span(16, 20), NumberLiteral("0401".into())),
-            Token::new(span(21, 51), DocumentationComment),
-            Token::new(span(52, 63), DocumentationComment),
-            Token::new(span(64, 81), DocumentationComment),
+            Token::new(span(16, 20), NumLit("0401".into())),
+            Token::new(span(21, 51), DocComment),
+            Token::new(span(52, 63), DocComment),
+            Token::new(span(64, 81), DocComment),
             Token::new(span(81, 81), EndOfInput),
         ],
     );
@@ -94,8 +94,8 @@ fn empty_documentation_comment_followed_by_non_empty_one() {
 ;; non-empty
 ",
         vec![
-            Token::new(span(1, 3), DocumentationComment),
-            Token::new(span(4, 16), DocumentationComment),
+            Token::new(span(1, 3), DocComment),
+            Token::new(span(4, 16), DocComment),
             Token::new(span(17, 17), EndOfInput),
         ],
     );
@@ -245,7 +245,7 @@ fn symbols() {
             Token::new(span(5, 10), Word("alpha".into())),
             Token::new(span(10, 15), Symbol("//$~%".into())),
             Token::new(span(17, 18), Symbol("#".into())),
-            Token::new(span(18, 19), NumberLiteral("0".into())),
+            Token::new(span(18, 19), NumLit("0".into())),
             Token::new(span(20, 21), Dot),
             Token::new(span(22, 24), Symbol("..".into())),
             Token::new(span(24, 24), EndOfInput),
@@ -321,11 +321,8 @@ fn lex_number_literals() {
     assert_lex_eq!(
         "1001409409220293022239833211 01",
         vec![
-            Token::new(
-                span(1, 29),
-                NumberLiteral("1001409409220293022239833211".into()),
-            ),
-            Token::new(span(30, 32), NumberLiteral("01".into())),
+            Token::new(span(1, 29), NumLit("1001409409220293022239833211".into()),),
+            Token::new(span(30, 32), NumLit("01".into())),
             Token::new(span(32, 32), EndOfInput),
         ],
     );
@@ -336,18 +333,18 @@ fn lex_number_literals_with_separators() {
     assert_lex_eq!(
         r#"334 1'000what 3'2'2'1"" 500 10"" -23 3''100 10' 1'"#,
         vec![
-            Token::new(span(1, 4), NumberLiteral("334".into())),
-            Token::new(span(5, 10), NumberLiteral("1000".into())),
+            Token::new(span(1, 4), NumLit("334".into())),
+            Token::new(span(5, 10), NumLit("1000".into())),
             Token::new(span(10, 14), Word("what".into())),
-            Token::new(span(15, 22), NumberLiteral("3221".into())),
-            Token::new(span(22, 24), TextLiteral("".into())),
-            Token::new(span(25, 28), NumberLiteral("500".into())),
-            Token::new(span(29, 31), NumberLiteral("10".into())),
-            Token::new(span(31, 33), TextLiteral("".into())),
-            Token::new(span(34, 37), NumberLiteral("-23".into())),
-            Token::new(span(38, 44), NumberLiteral("3100".into())),
-            Token::new(span(45, 48), NumberLiteral("10".into())),
-            Token::new(span(49, 51), NumberLiteral("1".into())),
+            Token::new(span(15, 22), NumLit("3221".into())),
+            Token::new(span(22, 24), TextLit("".into())),
+            Token::new(span(25, 28), NumLit("500".into())),
+            Token::new(span(29, 31), NumLit("10".into())),
+            Token::new(span(31, 33), TextLit("".into())),
+            Token::new(span(34, 37), NumLit("-23".into())),
+            Token::new(span(38, 44), NumLit("3100".into())),
+            Token::new(span(45, 48), NumLit("10".into())),
+            Token::new(span(49, 51), NumLit("1".into())),
             Token::new(span(51, 51), EndOfInput),
         ],
     );
@@ -362,7 +359,7 @@ fn lex_text_literal() {
         vec![
             Token::new(
                 span(1, 16),
-                TextLiteral(
+                TextLit(
                     "
     al
   pha"
@@ -379,7 +376,7 @@ fn lex_unterminated_text_literal() {
     assert_lex_eq!(
         r#""text message"#,
         vec![
-            Token::new(span(1, 14), TextLiteral("text message".into())),
+            Token::new(span(1, 14), TextLit("text message".into())),
             Token::new(span(14, 14), EndOfInput)
         ],
         vec![Error::new(span(1, 14), BareError::UnterminatedTextLiteral)],
@@ -454,7 +451,7 @@ fn backticks_are_invalid_right_after_number_literal() {
     assert_lex_eq!(
         "1`",
         vec![
-            Token::new(span(1, 2), NumberLiteral("1".into())),
+            Token::new(span(1, 2), NumLit("1".into())),
             Token::new(span(3, 3), EndOfInput),
         ],
         vec![Error::new(span(2, 3), BareError::InvalidToken('`')),]
@@ -485,10 +482,10 @@ alpha #?
             Token::new(span(1, 6), Word("alpha".into())),
             Token::new(span(7, 9), Symbol("#?".into())),
             Token::new(span(9, 10), LineBreak),
-            Token::new(span(10, 13), NumberLiteral("100".into())),
+            Token::new(span(10, 13), NumLit("100".into())),
             Token::new(span(14, 16), Word("it".into())),
             Token::new(span(16, 18), LineBreak),
-            Token::new(span(18, 24), TextLiteral("moot".into())),
+            Token::new(span(18, 24), TextLit("moot".into())),
             Token::new(span(24, 24), EndOfInput),
         ],
     );
@@ -517,8 +514,8 @@ $%&~~
             Token::new(span(7, 13), Word("middle".into())),
             Token::new(span(18, 21), Word("end".into())),
             Token::new(span(21, 22), LineBreak),
-            Token::new(span(22, 43), TextLiteral("anything\n    really".into())),
-            Token::new(span(48, 55), NumberLiteral("3291238".into())),
+            Token::new(span(22, 43), TextLit("anything\n    really".into())),
+            Token::new(span(48, 55), NumLit("3291238".into())),
             Token::new(span(64, 70), Module),
             Token::new(span(83, 84), OpeningRoundBracket),
             Token::new(span(101, 102), ClosingRoundBracket),
@@ -549,10 +546,10 @@ fn line_breaks_are_not_terminators_in_continued_sections() {
     1
 ",
         vec![
-            Token::new(span(1, 3), NumberLiteral("-0".into())),
+            Token::new(span(1, 3), NumLit("-0".into())),
             Token::new(span(8, 11), Word("off".into())),
             Token::new(span(16, 20), Word("side".into())),
-            Token::new(span(25, 27), TextLiteral("".into())),
+            Token::new(span(25, 27), TextLit("".into())),
             Token::new(span(27, 28), LineBreak),
             Token::new(span(28, 31), Symbol("@@@".into())),
             Token::new(span(32, 33), At),
@@ -560,7 +557,7 @@ fn line_breaks_are_not_terminators_in_continued_sections() {
             Token::new(span(53, 57), Word("lvl2".into())),
             Token::new(span(66, 70), Word("lvl2".into())),
             Token::new(span(75, 79), Word("lvl1".into())),
-            Token::new(span(84, 85), NumberLiteral("1".into())),
+            Token::new(span(84, 85), NumLit("1".into())),
             Token::new(span(85, 86), LineBreak),
             Token::new(span(86, 86), EndOfInput),
         ],
@@ -595,7 +592,7 @@ of
             Token::new(span(27, 27), LineBreak),
             Token::new(span(27, 29), Of),
             Token::new(span(31, 35), Indentation),
-            Token::new(span(35, 39), NumberLiteral("1980".into())),
+            Token::new(span(35, 39), NumLit("1980".into())),
             Token::new(span(41, 41), Dedentation),
             Token::new(span(41, 41), LineBreak),
             Token::new(span(41, 42), Symbol(">".into())),
@@ -678,7 +675,7 @@ of"it"
             Token::new(span(5, 7), Word("it".into())),
             Token::new(span(7, 8), LineBreak),
             Token::new(span(8, 10), Of),
-            Token::new(span(10, 14), TextLiteral("it".into())),
+            Token::new(span(10, 14), TextLit("it".into())),
             Token::new(span(14, 15), LineBreak),
             Token::new(span(15, 15), EndOfInput),
         ],

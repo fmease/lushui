@@ -7,8 +7,8 @@ use syn::Error;
 
 pub(crate) fn derive(input: TokenStream1) -> Result<TokenStream2, Error> {
     let input: syn::ItemEnum = syn::parse(input)?;
-    let type_ = input.ident;
-    let FormatAttribute { letter_case } = HelperAttribute::obtain(&type_, &input.attrs)?;
+    let ty = input.ident;
+    let FormatAttribute { letter_case } = HelperAttribute::obtain(&ty, &input.attrs)?;
 
     let mut mapping = Vec::with_capacity(input.variants.len() + 1);
 
@@ -26,7 +26,7 @@ pub(crate) fn derive(input: TokenStream1) -> Result<TokenStream2, Error> {
     let (impl_generics, type_generics, where_clause) = input.generics.split_for_impl();
 
     Ok(quote! {
-        impl #impl_generics ::core::str::FromStr for #type_ #type_generics #where_clause {
+        impl #impl_generics ::core::str::FromStr for #ty #type_generics #where_clause {
             type Err = ();
 
             // @Task make `__source` hygienic smh

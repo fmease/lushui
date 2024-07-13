@@ -4,30 +4,30 @@
 
 use lexer::token::BareToken::*;
 
-/// An [identifier]
+/// An [identifier].
 ///
-/// [identifier]: ast::Identifier
-pub(crate) macro Identifier($identifier:pat) {
-    Word($identifier) | Symbol($identifier)
+/// [identifier]: ast::Ident
+pub(crate) macro Ident($ident:pat) {
+    Word($ident) | Symbol($ident)
 }
 
 /// The prefix of an [attribute].
 ///
-/// [attribute]: ast::Attribute
-pub(crate) macro AttributePrefix() {
-    At | DocumentationComment
+/// [attribute]: ast::Attr
+pub(crate) macro AttrPrefix() {
+    At | DocComment
 }
 
 /// The prefix of a lower expression.
-pub(crate) macro LowerExpressionPrefix() {
+pub(crate) macro LowerExprPrefix() {
     //
     // IMPORTANT: To be kept in sync with `crate::Parser::parse_lower_expression`.
     //
 
-    AttributePrefix!()
+    AttrPrefix!()
         | WildcardPrefix!()
-        | NumberLiteral(_)
-        | TextLiteral(_)
+        | NumLit(_)
+        | TextLit(_)
         | ForUpper
         | ForLower
         | Case
@@ -42,15 +42,15 @@ pub(crate) macro LowerExpressionPrefix() {
 }
 
 /// The prefix of a lower pattern.
-pub(crate) macro LowerPatternPrefix() {
+pub(crate) macro LowerPatPrefix() {
     //
     // IMPORTANT: To be kept in sync with `crate::Parser::parse_lower_pattern`.
     //
 
-    AttributePrefix!()
+    AttrPrefix!()
         | WildcardPrefix!()
-        | NumberLiteral(_)
-        | TextLiteral(_)
+        | NumLit(_)
+        | TextLit(_)
         | OpeningRoundBracket
         | OpeningSquareBracket
         | OpeningCurlyBracket
@@ -65,7 +65,7 @@ pub(crate) macro WildcardPrefix() {
 ///
 /// [path]: ast::Path
 pub(crate) macro PathHead() {
-    Identifier!(_) | PathHanger!()
+    Ident!(_) | PathHanger!()
 }
 
 /// The [hanger] of a [path].

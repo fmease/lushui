@@ -1,6 +1,6 @@
 //! The diagnostic reporter.
 
-use super::{Diagnostic, ErrorCode, Severity, UnboxedUntaggedDiagnostic, UntaggedDiagnostic};
+use super::{Diag, ErrorCode, Severity, UnboxedUntaggedDiag, UntaggedDiag};
 use span::SourceMap;
 use std::{
     collections::BTreeSet,
@@ -62,33 +62,30 @@ impl Reporter {
     }
 
     // @Task only return ErasedReportedError for non-silent reporters (@Bug)
-    pub(super) fn report<const S: Severity>(
-        &self,
-        diagnostic: Diagnostic<S>,
-    ) -> <Diagnostic<S> as Report>::Output
+    pub(super) fn report<const S: Severity>(&self, diag: Diag<S>) -> <Diag<S> as Report>::Output
     where
-        Diagnostic<S>: Report,
+        Diag<S>: Report,
     {
-        self.report_untagged(diagnostic.untagged);
-        Diagnostic::<S>::OUTPUT
+        self.report_untagged(diag.untagged);
+        Diag::<S>::OUTPUT
     }
 
-    fn report_untagged(&self, diagnostic: UntaggedDiagnostic) {
+    fn report_untagged(&self, diag: UntaggedDiag) {
         match &self.kind {
             ReporterKind::Silent => {}
             ReporterKind::Buffer(diagnostics) => {
-                diagnostics.lock().unwrap().insert(diagnostic);
+                diagnostics.lock().unwrap().insert(diag);
             }
-            &ReporterKind::Stderr { choice } => report(&diagnostic, self.map().as_deref(), choice),
-            ReporterKind::BufferedStderr(buffer) => match diagnostic.severity {
+            &ReporterKind::Stderr { choice } => report(&diag, self.map().as_deref(), choice),
+            ReporterKind::BufferedStderr(buffer) => match diag.severity {
                 Severity::Bug | Severity::Error => {
-                    buffer.errors.lock().unwrap().insert(diagnostic);
+                    buffer.errors.lock().unwrap().insert(diag);
                 }
                 Severity::Warning => {
-                    buffer.warnings.lock().unwrap().insert(diagnostic);
+                    buffer.warnings.lock().unwrap().insert(diag);
                 }
                 Severity::Debug => {
-                    report(&diagnostic, self.map().as_deref(), buffer.choice);
+                    report(&diag, self.map().as_deref(), buffer.choice);
                 }
             },
         }
@@ -110,11 +107,11 @@ enum ReporterKind {
     BufferedStderr(StderrBuffer),
 }
 
-pub type Buffer = Arc<Mutex<BTreeSet<UntaggedDiagnostic>>>;
+pub type Buffer = Arc<Mutex<BTreeSet<UntaggedDiag>>>;
 
 struct StderrBuffer {
-    errors: Mutex<BTreeSet<UntaggedDiagnostic>>,
-    warnings: Mutex<BTreeSet<UntaggedDiagnostic>>,
+    errors: Mutex<BTreeSet<UntaggedDiag>>,
+    warnings: Mutex<BTreeSet<UntaggedDiag>>,
     choice: ColorChoice,
     reported_any_errors: Arc<AtomicBool>,
 }
@@ -144,7 +141,7 @@ impl StderrBuffer {
     }
 
     fn report_error_summary(
-        errors: &BTreeSet<UntaggedDiagnostic>,
+        errors: &BTreeSet<UntaggedDiag>,
         map: Option<&SourceMap>,
         choice: ColorChoice,
     ) {
@@ -154,7 +151,7 @@ impl StderrBuffer {
             .filter(|&code| ErrorCode::try_from(code).unwrap().explanation().is_some())
             .collect();
 
-        let summary = Diagnostic::error()
+        let summary = Diag::error()
             .message(pluralize!(
                 errors.len(),
                 "aborting due to previous error",
@@ -186,11 +183,11 @@ impl StderrBuffer {
     }
 
     fn report_warning_summary(
-        warnings: &BTreeSet<UntaggedDiagnostic>,
+        warnings: &BTreeSet<UntaggedDiag>,
         map: Option<&SourceMap>,
         choice: ColorChoice,
     ) {
-        let summary = Diagnostic::warning().message(format!(
+        let summary = Diag::warning().message(format!(
             "emitted {} {}",
             warnings.len(),
             pluralize!(warnings.len(), "warning")
@@ -200,8 +197,8 @@ impl StderrBuffer {
     }
 }
 
-fn report(diagnostic: &UnboxedUntaggedDiagnostic, map: Option<&SourceMap>, choice: ColorChoice) {
-    epaint(|painter| diagnostic.render(map, painter), choice).unwrap();
+fn report(diag: &UnboxedUntaggedDiag, map: Option<&SourceMap>, choice: ColorChoice) {
+    epaint(|p| diag.render(map, p), choice).unwrap();
     eprintln!();
     eprintln!();
 }
@@ -212,22 +209,22 @@ pub trait Report {
     const OUTPUT: Self::Output;
 }
 
-impl Report for Diagnostic<{ Severity::Bug }> {
+impl Report for Diag<{ Severity::Bug }> {
     type Output = ErasedReportedError;
     const OUTPUT: Self::Output = ErasedReportedError::new();
 }
 
-impl Report for Diagnostic<{ Severity::Error }> {
+impl Report for Diag<{ Severity::Error }> {
     type Output = ErasedReportedError;
     const OUTPUT: Self::Output = ErasedReportedError::new();
 }
 
-impl Report for Diagnostic<{ Severity::Warning }> {
+impl Report for Diag<{ Severity::Warning }> {
     type Output = ();
     const OUTPUT: Self::Output = ();
 }
 
-impl Report for Diagnostic<{ Severity::Debug }> {
+impl Report for Diag<{ Severity::Debug }> {
     type Output = ();
     const OUTPUT: Self::Output = ();
 }

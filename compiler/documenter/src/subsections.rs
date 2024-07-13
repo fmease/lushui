@@ -1,11 +1,11 @@
 use super::{
-    add_declaration_attributes, declaration_id, documentation,
-    node::{Attributable, Element, Node},
+    add_decl_attrs, decl_id, documentation,
+    node::{Attributable, Elem, Node},
     text_processor::TextProcessor,
     Options, LOREM_IPSUM,
 };
 use derivation::Elements;
-use hir::{attribute::Query as _, AttributeName};
+use hir::{attr::Query as _, AttrName};
 use std::borrow::Cow;
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -15,14 +15,14 @@ pub(crate) struct Subsections<'a> {
     // pub(crate) uses: Uses<'a>, // @Task
     pub(crate) modules: Modules<'a>,
     pub(crate) types: Types<'a>,
-    pub(crate) functions: Functions<'a>,
-    pub(crate) attributes: Attributes,
+    pub(crate) funcs: Funcs<'a>,
+    pub(crate) attrs: Attrs,
     pub(crate) keywords: Keywords<'a>,
     pub(crate) reserved_symbols: ReservedSymbols<'a>,
 }
 
 impl<'a> Subsections<'a> {
-    pub(crate) fn reserved_identifiers() -> Self {
+    pub(crate) fn reserved_idents() -> Self {
         let mut subsections = Self::default();
 
         subsections.keywords.0.extend(
@@ -40,17 +40,17 @@ impl<'a> Subsections<'a> {
         subsections
     }
 
-    pub(crate) fn attributes() -> Self {
+    pub(crate) fn attrs() -> Self {
         let mut subsections = Self::default();
-        subsections.attributes.0.extend(AttributeName::elements());
+        subsections.attrs.0.extend(AttrName::elements());
         subsections
     }
 
-    pub(crate) fn render_table_of_contents(&self, parent: &mut Element<'a>) {
+    pub(crate) fn render_table_of_contents(&self, parent: &mut Elem<'a>) {
         self.modules.render_table_of_contents(parent);
         self.types.render_table_of_contents(parent);
-        self.functions.render_table_of_contents(parent);
-        self.attributes.render_table_of_contents(parent);
+        self.funcs.render_table_of_contents(parent);
+        self.attrs.render_table_of_contents(parent);
         self.keywords.render_table_of_contents(parent);
         self.reserved_symbols.render_table_of_contents(parent);
     }
@@ -58,16 +58,16 @@ impl<'a> Subsections<'a> {
     pub(crate) fn render(
         self,
         url_prefix: &str,
-        parent: &mut Element<'a>,
+        parent: &mut Elem<'a>,
         text_processor: &TextProcessor<'_>,
         options: &Options,
     ) {
         self.modules.render(parent, options);
         self.types
             .render(url_prefix, parent, text_processor, options);
-        self.functions
+        self.funcs
             .render(url_prefix, parent, text_processor, options);
-        self.attributes.render(parent);
+        self.attrs.render(parent);
         self.keywords.render(parent);
         self.reserved_symbols.render(parent);
     }
@@ -81,21 +81,21 @@ pub(crate) trait Subsection<'a> {
 
     fn subsections(&self) -> &[Self::Subsubsection];
 
-    fn render_table_of_contents(&self, parent: &mut Element<'a>) {
+    fn render_table_of_contents(&self, parent: &mut Elem<'a>) {
         if self.subsections().is_empty() {
             return;
         }
 
-        parent.add_child(Element::anchor(format!("#{}", Self::ID), Self::TITLE).class("title"));
+        parent.add_child(Elem::anchor(format!("#{}", Self::ID), Self::TITLE).class("title"));
 
-        let mut list = Element::new("ul");
+        let mut list = Elem::new("ul");
 
         let mut subsubsections: Vec<_> = self.subsections().iter().collect();
         // @Task shm sort upper case before lower case per letter (e.g. A > a but M /> a)
         subsubsections.sort_by_key(|subsubsection| subsubsection.title().to_lowercase());
 
         for subsubsection in subsubsections {
-            list.add_child(Element::new("li").child(Element::anchor(
+            list.add_child(Elem::new("li").child(Elem::anchor(
                 format!("#{}", subsubsection.id()),
                 subsubsection.title(),
             )));
@@ -123,28 +123,27 @@ impl<'a> Subsection<'a> for Modules<'a> {
         &self.0
     }
 
-    fn render_table_of_contents(&self, parent: &mut Element<'a>) {
+    fn render_table_of_contents(&self, parent: &mut Elem<'a>) {
         if self.0.is_empty() {
             return;
         }
 
-        parent.add_child(Element::anchor(format!("#{}", Self::ID), Self::TITLE).class("title"));
+        parent.add_child(Elem::anchor(format!("#{}", Self::ID), Self::TITLE).class("title"));
     }
 }
 
 impl<'a> Modules<'a> {
-    fn render(self, parent: &mut Element<'a>, options: &Options) {
+    fn render(self, parent: &mut Elem<'a>, options: &Options) {
         if self.0.is_empty() {
             return;
         }
 
-        let mut section =
-            Element::new("section").child(anchored_subheading(2, Self::ID, Self::TITLE));
+        let mut section = Elem::new("section").child(anchored_subheading(2, Self::ID, Self::TITLE));
 
-        let mut table = Element::new("table").class("modules indented");
+        let mut table = Elem::new("table").class("modules indented");
 
         for module in self.0 {
-            let mut table_definition = Element::new("td");
+            let mut table_definition = Elem::new("td");
 
             // @Task actually, don't take the first *sentence* but the first *paragraph*
             // (once we use asciidoc)
@@ -153,7 +152,7 @@ impl<'a> Modules<'a> {
                     table_definition
                         .add_child(LOREM_IPSUM.unicode_sentences().next().unwrap_or_default());
                 }
-            } else if let Some(documentation) = documentation(module.attributes) {
+            } else if let Some(documentation) = documentation(module.attrs) {
                 let first_sentence = documentation
                     .unicode_sentences()
                     .map(ToOwned::to_owned)
@@ -162,15 +161,15 @@ impl<'a> Modules<'a> {
                 table_definition.add_child(first_sentence);
             }
 
-            let mut anchor = Element::anchor(module.id(), module.binder).class("binder");
+            let mut anchor = Elem::anchor(module.id(), module.binder).class("binder");
 
-            if module.attributes.has(AttributeName::Deprecated) {
+            if module.attrs.has(AttrName::Deprecated) {
                 anchor.add_class("deprecated");
             }
 
             table.add_child(
-                Element::new("tr")
-                    .child(Element::new("td").child(anchor))
+                Elem::new("tr")
+                    .child(Elem::new("td").child(anchor))
                     .child(table_definition),
             );
         }
@@ -181,7 +180,7 @@ impl<'a> Modules<'a> {
 }
 
 pub(crate) struct Module<'a> {
-    pub(crate) attributes: &'a hir::Attributes,
+    pub(crate) attrs: &'a hir::Attrs,
     pub(crate) binder: &'a str,
 }
 
@@ -213,7 +212,7 @@ impl<'a> Types<'a> {
     fn render(
         self,
         url_prefix: &str,
-        parent: &mut Element<'a>,
+        parent: &mut Elem<'a>,
         text_processor: &TextProcessor<'_>,
         options: &Options,
     ) {
@@ -221,74 +220,60 @@ impl<'a> Types<'a> {
             return;
         }
 
-        let mut section =
-            Element::new("section").child(anchored_subheading(2, Self::ID, Self::TITLE));
+        let mut section = Elem::new("section").child(anchored_subheading(2, Self::ID, Self::TITLE));
 
-        for type_ in self.0 {
-            let id = declaration_id(type_.binder);
+        for ty in self.0 {
+            let id = decl_id(ty.binder);
 
-            let mut anchor = Element::anchor(format!("#{id}"), type_.binder).class("binder");
+            let mut anchor = Elem::anchor(format!("#{id}"), ty.binder).class("binder");
 
-            if type_.attributes.has(AttributeName::Deprecated) {
+            if ty.attrs.has(AttrName::Deprecated) {
                 anchor.add_class("deprecated");
             }
 
             // @Task render with explicit parameters and without (hiding one of them)
-            let mut subheading = Element::new("h3")
-                .attribute("id", id.clone())
+            let mut subheading = Elem::new("h3")
+                .attr("id", id.clone())
                 .class("subheading declaration")
                 .child(anchor)
                 .child(": ")
-                .child(Node::verbatim(type_.type_));
+                .child(Node::verbatim(ty.ty));
 
             subheading.add_child(source_link());
 
             section.add_child(subheading);
 
-            add_declaration_attributes(
-                type_.attributes,
-                url_prefix,
-                &mut section,
-                text_processor,
-                options,
-            );
+            add_decl_attrs(ty.attrs, url_prefix, &mut section, text_processor, options);
 
             // @Beacon @Task for abstract data types, only continue if this type is not local
             // and if --doc-priv-decls was not specified
-            if type_.constructors.is_empty()
-                || type_
-                    .attributes
-                    .has(AttributeName::Abstract.or(AttributeName::Intrinsic))
-            {
+            if ty.ctors.is_empty() || ty.attrs.has(AttrName::Abstract.or(AttrName::Intrinsic)) {
                 continue;
             }
 
-            let mut subsection =
-                Element::new("section")
-                    .class("indented")
-                    .child(anchored_subheading(
-                        4,
-                        format!("constructors.{}", type_.binder),
-                        "Constructors",
-                    ));
+            let mut subsection = Elem::new("section")
+                .class("indented")
+                .child(anchored_subheading(
+                    4,
+                    format!("constructors.{}", ty.binder),
+                    "Constructors",
+                ));
 
-            for constructor in type_.constructors {
-                let id = declaration_id(&format!("{}.{}", type_.binder, constructor.binder));
+            for constructor in ty.ctors {
+                let id = decl_id(&format!("{}.{}", ty.binder, constructor.binder));
 
                 // @Task render with explicit parameters and without (hiding one of them)
                 subsection.add_child(
-                    Element::new("h5")
-                        .attribute("id", id.clone())
+                    Elem::new("h5")
+                        .attr("id", id.clone())
                         .class("subheading declaration")
-                        .child(
-                            Element::anchor(format!("#{id}"), constructor.binder).class("binder"),
-                        )
+                        .child(Elem::anchor(format!("#{id}"), constructor.binder).class("binder"))
                         .child(": ")
-                        .child(Node::verbatim(constructor.type_)),
+                        .child(Node::verbatim(constructor.ty)),
                 );
 
-                add_declaration_attributes(
-                    constructor.attributes,
+                add_decl_attrs(
+                    constructor.attrs,
                     url_prefix,
                     &mut subsection,
                     text_processor,
@@ -304,16 +289,16 @@ impl<'a> Types<'a> {
 }
 
 pub(crate) struct Type<'a> {
-    pub(crate) attributes: &'a hir::Attributes,
+    pub(crate) attrs: &'a hir::Attrs,
     pub(crate) binder: &'a str,
-    // @Question store a hir::Expression?
-    pub(crate) type_: String,
-    pub(crate) constructors: Vec<Constructor<'a>>,
+    // @Question store a hir::Expr?
+    pub(crate) ty: String,
+    pub(crate) ctors: Vec<Constructor<'a>>,
 }
 
 impl<'a> Subsubsection<'a> for Type<'a> {
     fn id(&self) -> String {
-        declaration_id(self.binder)
+        decl_id(self.binder)
     }
 
     fn title(&self) -> &'a str {
@@ -322,31 +307,31 @@ impl<'a> Subsubsection<'a> for Type<'a> {
 }
 
 pub(crate) struct Constructor<'a> {
-    pub(crate) attributes: &'a hir::Attributes,
+    pub(crate) attrs: &'a hir::Attrs,
     pub(crate) binder: &'a str,
-    // @Question store a hir::Expression?
-    pub(crate) type_: String,
+    // @Question store a hir::Expr?
+    pub(crate) ty: String,
 }
 
 #[derive(Default)]
-pub(crate) struct Functions<'a>(pub(crate) Vec<Function<'a>>);
+pub(crate) struct Funcs<'a>(pub(crate) Vec<Func<'a>>);
 
-impl<'a> Subsection<'a> for Functions<'a> {
+impl<'a> Subsection<'a> for Funcs<'a> {
     const ID: &'static str = "functions";
     const TITLE: &'static str = "Functions";
 
-    type Subsubsection = Function<'a>;
+    type Subsubsection = Func<'a>;
 
     fn subsections(&self) -> &[Self::Subsubsection] {
         &self.0
     }
 }
 
-impl<'a> Functions<'a> {
+impl<'a> Funcs<'a> {
     fn render(
         self,
         url_prefix: &str,
-        parent: &mut Element<'a>,
+        parent: &mut Elem<'a>,
         text_processor: &TextProcessor<'_>,
         options: &Options,
     ) {
@@ -354,31 +339,30 @@ impl<'a> Functions<'a> {
             return;
         }
 
-        let mut section =
-            Element::new("section").child(anchored_subheading(2, Self::ID, Self::TITLE));
+        let mut section = Elem::new("section").child(anchored_subheading(2, Self::ID, Self::TITLE));
 
-        for function in self.0 {
-            let id = declaration_id(function.binder);
+        for func in self.0 {
+            let id = decl_id(func.binder);
 
-            let mut anchor = Element::anchor(format!("#{id}"), function.binder).class("binder");
+            let mut anchor = Elem::anchor(format!("#{id}"), func.binder).class("binder");
 
-            if function.attributes.has(AttributeName::Deprecated) {
+            if func.attrs.has(AttrName::Deprecated) {
                 anchor.add_class("deprecated");
             }
 
             // @Task render with explicit parameters and without (hiding one of them)
             section.add_child(
-                Element::new("h3")
-                    .attribute("id", id)
+                Elem::new("h3")
+                    .attr("id", id)
                     .class("subheading declaration")
                     .child(anchor)
                     .child(": ")
-                    .child(Node::verbatim(function.type_))
+                    .child(Node::verbatim(func.ty))
                     .child(source_link()),
             );
 
-            add_declaration_attributes(
-                function.attributes,
+            add_decl_attrs(
+                func.attrs,
                 url_prefix,
                 &mut section,
                 text_processor,
@@ -390,16 +374,16 @@ impl<'a> Functions<'a> {
     }
 }
 
-pub(crate) struct Function<'a> {
-    pub(crate) attributes: &'a hir::Attributes,
+pub(crate) struct Func<'a> {
+    pub(crate) attrs: &'a hir::Attrs,
     pub(crate) binder: &'a str,
-    // @Question store a hir::Expression?
-    pub(crate) type_: String,
+    // @Question store a hir::Expr?
+    pub(crate) ty: String,
 }
 
-impl<'a> Subsubsection<'a> for Function<'a> {
+impl<'a> Subsubsection<'a> for Func<'a> {
     fn id(&self) -> String {
-        declaration_id(self.binder)
+        decl_id(self.binder)
     }
 
     fn title(&self) -> &'a str {
@@ -422,22 +406,21 @@ impl<'a> Subsection<'a> for Keywords<'a> {
 }
 
 impl<'a> Keywords<'a> {
-    fn render(self, parent: &mut Element<'a>) {
+    fn render(self, parent: &mut Elem<'a>) {
         if self.0.is_empty() {
             return;
         }
 
-        let mut section =
-            Element::new("section").child(anchored_subheading(2, Self::ID, Self::TITLE));
+        let mut section = Elem::new("section").child(anchored_subheading(2, Self::ID, Self::TITLE));
 
         for keyword in self.0 {
             let id = keyword.id();
 
             section.add_child(
-                Element::new("h3")
-                    .attribute("id", id.clone())
+                Elem::new("h3")
+                    .attr("id", id.clone())
                     .class("subheading declaration")
-                    .child(Element::anchor(format!("#{id}"), keyword.name).class("binder")),
+                    .child(Elem::anchor(format!("#{id}"), keyword.name).class("binder")),
             );
 
             // @Task include the documentation of each keyword here at compile-time
@@ -476,22 +459,21 @@ impl<'a> Subsection<'a> for ReservedSymbols<'a> {
 }
 
 impl<'a> ReservedSymbols<'a> {
-    fn render(self, parent: &mut Element<'a>) {
+    fn render(self, parent: &mut Elem<'a>) {
         if self.0.is_empty() {
             return;
         }
 
-        let mut section =
-            Element::new("section").child(anchored_subheading(2, Self::ID, Self::TITLE));
+        let mut section = Elem::new("section").child(anchored_subheading(2, Self::ID, Self::TITLE));
 
         for reserved_symbol in self.0 {
             let id = reserved_symbol.id();
 
             section.add_child(
-                Element::new("h3")
-                    .attribute("id", id.clone())
+                Elem::new("h3")
+                    .attr("id", id.clone())
                     .class("subheading declaration")
-                    .child(Element::anchor(format!("#{id}"), reserved_symbol.name).class("binder")),
+                    .child(Elem::anchor(format!("#{id}"), reserved_symbol.name).class("binder")),
             );
 
             // @Task include the documentation of each reserved symbol here at compile-time
@@ -516,47 +498,46 @@ impl<'a> Subsubsection<'a> for ReservedSymbol<'a> {
 }
 
 #[derive(Default)]
-pub(crate) struct Attributes(pub(crate) Vec<AttributeName>);
+pub(crate) struct Attrs(pub(crate) Vec<AttrName>);
 
-impl<'a> Subsection<'a> for Attributes {
+impl<'a> Subsection<'a> for Attrs {
     const ID: &'static str = "attributes";
-    const TITLE: &'static str = "Attributes";
+    const TITLE: &'static str = "Attrs";
 
-    type Subsubsection = AttributeName;
+    type Subsubsection = AttrName;
 
     fn subsections(&self) -> &[Self::Subsubsection] {
         &self.0
     }
 }
 
-impl Attributes {
-    pub(crate) fn render(self, parent: &mut Element<'_>) {
+impl Attrs {
+    pub(crate) fn render(self, parent: &mut Elem<'_>) {
         if self.0.is_empty() {
             return;
         }
 
-        let mut section =
-            Element::new("section").child(anchored_subheading(2, Self::ID, Self::TITLE));
+        let mut section = Elem::new("section").child(anchored_subheading(2, Self::ID, Self::TITLE));
 
-        for attribute in self.0 {
-            let id = attribute.id();
+        for attr in self.0 {
+            let id = attr.id();
 
             section.add_child(
-                Element::new("h3")
-                    .attribute("id", id.clone())
+                Elem::new("h3")
+                    .attr("id", id.clone())
                     .class("subheading declaration")
-                    .child(Element::anchor(format!("#{id}"), attribute.to_str()).class("binder")),
+                    .child(Elem::anchor(format!("#{id}"), attr.to_str()).class("binder")),
             );
 
             {
-                let mut labels = Element::div("labels");
+                let mut labels = Elem::div("labels");
 
-                if attribute.is_internal() {
-                    labels.add_child(Element::div("internal").child("internal"));
+                if attr.is_internal() {
+                    labels.add_child(Elem::div("internal").child("internal"));
                 }
 
-                if !attribute.is_implemented() {
-                    labels.add_child(Element::div("unsupported").child("not supported yet"));
+                if !attr.is_implemented() {
+                    labels.add_child(Elem::div("unsupported").child("not supported yet"));
                 }
 
                 section.add_child(labels);
@@ -568,7 +549,7 @@ impl Attributes {
     }
 }
 
-impl<'a> Subsubsection<'a> for AttributeName {
+impl<'a> Subsubsection<'a> for AttrName {
     fn id(&self) -> String {
         format!("attribute.{}", urlencoding::encode(self.to_str()))
     }
@@ -578,25 +559,25 @@ impl<'a> Subsubsection<'a> for AttributeName {
     }
 }
 
-fn source_link() -> Element<'static> {
+fn source_link() -> Elem<'static> {
     // @Task create an actual link!
-    Element::anchor("#", "source")
+    Elem::anchor("#", "source")
         .class("source")
-        .attribute("title", "Go to the source code")
+        .attr("title", "Go to the source code")
 }
 
 fn anchored_subheading<'a>(
     level: u8,
     id: impl Into<Cow<'a, str>>,
     content: impl Into<Cow<'a, str>>,
-) -> Element<'a> {
-    fn anchored_subheading<'a>(level: u8, id: Cow<'a, str>, content: Cow<'a, str>) -> Element<'a> {
+) -> Elem<'a> {
+    fn anchored_subheading<'a>(level: u8, id: Cow<'a, str>, content: Cow<'a, str>) -> Elem<'a> {
         let href = format!("#{id}");
 
-        Element::new(format!("h{level}"))
-            .attribute("id", id)
+        Elem::new(format!("h{level}"))
+            .attr("id", id)
             .class("subheading")
-            .child(Element::anchor(href, content))
+            .child(Elem::anchor(href, content))
     }
 
     anchored_subheading(level, id.into(), content.into())

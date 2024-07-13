@@ -35,7 +35,7 @@ impl<'src> Configuration<'src> {
     // @Task *precise* spans!
     pub(crate) fn parse(
         file: &'src SourceFile,
-        type_: TestType,
+        ty: TestType,
         map: &'src SourceMap,
     ) -> Result<Self, Error> {
         let mut configuration = Configuration::default();
@@ -43,8 +43,8 @@ impl<'src> Configuration<'src> {
         let mut tag = None;
         let mut timeout = None;
 
-        for block in blocks(file, type_.language(), map) {
-            let parameter = parse_parameter(block, type_)?;
+        for block in blocks(file, ty.language(), map) {
+            let parameter = parse_parameter(block, ty)?;
 
             if !parameter.revisions.is_empty() {
                 return Err(Error::new("revisions are not supported yet", block.span));
@@ -207,7 +207,7 @@ fn blocks<'a>(
 
 // @Task only allow alphanumeric revs and parse `@foo@bar` as two revs
 // @Task *precise* spans!
-fn parse_parameter(mut source: Spanned<&str>, type_: TestType) -> Result<Parameter<'_>, Error> {
+fn parse_parameter(mut source: Spanned<&str>, ty: TestType) -> Result<Param<'_>, Error> {
     let mut revisions = Vec::new();
 
     while let Some(stripped) = source.bare.strip_prefix('@') {
@@ -256,7 +256,7 @@ fn parse_parameter(mut source: Spanned<&str>, type_: TestType) -> Result<Paramet
                     source.span,
                     arguments.next().ok_or_else(|| missing_argument("mode"))?,
                 ),
-                type_,
+                ty,
             )?;
 
             exhaust_arguments(arguments)?;
@@ -344,10 +344,10 @@ fn parse_parameter(mut source: Spanned<&str>, type_: TestType) -> Result<Paramet
         }
     };
 
-    Ok(Parameter { revisions, kind })
+    Ok(Param { revisions, kind })
 }
 
-fn parse_mode(source: Spanned<&str>, type_: TestType) -> Result<Mode, Error> {
+fn parse_mode(source: Spanned<&str>, ty: TestType) -> Result<Mode, Error> {
     use TestType::*;
 
     let mode = source
@@ -356,13 +356,13 @@ fn parse_mode(source: Spanned<&str>, type_: TestType) -> Result<Mode, Error> {
         .map_err(|()| Error::new(format!("‘{source}’ is not a valid test mode"), source.span))?;
 
     #[allow(clippy::match_same_arms)]
-    match (type_, mode) {
+    match (ty, mode) {
         (SourceFile | Package, Mode::Check | Mode::Build | Mode::Run) => {}
         (RecnotSourceFile, Mode::Check) => {}
         (RecnotSourceFile, Mode::Build | Mode::Run) => {
             return Err(Error::new(
                 format!(
-                    "the test mode ‘{}’ is not available for {type_} tests",
+                    "the test mode ‘{}’ is not available for {ty} tests",
                     mode.name()
                 ),
                 source.span,
@@ -374,7 +374,7 @@ fn parse_mode(source: Spanned<&str>, type_: TestType) -> Result<Mode, Error> {
 }
 
 #[cfg_attr(test, derive(Debug, PartialEq, Eq))]
-struct Parameter<'src> {
+struct Param<'src> {
     revisions: Vec<&'src str>,
     kind: ParameterKind<'src>,
 }

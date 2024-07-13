@@ -2,7 +2,7 @@ use crate::{
     base::{Expectation, Parser, SkipLineBreaks},
     synonym::Terminator,
 };
-use ast::{Attributes, Declaration, Identifier};
+use ast::{Attrs, Decl, Ident};
 use diagnostics::error::Result;
 use lexer::token::BareToken::*;
 use span::{Span, Spanning};
@@ -13,10 +13,10 @@ impl Parser<'_> {
     /// # Grammar
     ///
     /// ```grammar
-    /// Top-Level ::= (#Line-Break | Declaration)* #End-Of-Input
+    /// Top-Level ::= (#Line-Break | Decl)* #End-Of-Input
     /// ```
-    pub(crate) fn parse_top_level(&mut self, module: Identifier) -> Result<Declaration> {
-        let mut declarations = Vec::new();
+    pub(crate) fn parse_top_level(&mut self, module: Ident) -> Result<Decl> {
+        let mut decls = Vec::new();
 
         loop {
             // @Question shouldn't this be a `while` (+ grammar change)?
@@ -25,18 +25,18 @@ impl Parser<'_> {
             }
 
             if self.consume(EndOfInput) {
-                break Ok(Declaration::common(
+                break Ok(Decl::common(
                     self.map[self.file].span(),
                     ast::Module {
                         binder: module,
                         file: self.file,
-                        declarations: Some(declarations),
+                        decls: Some(decls),
                     }
                     .into(),
                 ));
             }
 
-            declarations.push(self.parse_declaration()?);
+            decls.push(self.parse_decl()?);
         }
     }
 
@@ -45,23 +45,23 @@ impl Parser<'_> {
     /// # Grammar
     ///
     /// ```grammar
-    /// Declaration ::= (Attribute #Line-Break*)* Bare-Declaration
-    /// Bare-Declaration ::=
-    ///     | Function-Declaration
-    ///     | Data-Declaration
-    ///     | Module-Declaration
-    ///     | Use-Declaration
-    ///     | Given-Declaration
+    /// Decl ::= (Attr #Line-Break*)* Bare-Decl
+    /// Bare-Decl ::=
+    ///     | Function-Decl
+    ///     | Data-Decl
+    ///     | Module-Decl
+    ///     | Use-Decl
+    ///     | Given-Decl
     /// ```
-    fn parse_declaration(&mut self) -> Result<Declaration> {
-        let attributes = self.parse_attributes(SkipLineBreaks::Yes)?;
+    fn parse_decl(&mut self) -> Result<Decl> {
+        let attrs = self.parse_attrs(SkipLineBreaks::Yes)?;
 
         let span = self.span();
         match self.token() {
             Word(binder) => {
-                let binder = ast::Identifier::new_unchecked(span, binder);
+                let binder = ast::Ident::new_unchecked(span, binder);
                 self.advance();
-                self.finish_parse_function_declaration(binder, attributes)
+                self.fin_parse_function_decl(binder, attrs)
                     .map(|function| function.map(Into::into))
             }
             token @ (Data | Record | Trait) => {
@@ -74,22 +74,22 @@ impl Parser<'_> {
                     _ => unreachable!(),
                 };
 
-                self.finish_parse_data_declaration(kind, span, attributes)
+                self.fin_parse_data_decl(kind, span, attrs)
             }
             Module => {
                 self.advance();
-                self.finish_parse_module_declaration(span, attributes)
+                self.fin_parse_module_decl(span, attrs)
             }
             Use => {
                 self.advance();
-                self.finish_parse_use_declaration(span, attributes)
+                self.fin_parse_use_decl(span, attrs)
             }
             Given => {
                 self.advance();
-                self.finish_parse_given_declaration(span, attributes)
+                self.fin_parse_given_decl(span, attrs)
             }
             _ => {
-                self.expected(Expectation::Declaration);
+                self.expected(Expectation::Decl);
                 self.error()
             }
         }
@@ -102,26 +102,26 @@ impl Parser<'_> {
     /// # Grammar
     ///
     /// ```grammar
-    /// Function-Declaration ::=
+    /// Function-Decl ::=
     ///     #Word
-    ///     Parameters Type-Annotation?
-    ///     ("=" Expression)?
+    ///     Params Type-Annotation?
+    ///     ("=" Expr)?
     ///     Terminator
     /// ```
     ///
     /// [function declaration]: ast::Function
-    pub(crate) fn finish_parse_function_declaration(
+    pub(crate) fn fin_parse_function_decl(
         &mut self,
-        binder: Identifier,
-        attributes: Attributes,
-    ) -> Result<ast::Item<ast::Function>> {
+        binder: Ident,
+        attrs: Attrs,
+    ) -> Result<ast::Item<ast::Func>> {
         let mut span = binder.span();
 
-        let parameters = span.merging(self.parse_parameters()?);
-        let type_ = span.merging(self.parse_optional_type_annotation()?);
+        let params = span.merging(self.parse_params()?);
+        let ty = span.merging(self.parse_opt_ty_ann()?);
 
         let body = if self.consume(Equals) {
-            Some(span.merging(self.parse_expression()?))
+            Some(span.merging(self.parse_expr()?))
         } else {
             None
         };
@@ -129,12 +129,12 @@ impl Parser<'_> {
         self.parse_terminator()?;
 
         Ok(ast::Item::new(
-            attributes,
+            attrs,
             span,
-            ast::Function {
+            ast::Func {
                 binder,
-                parameters,
-                type_,
+                params,
+                ty,
                 body,
             },
         ))
@@ -147,37 +147,37 @@ impl Parser<'_> {
     /// # Grammar
     ///
     /// ```grammar
-    /// Data-Declaration ::=
+    /// Data-Decl ::=
     ///     Data-Kind
     ///     #Word
-    ///     Parameters Type-Annotation?
-    ///     ("of" (#Indentation (Terminator | Declaration)* #Dedentation)?)?
+    ///     Params Type-Annotation?
+    ///     ("of" (#Indentation (Terminator | Decl)* #Dedentation)?)?
     ///     Terminator
     /// Data-Kind ::= "data" | "record" | "trait"
     /// ```
     ///
     /// [data declaration]: ast::Data
-    fn finish_parse_data_declaration(
+    fn fin_parse_data_decl(
         &mut self,
         kind: ast::DataKind,
         mut span: Span,
-        attributes: Attributes,
-    ) -> Result<Declaration> {
+        attrs: Attrs,
+    ) -> Result<Decl> {
         let binder = span.merging(self.parse_word()?);
-        let parameters = span.merging(self.parse_parameters()?);
-        let type_ = span.merging(self.parse_optional_type_annotation()?);
+        let params = span.merging(self.parse_params()?);
+        let ty = span.merging(self.parse_opt_ty_ann()?);
 
-        let declarations = match self.token() {
+        let decls = match self.token() {
             Of => {
                 span.merging(self.span());
                 self.advance();
 
-                let declarations = self.parse_optional_block(Self::parse_declaration)?;
+                let decls = self.parse_opt_block(Self::parse_decl)?;
 
-                span.merging(declarations.last());
+                span.merging(decls.last());
                 self.parse_terminator()?;
 
-                Some(declarations)
+                Some(decls)
             }
             name @ Terminator!() => {
                 if name == LineBreak {
@@ -195,15 +195,15 @@ impl Parser<'_> {
             }
         };
 
-        Ok(Declaration::new(
-            attributes,
-            span.merge(&declarations),
-            ast::Data {
+        Ok(Decl::new(
+            attrs,
+            span.merge(&decls),
+            ast::DataTy {
                 kind,
                 binder,
-                parameters,
-                type_,
-                declarations,
+                params,
+                ty,
+                decls,
             }
             .into(),
         ))
@@ -217,29 +217,21 @@ impl Parser<'_> {
     /// # Grammar
     ///
     /// ```grammar
-    /// Module-Declaration ::=
+    /// Module-Decl ::=
     ///     | Module-Header
-    ///     | "module" #Word ("of" (#Indentation (Terminator | Declaration)* #Dedentation)?)? Terminator
+    ///     | "module" #Word ("of" (#Indentation (Terminator | Decl)* #Dedentation)?)? Terminator
     /// Module-Header ::= "module" Terminator
     /// ```
     ///
     /// [module declaration]: ast::Module
-    fn finish_parse_module_declaration(
-        &mut self,
-        mut span: Span,
-        attributes: Attributes,
-    ) -> Result<Declaration> {
+    fn fin_parse_module_decl(&mut self, mut span: Span, attrs: Attrs) -> Result<Decl> {
         // @Task abstract over this (used below as well), good idea?
         if let name @ Terminator!() = self.token() {
             if name == LineBreak {
                 self.advance();
             }
 
-            return Ok(Declaration::new(
-                attributes,
-                span,
-                ast::BareDeclaration::ModuleHeader,
-            ));
+            return Ok(Decl::new(attrs, span, ast::BareDecl::ModuleHeader));
         }
 
         let binder = span.merging(self.parse_word()?);
@@ -252,13 +244,13 @@ impl Parser<'_> {
                     self.advance();
                 }
 
-                Ok(Declaration::new(
-                    attributes,
+                Ok(Decl::new(
+                    attrs,
                     span,
                     ast::Module {
                         binder,
                         file: self.file,
-                        declarations: None,
+                        decls: None,
                     }
                     .into(),
                 ))
@@ -267,17 +259,17 @@ impl Parser<'_> {
                 span.merging(self.span());
                 self.advance();
 
-                let declarations = self.parse_optional_block(Self::parse_declaration)?;
-                span.merging(declarations.last());
+                let decls = self.parse_opt_block(Self::parse_decl)?;
+                span.merging(decls.last());
                 self.parse_terminator()?;
 
-                Ok(Declaration::new(
-                    attributes,
+                Ok(Decl::new(
+                    attrs,
                     span,
                     ast::Module {
                         binder,
                         file: self.file,
-                        declarations: Some(declarations),
+                        decls: Some(decls),
                     }
                     .into(),
                 ))
@@ -300,20 +292,16 @@ impl Parser<'_> {
     /// # Grammar
     ///
     /// ```grammar
-    /// Use-Declaration ::= "use" Use-Path-Tree Terminator
+    /// Use-Decl ::= "use" Use-Path-Tree Terminator
     /// ```
     ///
     /// [use-declaration]: ast::Use
-    fn finish_parse_use_declaration(
-        &mut self,
-        span: Span,
-        attributes: Attributes,
-    ) -> Result<Declaration> {
+    fn fin_parse_use_decl(&mut self, span: Span, attrs: Attrs) -> Result<Decl> {
         let bindings = self.parse_use_path_tree()?;
         self.parse_terminator()?;
 
-        Ok(Declaration::new(
-            attributes,
+        Ok(Decl::new(
+            attrs,
             span.merge(&bindings),
             ast::Use { bindings }.into(),
         ))
@@ -326,31 +314,27 @@ impl Parser<'_> {
     /// # Grammar
     ///
     /// ```grammar
-    /// Given-Declaration ::=
+    /// Given-Decl ::=
     ///     "given"
     ///     #Word
-    ///     Parameters Type-Annotation?
+    ///     Params Type-Annotation?
     ///     Given-Body?
     ///     Terminator
     /// Given-Body ::=
-    ///     | "of" (#Indentation (Terminator | Declaration)* #Dedentation)?
-    ///     | "=" Expression
+    ///     | "of" (#Indentation (Terminator | Decl)* #Dedentation)?
+    ///     | "=" Expr
     /// ```
-    fn finish_parse_given_declaration(
-        &mut self,
-        mut span: Span,
-        attributes: Attributes,
-    ) -> Result<Declaration> {
+    fn fin_parse_given_decl(&mut self, mut span: Span, attrs: Attrs) -> Result<Decl> {
         let binder = span.merging(self.parse_word()?);
-        let parameters = span.merging(self.parse_parameters()?);
-        let type_ = span.merging(self.parse_optional_type_annotation()?);
+        let params = span.merging(self.parse_params()?);
+        let ty = span.merging(self.parse_opt_ty_ann()?);
 
         let body = match self.token() {
             Of => {
                 span.merging(self.span());
                 self.advance();
 
-                let fields = self.parse_optional_block(Self::parse_declaration)?;
+                let fields = self.parse_opt_block(Self::parse_decl)?;
 
                 span.merging(fields.last());
                 self.parse_terminator()?;
@@ -366,9 +350,9 @@ impl Parser<'_> {
             Equals => {
                 self.advance();
 
-                let body = span.merging(self.parse_expression()?);
+                let body = span.merging(self.parse_expr()?);
 
-                Some(ast::Body::Expression { body })
+                Some(ast::Body::Expr { body })
             }
             _ => {
                 self.expected(Of);
@@ -380,13 +364,13 @@ impl Parser<'_> {
             }
         };
 
-        Ok(Declaration::new(
-            attributes,
+        Ok(Decl::new(
+            attrs,
             span.merge(&body),
             ast::Given {
                 binder,
-                parameters,
-                type_,
+                params,
+                ty,
                 body,
             }
             .into(),

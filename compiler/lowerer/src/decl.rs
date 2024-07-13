@@ -1,9 +1,9 @@
 use crate::Lowerer;
 use ast::{BareHanger, LocalBinder, Path};
-use diagnostics::{error::PossiblyErroneous, Diagnostic, ErrorCode, Substitution};
+use diagnostics::{error::PossiblyErroneous, Diag, ErrorCode, Substitution};
 use lo_ast::{
-    attribute::{ParentDeclarationKind, Target},
-    AttributeName, Attributes, DeBruijnLevel,
+    attr::{ParentDeclarationKind, Target},
+    AttrName, Attrs, DeBruijnLevel,
 };
 use span::{PossiblySpanning, Span, Spanned, Spanning};
 use utility::{default, smallvec, Atom, FormatError, SmallVec, FILE_EXTENSION};
@@ -15,102 +15,77 @@ use utility::{default, smallvec, Atom, FormatError, SmallVec, FILE_EXTENSION};
 // it doesn't simplify things at all
 
 impl Lowerer<'_> {
-    pub(crate) fn lower_declaration(
-        &mut self,
-        declaration: ast::Declaration,
-    ) -> SmallVec<lo_ast::Declaration, 1> {
-        self.lower_declaration_with(declaration, &default())
+    pub(crate) fn lower_decl(&mut self, decl: ast::Decl) -> SmallVec<lo_ast::Decl, 1> {
+        self.lower_decl_with(decl, &default())
     }
 
-    fn lower_declaration_with(
+    fn lower_decl_with(
         &mut self,
-        declaration: ast::Declaration,
+        decl: ast::Decl,
         inline_modules: &InlineModules<'_>,
-    ) -> SmallVec<lo_ast::Declaration, 1> {
-        use ast::BareDeclaration::*;
+    ) -> SmallVec<lo_ast::Decl, 1> {
+        use ast::BareDecl::*;
 
-        let attributes = self.lower_attributes(
-            &declaration.attributes,
-            &declaration,
-            ParentDeclarationKind::Module,
-        );
+        let attrs = self.lower_attrs(&decl.attrs, &decl, ParentDeclarationKind::Module);
 
-        match declaration.bare {
-            Function(function) => {
-                let function = self.lower_function(*function, &attributes, declaration.span);
+        match decl.bare {
+            Func(func) => {
+                let func = self.lower_function(*func, &attrs, decl.span);
 
-                smallvec![lo_ast::Declaration::new(
-                    attributes,
-                    declaration.span,
-                    function.into(),
-                )]
+                smallvec![lo_ast::Decl::new(attrs, decl.span, func.into(),)]
             }
-            Data(type_) => smallvec![self.lower_data(*type_, attributes, declaration.span)],
-            Given(given) => smallvec![self.lower_given(*given, attributes, declaration.span)],
+            DataTy(ty) => smallvec![self.lower_data(*ty, attrs, decl.span)],
+            Given(given) => smallvec![self.lower_given(*given, attrs, decl.span)],
             Module(module) => {
-                smallvec![self.lower_module(*module, attributes, declaration.span, inline_modules)]
+                smallvec![self.lower_module(*module, attrs, decl.span, inline_modules)]
             }
             // This is handled in the `Module` case.
             ModuleHeader => unreachable!(),
-            Use(use_) => self.lower_use_declaration(*use_, attributes, declaration.span),
+            Use(use_) => self.lower_use_declaration(*use_, attrs, decl.span),
         }
     }
 
-    fn lower_function(
-        &mut self,
-        function: ast::Function,
-        attributes: &Attributes,
-        span: Span,
-    ) -> lo_ast::Function {
-        self.check_function_body(&function, attributes, span);
+    fn lower_function(&mut self, func: ast::Func, attrs: &Attrs, span: Span) -> lo_ast::Func {
+        self.check_func_body(&func, attrs, span);
 
-        let type_ = match function.type_ {
-            Some(type_) => self.lower_expression(type_),
+        let ty = match func.ty {
+            Some(ty) => self.lower_expr(ty),
             None => error::missing_type_annotation(
                 "function",
-                function.binder,
-                function.binder.span().fit_end(&function.parameters).end(),
+                func.binder,
+                func.binder.span().fit_end(&func.params).end(),
             )
             .embed(&mut *self),
         };
 
-        let body = function.body.map(|body| {
-            let body = self.lower_expression(body);
-            self.lower_parameters_to_lambda_with_default(
-                function.parameters.clone(),
-                Some(type_.clone()),
-                body,
-            )
+        let body = func.body.map(|body| {
+            let body = self.lower_expr(body);
+            self.lower_params_to_lambda_with_default(func.params.clone(), Some(ty.clone()), body)
         });
 
-        let type_ = self.lower_parameters_to_pi_type(function.parameters, type_);
+        let ty = self.lower_params_to_pi_ty(func.params, ty);
 
-        lo_ast::Function {
-            binder: function.binder,
-            type_,
+        lo_ast::Func {
+            binder: func.binder,
+            ty,
             body,
         }
     }
 
-    fn check_function_body(
-        &mut self,
-        function: &ast::Function,
-        attributes: &Attributes,
-        span: Span,
-    ) {
-        let before_body_span = function
+    fn check_func_body(&mut self, func: &ast::Func, attrs: &Attrs, span: Span) {
+        let before_body_span = func
             .binder
             .span()
-            .fit_end(&function.parameters)
-            .fit_end(&function.type_)
+            .fit_end(&func.params)
+            .fit_end(&func.ty)
             .end();
 
-        match (&function.body, attributes.span(AttributeName::Intrinsic)) {
+        match (&func.body, attrs.span(AttrName::Intrinsic)) {
             (Some(_), Some(intrinsic)) => {
                 // @Task use Span combinators here instead like `unexpected_body` does
                 let equals = before_body_span.between(span.end()).trim_start_matches(
                     |character| character.is_ascii_whitespace(),
-                    &self.session.shared_map(),
+                    &self.sess.shared_map(),
                 );
 
                 error::unexpected_body_for_intrinsic(
@@ -121,7 +96,7 @@ impl Lowerer<'_> {
                 .handle(self);
             }
             (None, None) => error::missing_body(
-                function.binder,
+                func.binder,
                 before_body_span,
                 Substitution::from(" = ").placeholder("value"),
             )
@@ -130,86 +105,63 @@ impl Lowerer<'_> {
         };
     }
 
-    fn lower_data(
-        &mut self,
-        data_type: ast::Data,
-        mut attributes: Attributes,
-        span: Span,
-    ) -> lo_ast::Declaration {
-        self.check_data_body(&data_type, &attributes, span);
+    fn lower_data(&mut self, data_ty: ast::DataTy, mut attrs: Attrs, span: Span) -> lo_ast::Decl {
+        self.check_data_body(&data_ty, &attrs, span);
 
-        let type_ = match data_type.type_ {
-            Some(type_) => self.lower_expression(type_),
-            None => lo_ast::Expression::common(
-                data_type.binder.span().fit_end(&data_type.parameters).end(),
-                lo_ast::BareExpression::Type,
+        let ty = match data_ty.ty {
+            Some(ty) => self.lower_expr(ty),
+            None => lo_ast::Expr::common(
+                data_ty.binder.span().fit_end(&data_ty.params).end(),
+                lo_ast::BareExpr::Ty,
             ),
         };
-        let type_ = self.lower_parameters_to_pi_type(data_type.parameters.clone(), type_);
+        let ty = self.lower_params_to_pi_ty(data_ty.params.clone(), ty);
 
-        let declarations = data_type
-            .declarations
-            .map(|declarations| match data_type.kind {
-                ast::DataKind::Data => {
-                    self.lower_constructors(declarations, data_type.binder, &data_type.parameters)
-                }
-                ast::DataKind::Record => {
-                    vec![self.lower_fields_to_constructor(
-                        declarations,
-                        RecordKind::Record,
-                        data_type.binder,
-                        data_type.parameters,
-                    )]
-                }
-                ast::DataKind::Trait => {
-                    self.lower_trait_body(declarations, data_type.binder, data_type.parameters)
-                }
-            });
+        let decls = data_ty.decls.map(|decls| match data_ty.kind {
+            ast::DataKind::Data => self.lower_ctors(decls, data_ty.binder, &data_ty.params),
+            ast::DataKind::Record => {
+                vec![self.lower_fields_to_ctor(
+                    decls,
+                    RecordKind::Record,
+                    data_ty.binder,
+                    data_ty.params,
+                )]
+            }
+            ast::DataKind::Trait => self.lower_trait_body(decls, data_ty.binder, data_ty.params),
+        });
 
-        if let ast::DataKind::Record | ast::DataKind::Trait = data_type.kind {
-            attributes
-                .0
-                .push(Spanned::new(span, lo_ast::BareAttribute::Record));
+        if let ast::DataKind::Record | ast::DataKind::Trait = data_ty.kind {
+            attrs.0.push(Spanned::new(span, lo_ast::BareAttr::Record));
         }
 
-        if let ast::DataKind::Trait = data_type.kind {
-            attributes
-                .0
-                .push(Spanned::new(span, lo_ast::BareAttribute::Trait));
+        if let ast::DataKind::Trait = data_ty.kind {
+            attrs.0.push(Spanned::new(span, lo_ast::BareAttr::Trait));
         }
 
-        lo_ast::Declaration::new(
-            attributes,
+        lo_ast::Decl::new(
+            attrs,
             span,
-            lo_ast::Data {
-                binder: data_type.binder,
-                type_,
-                declarations,
+            lo_ast::DataTy {
+                binder: data_ty.binder,
+                ty,
+                decls,
             }
             .into(),
         )
     }
 
-    fn check_data_body(&mut self, type_: &ast::Data, attributes: &Attributes, span: Span) {
-        let before_body_span = type_
-            .binder
-            .span()
-            .fit_end(&type_.parameters)
-            .fit_end(&type_.type_)
-            .end();
+    fn check_data_body(&mut self, ty: &ast::DataTy, attrs: &Attrs, span: Span) {
+        let before_body_span = ty.binder.span().fit_end(&ty.params).fit_end(&ty.ty).end();
 
-        match (
-            &type_.declarations,
-            attributes.span(AttributeName::Intrinsic),
-        ) {
-            (Some(constructors), Some(intrinsic)) => {
+        match (&ty.decls, attrs.span(AttrName::Intrinsic)) {
+            (Some(ctors), Some(intrinsic)) => {
                 // @Task use Span combinators here instead like `unexpected_body` does
                 let keyword = before_body_span.between(span.end()).trim_start_matches(
                     |character| character.is_ascii_whitespace(),
-                    &self.session.shared_map(),
+                    &self.sess.shared_map(),
                 );
 
-                let label = if constructors.is_empty() {
+                let label = if ctors.is_empty() {
                     "\
 the body specifying that the data type has no constructors and is therefore uninhabited
          conflicting with the attribute"
@@ -219,11 +171,11 @@ the body containing a set of constructors
          conflicting with the attribute"
                 };
 
-                error::unexpected_body_for_intrinsic(keyword.merge(constructors), label, intrinsic)
+                error::unexpected_body_for_intrinsic(keyword.merge(ctors), label, intrinsic)
                     .handle(self);
             }
             (None, None) => error::missing_body(
-                type_.binder,
+                ty.binder,
                 before_body_span,
                 // @Bug the placeholder does not really make sense
                 // @Task use a multi-line suggestion once we support that
@@ -234,43 +186,35 @@ the body containing a set of constructors
         };
     }
 
-    fn lower_constructors(
+    fn lower_ctors(
         &mut self,
-        declarations: Vec<ast::Declaration>,
-        type_constructor: ast::Identifier,
-        type_constructor_parameters: &ast::Parameters,
-    ) -> Vec<lo_ast::Declaration> {
-        declarations
+        decls: Vec<ast::Decl>,
+        ty_ctor: ast::Ident,
+        ty_ctor_params: &ast::Params,
+    ) -> Vec<lo_ast::Decl> {
+        decls
             .into_iter()
-            .map(|declaration| {
-                let attributes = self.lower_attributes(
-                    &declaration.attributes,
-                    &declaration,
-                    ParentDeclarationKind::Data,
-                );
+            .map(|decl| {
+                let attrs = self.lower_attrs(&decl.attrs, &decl, ParentDeclarationKind::Data);
 
-                match declaration.bare {
-                    ast::BareDeclaration::Function(function) => lo_ast::Declaration::new(
-                        attributes,
-                        declaration.span,
-                        self.lower_constructor(
-                            *function,
-                            type_constructor,
-                            type_constructor_parameters.clone(),
-                        )
-                        .into(),
+                match decl.bare {
+                    ast::BareDecl::Func(func) => lo_ast::Decl::new(
+                        attrs,
+                        decl.span,
+                        self.lower_ctor(*func, ty_ctor, ty_ctor_params.clone())
+                            .into(),
                     ),
                     // @Task support this
-                    ast::BareDeclaration::Use(_) => Diagnostic::error()
+                    ast::BareDecl::Use(_) => Diag::error()
                         .message(
                             "a use-declaration may not appear inside of a data declaration yet",
                         )
-                        .unlabeled_span(declaration.span)
+                        .unlabeled_span(decl.span)
                         .embed(&mut *self),
                     _ => error::misplaced_declaration(
-                        declaration.name(ParentDeclarationKind::Data),
-                        declaration.span,
-                        type_constructor.into_inner().remap(Atom::DATA),
+                        decl.name(ParentDeclarationKind::Data),
+                        decl.span,
+                        ty_ctor.into_inner().remap(Atom::DATA),
                     )
                     .embed(&mut *self),
                 }
@@ -278,63 +222,58 @@ the body containing a set of constructors
             .collect()
     }
 
-    fn lower_constructor(
+    fn lower_ctor(
         &mut self,
-        constructor: ast::Function,
-        type_constructor: ast::Identifier,
-        type_constructor_parameters: ast::Parameters,
-    ) -> lo_ast::Constructor {
-        if let Some(body) = &constructor.body {
-            error::unexpected_body("constructors", &constructor, body.span).handle(&mut *self);
+        ctor: ast::Func,
+        ty_ctor: ast::Ident,
+        ty_ctor_params: ast::Params,
+    ) -> lo_ast::Ctor {
+        if let Some(body) = &ctor.body {
+            error::unexpected_body("constructors", &ctor, body.span).handle(&mut *self);
         }
 
-        let type_ = match constructor.type_ {
-            Some(type_) => self.lower_expression(type_),
+        let ty = match ctor.ty {
+            Some(ty) => self.lower_expr(ty),
             None => synthesize_constructee(
-                type_constructor,
-                &type_constructor_parameters,
-                constructor
-                    .binder
-                    .span()
-                    .fit_end(&constructor.parameters)
-                    .end(),
+                ty_ctor,
+                &ty_ctor_params,
+                ctor.binder.span().fit_end(&ctor.params).end(),
             ),
         };
 
-        let type_ = self.lower_parameters_to_pi_type(constructor.parameters, type_);
-        let type_ = self.lower_parent_parameters_to_pi_type(type_constructor_parameters, type_);
+        let ty = self.lower_params_to_pi_ty(ctor.params, ty);
+        let ty = self.lower_parent_params_to_pi_ty(ty_ctor_params, ty);
 
-        lo_ast::Constructor {
-            binder: constructor.binder,
-            type_,
+        lo_ast::Ctor {
+            binder: ctor.binder,
+            ty,
         }
     }
 
     /// Lower record or trait fields to a constructor.
-    fn lower_fields_to_constructor(
+    fn lower_fields_to_ctor(
         &mut self,
-        fields: Vec<ast::Declaration>,
+        fields: Vec<ast::Decl>,
         kind: RecordKind,
-        type_constructor: ast::Identifier,
-        type_constructor_parameters: ast::Parameters,
-    ) -> lo_ast::Declaration {
+        ty_ctor: ast::Ident,
+        ty_ctor_params: ast::Params,
+    ) -> lo_ast::Decl {
         // @Task use the span `of><` if there are no fields, using `default()` is a @Bug
         let span = fields.possible_span().unwrap_or_default();
 
-        let mut type_ =
-            synthesize_constructee(type_constructor, &type_constructor_parameters, span);
+        let mut ty = synthesize_constructee(ty_ctor, &ty_ctor_params, span);
 
         for field in fields.into_iter().rev() {
             // @Task transfer lowered attrs to pi-type (once that's supported)
-            let _attributes = self.lower_attributes(&field.attributes, &field, kind.into());
+            let _attributes = self.lower_attrs(&field.attrs, &field, kind.into());
 
             let field = match field.bare {
-                ast::BareDeclaration::Function(field) => *field,
+                ast::BareDecl::Func(field) => *field,
                 _ => {
                     error::misplaced_declaration(
                         field.name(kind.into()),
                         field.span,
-                        type_constructor.into_inner().remap(kind.name()),
+                        ty_ctor.into_inner().remap(kind.name()),
                     )
                     .handle(&mut *self);
                     continue;
@@ -342,13 +281,13 @@ the body containing a set of constructors
             };
 
             if let RecordKind::Record = kind
-                && let Some(span) = field.parameters.possible_span()
+                && let Some(span) = field.params.possible_span()
             {
                 error::parametrized_record_field(
                     field.binder,
-                    field.type_.as_ref(),
+                    field.ty.as_ref(),
                     span,
-                    &self.session.shared_map(),
+                    &self.sess.shared_map(),
                 )
                 .handle(&mut *self);
             }
@@ -358,37 +297,37 @@ the body containing a set of constructors
                     .handle(&mut *self);
             }
 
-            let domain = match field.type_ {
-                Some(type_) => self.lower_expression(type_),
+            let domain = match field.ty {
+                Some(ty) => self.lower_expr(ty),
                 None => error::missing_type_annotation(
                     &format!("{} field", kind.name()),
                     field.binder,
-                    field.binder.span().fit_end(&field.parameters).end(),
+                    field.binder.span().fit_end(&field.params).end(),
                 )
                 .embed(&mut *self),
             };
 
-            let domain = self.lower_parameters_to_pi_type(field.parameters, domain);
+            let domain = self.lower_params_to_pi_ty(field.params, domain);
 
-            type_ = lo_ast::Expression::common(
+            ty = lo_ast::Expr::common(
                 span,
-                lo_ast::PiType {
-                    kind: ast::ParameterKind::Explicit,
+                lo_ast::PiTy {
+                    kind: ast::ParamKind::Explicit,
                     binder: Some(field.binder),
                     domain,
-                    codomain: type_,
+                    codomain: ty,
                 }
                 .into(),
             );
         }
 
-        let type_ = self.lower_parent_parameters_to_pi_type(type_constructor_parameters, type_);
+        let ty = self.lower_parent_params_to_pi_ty(ty_ctor_params, ty);
 
-        lo_ast::Declaration::common(
+        lo_ast::Decl::common(
             span,
-            lo_ast::Constructor {
-                binder: ast::Identifier::new_unchecked(span, kind.name()),
-                type_,
+            lo_ast::Ctor {
+                binder: ast::Ident::new_unchecked(span, kind.name()),
+                ty,
             }
             .into(),
         )
@@ -396,80 +335,69 @@ the body containing a set of constructors
 
     fn lower_trait_body(
         &mut self,
-        fields: Vec<ast::Declaration>,
-        type_constructor: ast::Identifier,
-        type_constructor_parameters: ast::Parameters,
-    ) -> Vec<lo_ast::Declaration> {
-        let mut declarations = Vec::with_capacity(1 /*constructor*/ + fields.len());
+        fields: Vec<ast::Decl>,
+        ty_ctor: ast::Ident,
+        ty_ctor_params: ast::Params,
+    ) -> Vec<lo_ast::Decl> {
+        let mut decls = Vec::with_capacity(1 /*constructor*/ + fields.len());
 
         fields
             .iter()
-            .filter_map(|declaration| {
-                // Attributes are lowered when we synthesize the constructor.
+            .filter_map(|decl| {
+                // Attrs are lowered when we synthesize the constructor.
 
                 // We reject non-functions later when lowering the fields into a constructor.
-                let ast::BareDeclaration::Function(field) = &declaration.bare else {
+                let ast::BareDecl::Func(field) = &decl.bare else {
                     return None;
                 };
 
-                let type_ = {
-                    let type_ = field.type_.clone()?;
+                let ty = {
+                    let ty = field.ty.clone()?;
 
                     // @Beacon @Task don't lower the field type twice (here & in lower_fields)!
                     // (this is why we currently need to clone here)
-                    let type_ = self.lower_expression(type_);
-                    let type_ = self.lower_parameters_to_pi_type(field.parameters.clone(), type_);
+                    let ty = self.lower_expr(ty);
+                    let ty = self.lower_params_to_pi_ty(field.params.clone(), ty);
 
-                    let span = type_.span;
+                    let span = ty.span;
                     // @Task DRY
-                    let binder = ast::Identifier::new_unchecked(span, Atom::TRAIT);
-                    let type_ = lo_ast::Expression::common(
+                    let binder = ast::Ident::new_unchecked(span, Atom::TRAIT);
+                    let ty = lo_ast::Expr::common(
                         span,
-                        lo_ast::PiType {
-                            kind: ast::ParameterKind::Context,
+                        lo_ast::PiTy {
+                            kind: ast::ParamKind::Context,
                             binder: Some(binder),
                             // @Task don't synthesize the constructee multiple times
-                            domain: synthesize_constructee(
-                                type_constructor,
-                                &type_constructor_parameters,
-                                span,
-                            ),
-                            codomain: type_,
+                            domain: synthesize_constructee(ty_ctor, &ty_ctor_params, span),
+                            codomain: ty,
                         }
                         .into(),
                     );
                     // @Beacon @Task don't lower type-constructor params thrice (here, in lower_fields & in lower_data)
                     // @Task don't treat `_` special here (no harm, but no need here either)
-                    self.lower_parent_parameters_to_pi_type(
-                        type_constructor_parameters.clone(),
-                        type_,
-                    )
+                    self.lower_parent_params_to_pi_ty(ty_ctor_params.clone(), ty)
                 };
 
                 let body = {
                     let span = field.binder.span();
-                    let binder = ast::Identifier::new_unchecked(span, Atom::TRAIT);
+                    let binder = ast::Ident::new_unchecked(span, Atom::TRAIT);
 
-                    let projection = lo_ast::Expression::common(
+                    let projection = lo_ast::Expr::common(
                         span,
-                        lo_ast::Projection {
-                            basis: lo_ast::Expression::common(span, ast::Path::from(binder).into()),
+                        lo_ast::Proj {
+                            basis: lo_ast::Expr::common(span, ast::Path::from(binder).into()),
                             field: field.binder.respan(span),
                         }
                         .into(),
                     );
 
-                    let mut body = lo_ast::Expression::common(
+                    let mut body = lo_ast::Expr::common(
                         span,
-                        lo_ast::Lambda {
-                            kind: ast::ParameterKind::Context,
+                        lo_ast::LamLit {
+                            kind: ast::ParamKind::Context,
                             binder: Some(binder),
                             // @Task don't synthesize the constructee multiple times
-                            domain: Some(synthesize_constructee(
-                                type_constructor,
-                                &type_constructor_parameters,
-                                span,
-                            )),
+                            domain: Some(synthesize_constructee(ty_ctor, &ty_ctor_params, span)),
                             codomain: None,
                             body: projection,
                         }
@@ -477,18 +405,18 @@ the body containing a set of constructors
                     );
 
                     // @Beacon @Task don't re-lower type_constructor params! (here, in lower_fields & in lower_data)
-                    for parameter in type_constructor_parameters.clone().into_iter().rev() {
-                        let domain = self.lower_parameter_type_with_default(
-                            parameter.bare.type_,
-                            parameter.bare.kind,
-                            parameter.span,
+                    for param in ty_ctor_params.clone().into_iter().rev() {
+                        let domain = self.lower_param_ty_with_default(
+                            param.bare.ty,
+                            param.bare.kind,
+                            param.span,
                         );
 
-                        body = lo_ast::Expression::common(
+                        body = lo_ast::Expr::common(
                             span,
-                            lo_ast::Lambda {
-                                kind: parameter.bare.kind.adjust_for_child(),
-                                binder: parameter.bare.binder.and_then(ast::LocalBinder::name),
+                            lo_ast::LamLit {
+                                kind: param.bare.kind.adjust_for_child(),
+                                binder: param.bare.binder.and_then(ast::LocalBinder::name),
                                 domain: Some(domain),
                                 codomain: None,
                                 body,
@@ -500,46 +428,34 @@ the body containing a set of constructors
                     body
                 };
 
-                Some(lo_ast::Declaration::common(
-                    declaration.span,
-                    lo_ast::Function {
+                Some(lo_ast::Decl::common(
+                    decl.span,
+                    lo_ast::Func {
                         binder: field.binder,
-                        type_,
+                        ty,
                         body: Some(body),
                     }
                     .into(),
                 ))
             })
-            .collect_into(&mut declarations);
+            .collect_into(&mut decls);
 
-        declarations.push(self.lower_fields_to_constructor(
-            fields,
-            RecordKind::Trait,
-            type_constructor,
-            type_constructor_parameters,
-        ));
+        decls.push(self.lower_fields_to_ctor(fields, RecordKind::Trait, ty_ctor, ty_ctor_params));
 
-        declarations
+        decls
     }
 
-    fn lower_given(
-        &mut self,
-        given: ast::Given,
-        mut attributes: Attributes,
-        span: Span,
-    ) -> lo_ast::Declaration {
-        attributes
-            .0
-            .push(Spanned::new(span, lo_ast::BareAttribute::Context));
+    fn lower_given(&mut self, given: ast::Given, mut attrs: Attrs, span: Span) -> lo_ast::Decl {
+        attrs.0.push(Spanned::new(span, lo_ast::BareAttr::Context));
 
         // @Task maybe reuse `lower_function`?
 
-        let type_ = match given.type_ {
-            Some(type_) => self.lower_expression(type_),
+        let ty = match given.ty {
+            Some(ty) => self.lower_expr(ty),
             None => error::missing_type_annotation(
                 "given",
                 given.binder,
-                given.binder.span().fit_end(&given.parameters).end(),
+                given.binder.span().fit_end(&given.params).end(),
             )
             .embed(&mut *self),
         };
@@ -556,8 +472,8 @@ the body containing a set of constructors
                         .into_iter()
                         .filter_map(|declaration| {
                             // @Task transfer the lowered attributes to the pi-type parameters
-                            let _attributes = self.lower_attributes(
-                                &declaration.attributes,
+                            let _attributes = self.lower_attrs(
+                                &declaration.attrs,
                                 &declaration,
                                 ParentDeclarationKind::Given,
                             );
@@ -565,18 +481,13 @@ the body containing a set of constructors
                             match declaration.bare {
                                 // @Task (unrelated) create a lo_ast::Field { name, item } where item is not an Option
                                 // but has to be defined (we need to actually *lower* stuff lol)
-                                ast::BareDeclaration::Function(field) => {
+                                ast::BareDecl::Func(field) => {
                                     let body = match field.body {
-                                        Some(body) => self.lower_expression(body),
+                                        Some(body) => self.lower_expr(body),
                                         None => error::missing_field_body(&field).embed(&mut *self),
                                     };
-                                    let type_ =
-                                        field.type_.map(|type_| self.lower_expression(type_));
-                                    let body = self.lower_parameters_to_lambda(
-                                        field.parameters,
-                                        type_,
-                                        body,
-                                    );
+                                    let ty = field.ty.map(|ty| self.lower_expr(ty));
+                                    let body = self.lower_params_to_lambda(field.params, ty, body);
 
                                     Some(lo_ast::Field {
                                         binder: field.binder,
@@ -596,9 +507,9 @@ the body containing a set of constructors
                         })
                         .collect();
 
-                    lo_ast::Expression::common(
+                    lo_ast::Expr::common(
                         body,
-                        lo_ast::RecordLiteral {
+                        lo_ast::RecLit {
                             fields: Spanned::new(body, fields),
                             path: None,
                             base: None,
@@ -606,24 +517,20 @@ the body containing a set of constructors
                         .into(),
                     )
                 }
-                ast::Body::Expression { body } => self.lower_expression(body),
+                ast::Body::Expr { body } => self.lower_expr(body),
             };
 
-            self.lower_parameters_to_lambda_with_default(
-                given.parameters.clone(),
-                Some(type_.clone()),
-                body,
-            )
+            self.lower_params_to_lambda_with_default(given.params.clone(), Some(ty.clone()), body)
         });
 
-        let type_ = self.lower_parameters_to_pi_type(given.parameters, type_);
+        let ty = self.lower_params_to_pi_ty(given.params, ty);
 
-        lo_ast::Declaration::new(
-            attributes,
+        lo_ast::Decl::new(
+            attrs,
             span,
-            lo_ast::Function {
+            lo_ast::Func {
                 binder: given.binder,
-                type_,
+                ty,
                 body,
             }
             .into(),
@@ -633,16 +540,16 @@ the body containing a set of constructors
     fn lower_module(
         &mut self,
         module: ast::Module,
-        mut attributes: Attributes,
+        mut attrs: Attrs,
         span: Span,
         inline_modules: &InlineModules<'_>,
-    ) -> lo_ast::Declaration {
-        let is_inline_module = module.declarations.is_some();
+    ) -> lo_ast::Decl {
+        let is_inline_module = module.decls.is_some();
 
-        let declarations = match module.declarations {
-            Some(declarations) => declarations,
+        let decls = match module.decls {
+            Some(decls) => decls,
             None => {
-                let mut path = self.session.shared_map()[module.file]
+                let mut path = self.sess.shared_map()[module.file]
                     .name()
                     .path()
                     .unwrap()
@@ -651,7 +558,7 @@ the body containing a set of constructors
                     .unwrap()
                     .to_owned();
 
-                match attributes.get::<{ AttributeName::Location }>() {
+                match attrs.get::<{ AttrName::Location }>() {
                     Some(location) => {
                         let mut inline_modules = inline_modules.as_slice();
                         _ = inline_modules.take_last();
@@ -668,10 +575,7 @@ the body containing a set of constructors
                 path.set_extension(FILE_EXTENSION);
 
                 // @Task create & use a different API that doesn't "recanonicalize" the path
-                let file = self
-                    .session
-                    .map()
-                    .load(&path, Some(self.session.component().index()));
+                let file = self.sess.map().load(&path, Some(self.sess.comp().idx()));
                 let file = match file {
                     Ok(file) => file,
                     Err(error) => {
@@ -680,8 +584,7 @@ the body containing a set of constructors
                     }
                 };
 
-                let declaration = match syntax::parse_module_file(file, module.binder, self.session)
-                {
+                let decl = match syntax::parse_module_file(file, module.binder, self.sess) {
                     Ok(declaration) => declaration,
                     Err(error) => {
                         self.health.taint(error);
@@ -690,10 +593,10 @@ the body containing a set of constructors
                 };
 
                 // at this point in time, they are still on the module header if at all
-                assert!(declaration.attributes.is_empty());
+                assert!(decl.attrs.is_empty());
 
-                let module: ast::Module = declaration.bare.try_into().unwrap();
-                module.declarations.unwrap()
+                let module: ast::Module = decl.bare.try_into().unwrap();
+                module.decls.unwrap()
             }
         };
 
@@ -703,41 +606,37 @@ the body containing a set of constructors
         };
         inline_modules_for_child.push(module.binder.to_str());
 
-        let mut lowered_declarations = Vec::new();
+        let mut lowered_decls = Vec::new();
         let mut has_header = false;
 
-        for (index, declaration) in declarations.into_iter().enumerate() {
-            if declaration.bare == ast::BareDeclaration::ModuleHeader {
+        for (index, decl) in decls.into_iter().enumerate() {
+            if decl.bare == ast::BareDecl::ModuleHeader {
                 if index == 0 {
                     // @Bug this sequence may lead to some unnecessary diagnostics being emitted
                     // since the "synergy check" (which filters duplicate attribute) is run too late
 
-                    let module_header_attributes = self.lower_attributes(
-                        &declaration.attributes,
-                        &declaration,
-                        ParentDeclarationKind::Module,
-                    );
-                    attributes.0.extend(module_header_attributes.0);
-                    attributes = self.check_attribute_synergy(&attributes);
+                    let module_header_attrs =
+                        self.lower_attrs(&decl.attrs, &decl, ParentDeclarationKind::Module);
+                    attrs.0.extend(module_header_attrs.0);
+                    attrs = self.check_attr_synergy(&attrs);
                 } else {
-                    error::misplaced_module_header(&declaration, has_header).handle(&mut *self);
+                    error::misplaced_module_header(&decl, has_header).handle(&mut *self);
                 }
 
                 has_header = true;
                 continue;
             }
 
-            lowered_declarations
-                .extend(self.lower_declaration_with(declaration, &inline_modules_for_child));
+            lowered_decls.extend(self.lower_decl_with(decl, &inline_modules_for_child));
         }
 
-        lo_ast::Declaration::new(
-            attributes,
+        lo_ast::Decl::new(
+            attrs,
             span,
             lo_ast::Module {
                 binder: module.binder,
                 file: module.file,
-                declarations: lowered_declarations,
+                decls: lowered_decls,
             }
             .into(),
         )
@@ -747,10 +646,10 @@ the body containing a set of constructors
     fn lower_use_declaration(
         &mut self,
         use_: ast::Use,
-        attributes: Attributes,
+        attrs: Attrs,
         span: Span,
-    ) -> SmallVec<lo_ast::Declaration, 1> {
-        let mut declarations = SmallVec::new();
+    ) -> SmallVec<lo_ast::Decl, 1> {
+        let mut decls = SmallVec::new();
 
         'discriminate: {
             match use_.bindings.bare {
@@ -761,19 +660,19 @@ the body containing a set of constructors
                         break 'discriminate;
                     };
 
-                    declarations.push(lo_ast::Declaration::new(
-                        attributes,
+                    decls.push(lo_ast::Decl::new(
+                        attrs,
                         span,
                         lo_ast::Use { binder, target }.into(),
                     ));
                 }
                 ast::BareUsePathTree::Multiple { path, subpaths } => {
-                    self.lower_use_path_tree(&path, subpaths, span, &attributes, &mut declarations);
+                    self.lower_use_path_tree(&path, subpaths, span, &attrs, &mut decls);
                 }
             }
         }
 
-        declarations
+        decls
     }
 
     fn lower_use_path_tree(
@@ -781,8 +680,8 @@ the body containing a set of constructors
         path: &Path,
         subpaths: Vec<ast::UsePathTree>,
         span: Span,
-        attributes: &Attributes,
-        declarations: &mut SmallVec<lo_ast::Declaration, 1>,
+        attrs: &Attrs,
+        decls: &mut SmallVec<lo_ast::Decl, 1>,
     ) {
         for subpath in subpaths {
             match subpath.bare {
@@ -812,8 +711,8 @@ the body containing a set of constructors
                         continue;
                     };
 
-                    declarations.push(lo_ast::Declaration::new(
-                        attributes.clone(),
+                    decls.push(lo_ast::Decl::new(
+                        attrs.clone(),
                         span,
                         lo_ast::Use {
                             binder,
@@ -834,24 +733,21 @@ the body containing a set of constructors
                         }
                     };
 
-                    self.lower_use_path_tree(&path, subpaths, span, attributes, declarations);
+                    self.lower_use_path_tree(&path, subpaths, span, attrs, decls);
                 }
             }
         }
     }
 
-    fn lower_parent_parameters_to_pi_type(
+    fn lower_parent_params_to_pi_ty(
         &mut self,
-        parameters: ast::Parameters,
-        mut type_: lo_ast::Expression,
-    ) -> lo_ast::Expression {
+        params: ast::Params,
+        mut ty: lo_ast::Expr,
+    ) -> lo_ast::Expr {
         // @Task don't type_ctor_params twice (1st here, 2nd in lower_data)
-        for parameter in parameters.into_iter().rev() {
-            let domain = self.lower_parameter_type_with_default(
-                parameter.bare.type_,
-                parameter.bare.kind,
-                parameter.span,
-            );
+        for param in params.into_iter().rev() {
+            let domain =
+                self.lower_param_ty_with_default(param.bare.ty, param.bare.kind, param.span);
 
             // @Task clean up this comment a bit more
             // Even though the parameter might be unnameable by the user due to the use of an
@@ -860,75 +756,65 @@ the body containing a set of constructors
             // If we mapped such parameters to `None`, we would incorrectly claim to the type
             // checker that it is not referenced inside of the type.
             // Thus we need to convert discards or absent binders to actual binders.
-            let binder = match parameter.bare.binder {
-                Some(ast::LocalBinder::Named(binder)) => binder.respan(type_.span),
-                _ => ast::Identifier::new_unchecked(type_.span, Atom::UNDERSCORE),
+            let binder = match param.bare.binder {
+                Some(ast::LocalBinder::Named(binder)) => binder.respan(ty.span),
+                _ => ast::Ident::new_unchecked(ty.span, Atom::UNDERSCORE),
             };
 
-            type_ = lo_ast::Expression::common(
-                type_.span,
-                lo_ast::PiType {
-                    kind: parameter.bare.kind.adjust_for_child(),
+            ty = lo_ast::Expr::common(
+                ty.span,
+                lo_ast::PiTy {
+                    kind: param.bare.kind.adjust_for_child(),
                     binder: Some(binder),
                     domain,
-                    codomain: type_,
+                    codomain: ty,
                 }
                 .into(),
             );
         }
 
-        type_
+        ty
     }
 
-    fn lower_parameters_to_pi_type(
-        &mut self,
-        parameters: ast::Parameters,
-        mut type_: lo_ast::Expression,
-    ) -> lo_ast::Expression {
-        for parameter in parameters.into_iter().rev() {
-            let domain = self.lower_parameter_type_with_default(
-                parameter.bare.type_,
-                parameter.bare.kind,
-                parameter.span,
-            );
+    fn lower_params_to_pi_ty(&mut self, params: ast::Params, mut ty: lo_ast::Expr) -> lo_ast::Expr {
+        for param in params.into_iter().rev() {
+            let domain =
+                self.lower_param_ty_with_default(param.bare.ty, param.bare.kind, param.span);
 
-            type_ = lo_ast::Expression::common(
-                type_.span,
-                lo_ast::PiType {
-                    kind: parameter.bare.kind,
-                    binder: parameter.bare.binder.and_then(ast::LocalBinder::name),
+            ty = lo_ast::Expr::common(
+                ty.span,
+                lo_ast::PiTy {
+                    kind: param.bare.kind,
+                    binder: param.bare.binder.and_then(ast::LocalBinder::name),
                     domain,
-                    codomain: type_,
+                    codomain: ty,
                 }
                 .into(),
             );
         }
 
-        type_
+        ty
     }
 
-    fn lower_parameters_to_lambda_with_default(
+    fn lower_params_to_lambda_with_default(
         &mut self,
-        parameters: ast::Parameters,
-        type_: Option<lo_ast::Expression>,
-        mut body: lo_ast::Expression,
-    ) -> lo_ast::Expression {
-        let mut type_ = type_.into_iter();
+        params: ast::Params,
+        ty: Option<lo_ast::Expr>,
+        mut body: lo_ast::Expr,
+    ) -> lo_ast::Expr {
+        let mut ty = ty.into_iter();
 
-        for parameter in parameters.into_iter().rev() {
-            let domain = self.lower_parameter_type_with_default(
-                parameter.bare.type_,
-                parameter.bare.kind,
-                parameter.span,
-            );
+        for param in params.into_iter().rev() {
+            let domain =
+                self.lower_param_ty_with_default(param.bare.ty, param.bare.kind, param.span);
 
-            body = lo_ast::Expression::common(
-                parameter.span,
-                lo_ast::Lambda {
-                    kind: parameter.bare.kind,
-                    binder: parameter.bare.binder.and_then(LocalBinder::name),
+            body = lo_ast::Expr::common(
+                param.span,
+                lo_ast::LamLit {
+                    kind: param.bare.kind,
+                    binder: param.bare.binder.and_then(LocalBinder::name),
                     domain: Some(domain),
-                    codomain: type_.next(),
+                    codomain: ty.next(),
                     body,
                 }
                 .into(),
@@ -938,27 +824,24 @@ the body containing a set of constructors
         body
     }
 
-    fn lower_parameters_to_lambda(
+    fn lower_params_to_lambda(
         &mut self,
-        parameters: ast::Parameters,
-        type_: Option<lo_ast::Expression>,
-        mut body: lo_ast::Expression,
-    ) -> lo_ast::Expression {
-        let mut type_ = type_.into_iter();
+        params: ast::Params,
+        ty: Option<lo_ast::Expr>,
+        mut body: lo_ast::Expr,
+    ) -> lo_ast::Expr {
+        let mut ty = ty.into_iter();
 
-        for parameter in parameters.into_iter().rev() {
-            let domain = parameter
-                .bare
-                .type_
-                .map(|type_| self.lower_expression(type_));
+        for param in params.into_iter().rev() {
+            let domain = param.bare.ty.map(|ty| self.lower_expr(ty));
 
-            body = lo_ast::Expression::common(
-                parameter.span,
-                lo_ast::Lambda {
-                    kind: parameter.bare.kind,
-                    binder: parameter.bare.binder.and_then(LocalBinder::name),
+            body = lo_ast::Expr::common(
+                param.span,
+                lo_ast::LamLit {
+                    kind: param.bare.kind,
+                    binder: param.bare.binder.and_then(LocalBinder::name),
                     domain,
-                    codomain: type_.next(),
+                    codomain: ty.next(),
                     body,
                 }
                 .into(),
@@ -969,14 +852,10 @@ the body containing a set of constructors
     }
 }
 
-fn synthesize_constructee(
-    binder: ast::Identifier,
-    parameters: &ast::Parameters,
-    span: Span,
-) -> lo_ast::Expression {
+fn synthesize_constructee(binder: ast::Ident, params: &ast::Params, span: Span) -> lo_ast::Expr {
     // Prefixing the type constructor with `self.` to prevent the (unlikely) case of
     // a parameter shadowing it.
-    let mut type_ = lo_ast::Expression::common(
+    let mut ty = lo_ast::Expr::common(
         span,
         ast::Path::hung(
             ast::Hanger::new(span, ast::BareHanger::Self_),
@@ -985,27 +864,27 @@ fn synthesize_constructee(
         .into(),
     );
 
-    for (level, parameter) in parameters.iter().enumerate() {
-        type_ = lo_ast::Expression::common(
-            type_.span,
-            lo_ast::Application {
-                kind: parameter.bare.kind,
-                argument: lo_ast::Expression::common(
-                    type_.span,
-                    match parameter.bare.binder {
+    for (level, param) in params.iter().enumerate() {
+        ty = lo_ast::Expr::common(
+            ty.span,
+            lo_ast::App {
+                kind: param.bare.kind,
+                arg: lo_ast::Expr::common(
+                    ty.span,
+                    match param.bare.binder {
                         Some(ast::LocalBinder::Named(binder)) => {
-                            Path::from(binder.respan(type_.span)).into()
+                            Path::from(binder.respan(ty.span)).into()
                         }
                         _ => DeBruijnLevel(level).into(),
                     },
                 ),
-                callee: type_,
+                callee: ty,
             }
             .into(),
         );
     }
 
-    type_
+    ty
 }
 
 /// The path of inline module declarations leading to a declaration.
@@ -1043,12 +922,8 @@ mod error {
     use diagnostics::Substitution;
     use span::SourceMap;
 
-    pub(super) fn misplaced_declaration(
-        name: &str,
-        span: Span,
-        parent: Spanned<Atom>,
-    ) -> Diagnostic {
-        Diagnostic::error()
+    pub(super) fn misplaced_declaration(name: &str, span: Span, parent: Spanned<Atom>) -> Diag {
+        Diag::error()
             .message(format!(
                 "{name} may not appear inside of a {parent} declaration",
             ))
@@ -1056,11 +931,8 @@ mod error {
             .label(parent, format!("the enclosing {parent} declaration"))
     }
 
-    pub(super) fn misplaced_module_header(
-        header: &ast::Declaration,
-        duplicate: bool,
-    ) -> Diagnostic {
-        let it = Diagnostic::error()
+    pub(super) fn misplaced_module_header(header: &ast::Decl, duplicate: bool) -> Diag {
+        let it = Diag::error()
             .code(ErrorCode::E041)
             .message("the module header has to be the first declaration of the module")
             .unlabeled_span(header);
@@ -1074,20 +946,16 @@ mod error {
         }
     }
 
-    pub(super) fn misplaced_path_hanger(hanger: ast::Hanger) -> Diagnostic {
-        Diagnostic::error()
+    pub(super) fn misplaced_path_hanger(hanger: ast::Hanger) -> Diag {
+        Diag::error()
             .code(ErrorCode::E026)
             .message(format!("path ‘{hanger}’ not allowed in this position"))
             .unlabeled_span(hanger)
             .help("consider moving this path to a separate use-declaration")
     }
 
-    pub(super) fn missing_body(
-        binder: ast::Identifier,
-        span: Span,
-        substitution: Substitution,
-    ) -> Diagnostic {
-        Diagnostic::error()
+    pub(super) fn missing_body(binder: ast::Ident, span: Span, substitution: Substitution) -> Diag {
+        Diag::error()
             .code(ErrorCode::E012)
             .message(format!("the declaration ‘{binder}’ does not have a body"))
             .span(span, "missing definition")
@@ -1099,15 +967,15 @@ mod error {
     }
 
     // @Task dedup w/ `missing_body` (E012)
-    pub(super) fn missing_field_body(field: &ast::Function) -> Diagnostic {
+    pub(super) fn missing_field_body(field: &ast::Func) -> Diag {
         let span = field
             .binder
             .span()
-            .fit_end(&field.parameters)
-            .fit_end(&field.type_)
+            .fit_end(&field.params)
+            .fit_end(&field.ty)
             .end();
 
-        Diagnostic::error()
+        Diag::error()
             .message(format!("the field `{}` does not have a body", field.binder))
             .span(span, "missing definition")
             .suggest(
@@ -1117,12 +985,8 @@ mod error {
             )
     }
 
-    pub(super) fn missing_type_annotation(
-        kind: &str,
-        binder: ast::Identifier,
-        span: Span,
-    ) -> Diagnostic {
-        Diagnostic::error()
+    pub(super) fn missing_type_annotation(kind: &str, binder: ast::Ident, span: Span) -> Diag {
+        Diag::error()
             .code(ErrorCode::E015)
             .message(format!(
                 "the {kind} ‘{binder}’ does not have a type annotation"
@@ -1136,14 +1000,14 @@ mod error {
     }
 
     pub(super) fn module_loading_failure(
-        module: &ast::Identifier,
+        module: &ast::Ident,
         span: Span,
         path: std::path::PathBuf,
         cause: std::io::Error,
-    ) -> Diagnostic {
+    ) -> Diag {
         // @Task instead of a note saying the error, print a help message
         // saying to create the missing file or change the access rights etc.
-        Diagnostic::error()
+        Diag::error()
             .code(ErrorCode::E016)
             .message(format!("could not load the module ‘{module}’"))
             .path(path)
@@ -1152,42 +1016,42 @@ mod error {
     }
 
     pub(super) fn parametrized_record_field(
-        binder: ast::Identifier,
-        type_: Option<&ast::Expression>,
+        binder: ast::Ident,
+        ty: Option<&ast::Expr>,
         span: Span,
         map: &SourceMap,
-    ) -> Diagnostic {
+    ) -> Diag {
         // @Task use a multi-part suggestion here once they are available
 
-        let substitution = Substitution::from(": For ")
+        let subst = Substitution::from(": For ")
             .str(map.snippet(span).to_owned())
             .str(" -> ");
 
-        Diagnostic::error()
+        Diag::error()
             .message("record fields may not have parameters")
             .unlabeled_span(span)
             .suggest(
                 binder
                     .span()
                     .end()
-                    .merge(&type_.possible_span().map_or(span, Span::start)),
+                    .merge(&ty.possible_span().map_or(span, Span::start)),
                 "move the parameters to a function type",
-                if type_.is_some() {
-                    substitution
+                if ty.is_some() {
+                    subst
                 } else {
-                    substitution.placeholder("Type")
+                    subst.placeholder("Type")
                 },
             )
     }
 
-    pub(super) fn unexpected_body(kind: &str, function: &ast::Function, body: Span) -> Diagnostic {
+    pub(super) fn unexpected_body(kind: &str, func: &ast::Func, body: Span) -> Diag {
         // The body span including the span of the preceeding `=`
         let span = body
-            .merge_into(&function.binder.span().end())
-            .merge_into(&function.parameters.possible_span().map(Span::end))
-            .merge_into(&function.type_.possible_span().map(Span::end));
+            .merge_into(&func.binder.span().end())
+            .merge_into(&func.params.possible_span().map(Span::end))
+            .merge_into(&func.ty.possible_span().map(Span::end));
 
-        Diagnostic::error()
+        Diag::error()
             .message(format!("{kind} may not have a body"))
             .span(span, "unexpected body")
     }
@@ -1195,26 +1059,26 @@ mod error {
     pub(super) fn unexpected_body_for_intrinsic(
         span: Span,
         label: &'static str,
-        attribute: Span,
-    ) -> Diagnostic {
-        Diagnostic::error()
+        attr: Span,
+    ) -> Diag {
+        Diag::error()
             .code(ErrorCode::E042)
             .message("intrinsic declarations may not have a body")
             .span(span, label)
             .label(
-                attribute,
+                attr,
                 "marks the declaration as being defined outside of the language",
             )
     }
 
-    pub(super) fn unnamed_path_hanger(hanger: ast::Hanger) -> Diagnostic {
+    pub(super) fn unnamed_path_hanger(hanger: ast::Hanger) -> Diag {
         // @Task improve the message for `use topmost.(self)`: hint that `self`
         // is effectively unnamed because `topmost` is unnamed
         // @Task the message is even worse (it is misleading!) with `use extern.(self)`
         // currently leads to the suggestion to bind `self` to an identifier but
         // for `extern` that is invalid, too
 
-        Diagnostic::error()
+        Diag::error()
             .code(ErrorCode::E025)
             .message(format!("the path ‘{hanger}’ is not bound to a name"))
             .unlabeled_span(hanger)

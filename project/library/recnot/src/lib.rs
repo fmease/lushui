@@ -9,8 +9,8 @@
 //! * text escape sequences
 //! * negative numbers
 use derivation::Discriminant;
-use diagnostics::{error::Result, reporter::ErasedReportedError, Diagnostic, ErrorCode, Reporter};
-use span::{SourceFileIndex, SourceMap, Span, Spanned, Spanning, WeaklySpanned};
+use diagnostics::{error::Result, reporter::ErasedReportedError, Diag, ErrorCode, Reporter};
+use span::{SourceMap, Span, Spanned, Spanning, SrcFileIdx, WeaklySpanned};
 use std::{fmt, sync::RwLock};
 use utility::{obtain, HashMap};
 
@@ -21,14 +21,14 @@ pub mod lexer;
 pub type Value = Spanned<BareValue>;
 pub type Record<K = String, V = Value> = HashMap<WeaklySpanned<K>, V>;
 
-pub fn parse(file: SourceFileIndex, map: &RwLock<SourceMap>, reporter: &Reporter) -> Result<Value> {
+pub fn parse(file: SrcFileIdx, map: &RwLock<SourceMap>, rep: &Reporter) -> Result<Value> {
     let tokens = lexer::lex(&map.read().unwrap()[file], &lexer::Options::default());
-    parser::parse(tokens, file, map, reporter)
+    parser::parse(tokens, file, map, rep)
 }
 
 #[derive(Debug, Discriminant)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
-#[discriminant(type_: Type)]
+#[discriminant(ty: Type)]
 pub enum BareValue {
     Boolean(bool),
     Integer(i64),
@@ -47,11 +47,11 @@ impl TryFrom<BareValue> for bool {
     type Error = TypeError;
 
     fn try_from(value: BareValue) -> Result<Self, Self::Error> {
-        let type_ = value.type_();
+        let ty = value.ty();
 
         obtain!(value, BareValue::Boolean(value) => value).ok_or(TypeError {
             expected: Type::Boolean,
-            actual: type_,
+            actual: ty,
         })
     }
 }
@@ -66,11 +66,11 @@ impl TryFrom<BareValue> for i64 {
     type Error = TypeError;
 
     fn try_from(value: BareValue) -> Result<Self, Self::Error> {
-        let type_ = value.type_();
+        let ty = value.ty();
 
         obtain!(value, BareValue::Integer(value) => value).ok_or(TypeError {
             expected: Type::Integer,
-            actual: type_,
+            actual: ty,
         })
     }
 }
@@ -91,11 +91,11 @@ impl TryFrom<BareValue> for String {
     type Error = TypeError;
 
     fn try_from(value: BareValue) -> Result<Self, Self::Error> {
-        let type_ = value.type_();
+        let ty = value.ty();
 
         obtain!(value, BareValue::Text(value) => value).ok_or(TypeError {
             expected: Type::Text,
-            actual: type_,
+            actual: ty,
         })
     }
 }
@@ -116,11 +116,11 @@ impl TryFrom<BareValue> for Vec<Value> {
     type Error = TypeError;
 
     fn try_from(value: BareValue) -> Result<Self, Self::Error> {
-        let type_ = value.type_();
+        let ty = value.ty();
 
         obtain!(value, BareValue::List(value) => value).ok_or(TypeError {
             expected: Type::List,
-            actual: type_,
+            actual: ty,
         })
     }
 }
@@ -135,11 +135,11 @@ impl TryFrom<BareValue> for Record {
     type Error = TypeError;
 
     fn try_from(value: BareValue) -> Result<Self, Self::Error> {
-        let type_ = value.type_();
+        let ty = value.ty();
 
         obtain!(value, BareValue::Record(value) => value).ok_or(TypeError {
             expected: Type::Record,
-            actual: type_,
+            actual: ty,
         })
     }
 }
@@ -193,7 +193,7 @@ impl<T> WithTextContentSpanExt for Spanned<T> {
 
 pub fn convert<T: TryFrom<BareValue, Error = TypeError>>(
     value: Value,
-    reporter: &Reporter,
+    rep: &Reporter,
 ) -> Result<Spanned<T>> {
     Ok(Spanned::new(
         value.span,
@@ -201,25 +201,25 @@ pub fn convert<T: TryFrom<BareValue, Error = TypeError>>(
             .bare
             .try_into()
             .map_err(|TypeError { expected, actual }| {
-                Diagnostic::error()
+                Diag::error()
                     .code(ErrorCode::E800)
                     .message(format!(
                         "expected type ‘{expected}’ but got type ‘{actual}’",
                     ))
                     .span(value.span, "has the wrong type")
-                    .report(reporter)
+                    .report(rep)
             })?,
     ))
 }
 
 pub struct RecordWalker<'r> {
     record: Spanned<Record>,
-    reporter: &'r Reporter,
+    rep: &'r Reporter,
 }
 
 impl<'r> RecordWalker<'r> {
-    pub fn new(record: Spanned<Record>, reporter: &'r Reporter) -> Self {
-        Self { record, reporter }
+    pub fn new(record: Spanned<Record>, rep: &'r Reporter) -> Self {
+        Self { record, rep }
     }
 
     pub fn take<T>(&mut self, key: &str) -> Result<Spanned<T>>
@@ -227,12 +227,12 @@ impl<'r> RecordWalker<'r> {
         T: TryFrom<BareValue, Error = TypeError>,
     {
         match self.record.bare.remove(key) {
-            Some(value) => convert(value, self.reporter),
-            None => Err(Diagnostic::error()
+            Some(value) => convert(value, self.rep),
+            None => Err(Diag::error()
                 .code(ErrorCode::E802)
                 .message(format!("the record does not contain the entry ‘{key}’"))
                 .unlabeled_span(&self.record)
-                .report(self.reporter)),
+                .report(self.rep)),
         }
     }
 
@@ -241,7 +241,7 @@ impl<'r> RecordWalker<'r> {
         T: TryFrom<BareValue, Error = TypeError>,
     {
         match self.record.bare.remove(key) {
-            Some(value) => convert(value, self.reporter).map(Some),
+            Some(value) => convert(value, self.rep).map(Some),
             None => Ok(None),
         }
     }
@@ -250,11 +250,11 @@ impl<'r> RecordWalker<'r> {
         if !self.record.bare.is_empty() {
             for key in self.record.bare.into_keys() {
                 // @Question should we use the "unknown" terminology?
-                Diagnostic::error()
+                Diag::error()
                     .code(ErrorCode::E801)
                     .message(format!("the record contains the unknown entry ‘{key}’"))
                     .unlabeled_span(key)
-                    .report(self.reporter);
+                    .report(self.rep);
             }
 
             return Err(ErasedReportedError::new_unchecked());

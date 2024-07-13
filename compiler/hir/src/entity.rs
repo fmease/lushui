@@ -1,7 +1,4 @@
-use crate::{
-    special, Attributes, DeclarationIndex, Exposure, Expression, Identifier, LocalDeclarationIndex,
-    Namespace, ValueView,
-};
+use crate::{special, Attrs, DeclIdx, Exposure, Expr, Ident, LocalDeclIdx, Namespace, ValueView};
 use diagnostics::{error::PossiblyErroneous, reporter::ErasedReportedError};
 use utility::default;
 use utility::obtain;
@@ -22,12 +19,12 @@ use utility::obtain;
 #[derive(Clone)]
 pub struct Entity {
     /// Source information of the definition site.
-    pub source: ast::Identifier,
+    pub src: ast::Ident,
     /// The namespace this entity is a member of.
-    // @Question should we make this a DeclarationIndex?
-    pub parent: Option<LocalDeclarationIndex>,
-    pub exposure: Exposure,
-    pub attributes: Attributes,
+    // @Question should we make this a DeclIdx?
+    pub parent: Option<LocalDeclIdx>,
+    pub exp: Exposure,
+    pub attrs: Attrs,
     pub kind: EntityKind,
 }
 
@@ -35,31 +32,31 @@ impl Entity {
     pub const fn is_untyped(&self) -> bool {
         matches!(
             self.kind,
-            UntypedFunction | UntypedDataType { .. } | UntypedConstructor { .. }
+            FuncUntyped | DataTyUntyped { .. } | CtorUntyped { .. }
         )
     }
 
     /// Test if the entity is a (typed or untyped) function.
-    pub const fn is_function(&self) -> bool {
-        matches!(self.kind, UntypedFunction | Function { .. })
+    pub const fn is_func(&self) -> bool {
+        matches!(self.kind, FuncUntyped | Func { .. })
     }
 
     /// Test if the entity is a (typed or untyped) data type.
-    pub const fn is_data_type(&self) -> bool {
-        matches!(self.kind, UntypedDataType { .. } | DataType { .. })
+    pub const fn is_data_ty(&self) -> bool {
+        matches!(self.kind, DataTyUntyped { .. } | DataTy { .. })
     }
 
     /// Test if the entity is a (typed or untyped) constructor.
-    pub const fn is_constructor(&self) -> bool {
-        matches!(self.kind, UntypedConstructor { .. } | Constructor { .. })
+    pub const fn is_ctor(&self) -> bool {
+        matches!(self.kind, CtorUntyped { .. } | Ctor { .. })
     }
 
     pub const fn is_module(&self) -> bool {
         matches!(self.kind, Module { .. })
     }
 
-    pub const fn is_intrinsic_function(&self) -> bool {
-        matches!(self.kind, IntrinsicFunction { .. })
+    pub const fn is_intr_func(&self) -> bool {
+        matches!(self.kind, FuncIntr { .. })
     }
 
     pub const fn is_error(&self) -> bool {
@@ -67,15 +64,15 @@ impl Entity {
     }
 
     pub const fn is_namespace(&self) -> bool {
-        self.is_module() || self.is_data_type()
+        self.is_module() || self.is_data_ty()
     }
 
     pub const fn namespace(&self) -> Option<&Namespace> {
         obtain!(
             &self.kind,
             Module { namespace }
-            | UntypedDataType { namespace }
-            | DataType { namespace, .. } => namespace,
+            | DataTyUntyped { namespace }
+            | DataTy { namespace, .. } => namespace,
         )
     }
 
@@ -83,28 +80,28 @@ impl Entity {
         obtain!(
             &mut self.kind,
             Module { namespace }
-            | UntypedDataType { namespace }
-            | DataType { namespace, .. } => namespace,
+            | DataTyUntyped { namespace }
+            | DataTy { namespace, .. } => namespace,
         )
     }
 
-    pub const fn is_bodiless_function(&self) -> bool {
+    pub const fn is_bodiless_fn(&self) -> bool {
         matches!(
             self.kind,
-            Function {
+            Func {
                 expression: None,
                 ..
             }
         )
     }
 
-    pub fn type_(&self) -> Option<Expression> {
+    pub fn ty(&self) -> Option<Expr> {
         obtain!(
             &self.kind,
-            Function { type_, .. } |
-            DataType { type_, .. } |
-            Constructor { type_, .. } |
-            IntrinsicFunction { type_, .. } => type_.clone(),
+            Func { ty, .. } |
+            DataTy { ty, .. } |
+            Ctor { ty, .. } |
+            FuncIntr { ty, .. } => ty.clone(),
         )
     }
 
@@ -117,23 +114,23 @@ impl Entity {
     /// not ready yet.
     pub fn value(&self) -> ValueView {
         match &self.kind {
-            Function {
+            Func {
                 expression: Some(expression),
                 ..
             } => ValueView::Reducible(expression.clone()),
-            Function {
+            Func {
                 expression: None, ..
             }
             | Error(_)
-            | DataType { .. }
-            | Constructor { .. }
-            | IntrinsicFunction { .. } => ValueView::Neutral,
-            UntypedFunction
-            | UntypedDataType { .. }
-            | UntypedConstructor { .. }
+            | DataTy { .. }
+            | Ctor { .. }
+            | FuncIntr { .. } => ValueView::Neutral,
+            FuncUntyped
+            | DataTyUntyped { .. }
+            | CtorUntyped { .. }
             | Module { .. }
             | Use { .. }
-            | UnresolvedUse => unreachable!(),
+            | UseUnres => unreachable!(),
         }
     }
 }
@@ -142,40 +139,44 @@ use EntityKind::*;
 
 #[derive(Clone)]
 pub enum EntityKind {
-    UntypedFunction,
+    Func {
+        ty: Expr,
+        expression: Option<Expr>,
+    },
+    FuncUntyped,
+    FuncIntr {
+        func: special::Func,
+        ty: Expr,
+    },
+
+    DataTy {
+        namespace: Namespace,
+        ty: Expr,
+        // @Question should we store them at all?
+        ctors: Vec<Ident>,
+    },
+    /// Data types are not [`Self::FuncUntyped`] as they are also namespaces containing constructors.
+    DataTyUntyped {
+        namespace: Namespace,
+    },
+
     Module {
         namespace: Namespace,
     },
-    /// Data types are not [`Self::UntypedFunction`] as they are also namespaces containing constructors.
-    UntypedDataType {
-        namespace: Namespace,
+
+    Ctor {
+        ty: Expr,
     },
-    UntypedConstructor,
+    CtorUntyped,
+
     /// The `target` is never a `Use` itself.
     ///
     /// Nested aliases were already collapsed by `Resolver::collapse_use_chain`.
     Use {
-        target: DeclarationIndex,
+        target: DeclIdx,
     },
-    UnresolvedUse,
+    UseUnres,
 
-    Function {
-        type_: Expression,
-        expression: Option<Expression>,
-    },
-    DataType {
-        namespace: Namespace,
-        type_: Expression,
-        // @Question should we store them at all?
-        constructors: Vec<Identifier>,
-    },
-    Constructor {
-        type_: Expression,
-    },
-    IntrinsicFunction {
-        function: special::Function,
-        type_: Expression,
-    },
     Error(ErasedReportedError),
 }
 
@@ -186,8 +187,8 @@ impl EntityKind {
         }
     }
 
-    pub fn untyped_data_type() -> Self {
-        UntypedDataType {
+    pub fn untyped_data_ty() -> Self {
+        DataTyUntyped {
             namespace: default(),
         }
     }
@@ -195,11 +196,11 @@ impl EntityKind {
     /// The user-facing name of the entity kind.
     pub const fn name(&self) -> &'static str {
         match self {
-            UntypedFunction | Function { .. } | IntrinsicFunction { .. } => "function",
+            FuncUntyped | Func { .. } | FuncIntr { .. } => "function",
             Module { .. } => "module",
-            UntypedDataType { .. } | DataType { .. } => "data type",
-            UntypedConstructor | Constructor { .. } => "constructor",
-            Use { .. } | UnresolvedUse => "use-binding",
+            DataTyUntyped { .. } | DataTy { .. } => "data type",
+            CtorUntyped | Ctor { .. } => "constructor",
+            Use { .. } | UseUnres => "use-binding",
             Error(_) => "error",
         }
     }
@@ -208,16 +209,16 @@ impl EntityKind {
     // // @Task derive this with `#[derive(DiscriminantStr)] #[format(space_case)]` (sth like that)
     pub const fn precise_name(&self) -> &'static str {
         match self {
-            UntypedFunction => "untyped function",
+            FuncUntyped => "func untyped",
             Module { .. } => "module",
-            UntypedDataType { .. } => "untyped data type",
-            UntypedConstructor => "untyped constructor",
+            DataTyUntyped { .. } => "data ty untyped",
+            CtorUntyped => "ctor untyped",
             Use { .. } => "use",
-            UnresolvedUse => "unresolved use",
-            Function { .. } => "function",
-            DataType { .. } => "data type",
-            Constructor { .. } => "constructor",
-            IntrinsicFunction { .. } => "intrinsic function",
+            UseUnres => "use unres",
+            Func { .. } => "func",
+            DataTy { .. } => "data ty",
+            Ctor { .. } => "ctor",
+            FuncIntr { .. } => "func intr",
             Error(_) => "error",
         }
     }

@@ -28,14 +28,8 @@ pub enum Value {
     Int(Int),
     Int32(i32),
     Int64(i64),
-    Option {
-        type_: Type,
-        value: Option<Box<Value>>,
-    },
-    IO {
-        index: usize,
-        arguments: Vec<Value>,
-    },
+    Option { ty: Type, value: Option<Box<Value>> },
+    IO { index: usize, args: Vec<Value> },
 }
 
 /// Rust types that can be mapped to interfaceable lushui types.
@@ -43,7 +37,7 @@ pub enum Value {
 /// This trait is not strictly necessary but it makes defining intrinsic functions on
 /// the Rust side much more ergonomic!
 pub(crate) trait IntoValue {
-    fn into_type() -> Type;
+    fn into_ty() -> Type;
     fn into_value(self) -> Value;
 }
 
@@ -53,15 +47,15 @@ impl<V: IntoValue> From<V> for Value {
     }
 }
 
-macro simple_value_correspondence($( $rust_type:ty => $lushui_type:ident ),+ $(,)?) {
+macro simple_value_correspondence($( $rust_ty:ty => $lushui_ty:ident ),+ $(,)?) {
     $(
-        impl IntoValue for $rust_type {
-            fn into_type() -> Type {
-                Type::$lushui_type
+        impl IntoValue for $rust_ty {
+            fn into_ty() -> Type {
+                Type::$lushui_ty
             }
 
             fn into_value(self) -> Value {
-                Value::$lushui_type(self)
+                Value::$lushui_ty(self)
             }
         }
     )+
@@ -79,7 +73,7 @@ simple_value_correspondence! {
 }
 
 impl IntoValue for () {
-    fn into_type() -> Type {
+    fn into_ty() -> Type {
         Type::Unit
     }
 
@@ -89,13 +83,13 @@ impl IntoValue for () {
 }
 
 impl<V: IntoValue> IntoValue for Option<V> {
-    fn into_type() -> Type {
-        Type::Option(Box::new(V::into_type()))
+    fn into_ty() -> Type {
+        Type::Option(Box::new(V::into_ty()))
     }
 
     fn into_value(self) -> Value {
         Value::Option {
-            type_: V::into_type(),
+            ty: V::into_ty(),
             value: self.map(|value| Box::new(value.into())),
         }
     }

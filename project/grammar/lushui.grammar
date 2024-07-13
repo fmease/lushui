@@ -31,11 +31,11 @@ Path ::= Path-Head ("." Identifier)*
 Path-Head ::= Path-Hanger | Identifier
 Path-Hanger ::= "extern" | "topmost" | "super" | "self"
 
-Parameters ::= Parameter*
-Parameter ::=
+Params ::= Param*
+Param ::=
     | "'"? Local-Binder
     | "'"? (Local-Binder Type-Annotation? ")"
-    | "[" (Local-Binder ":")? Expression "]"
+    | "[" (Local-Binder ":")? Expr "]"
 
 Sequence-Literal-Or-Bracketed-⟪Item⟫ ::= (Path ".")? "(" (⟪Item⟫ ",")* ")"
 
@@ -58,14 +58,14 @@ Path-Or-Namespaced-⟪Item⟫-Literal ::= Path ("." ⟪Item⟫-Literal)?
     | Sequence-Literal-⟪Item⟫
     | Record-Literal-⟪Item⟫
 
-Type-Annotation ::= ":" Expression
+Type-Annotation ::= ":" Expr
 
-Attribute ::= Regular-Attribute | #Documentation-Comment
+Attr ::= Regular-Attr | #Documentation-Comment
 
-Regular-Attribute ::= "@" (#Word | "(" #Word Attribute-Argument* ")")
+Regular-Attr ::= "@" (#Word | "(" #Word Attr-Argument* ")")
 
-Attribute-Argument ::= Lower-Attribute-Argument | "(" #Word Lower-Attribute-Argument ")"
-Lower-Attribute-Argument ::= Path | #Number-Literal | #Text-Literal
+Attr-Argument ::= Lower-Attr-Argument | "(" #Word Lower-Attr-Argument ")"
+Lower-Attr-Argument ::= Path | #Number-Literal | #Text-Literal
 
 Identifier ::= #Word | #Symbol
 
@@ -81,78 +81,78 @@ Wildcard ::= Silent-Wildcard | Signaling-Wildcard
 Silent-Wildcard ::= "_"
 Signaling-Wildcard ::= "?" #Word
 
-⟪⟪ Item ::= "Expression" | "Pattern" ⟫⟫
+⟪⟪ Item ::= "Expr" | "Pat" ⟫⟫
 
-Top-Level ::= (#Line-Break | Declaration)* #End-Of-Input
+Top-Level ::= (#Line-Break | Decl)* #End-Of-Input
 
-Declaration ::= (Attribute #Line-Break*)* Bare-Declaration
-Bare-Declaration ::=
-    | Function-Declaration
-    | Data-Declaration
-    | Module-Declaration
-    | Use-Declaration
-    | Given-Declaration
+Decl ::= (Attr #Line-Break*)* Bare-Decl
+Bare-Decl ::=
+    | Function-Decl
+    | Data-Decl
+    | Module-Decl
+    | Use-Decl
+    | Given-Decl
 
-Function-Declaration ::=
+Function-Decl ::=
     #Word
-    Parameters Type-Annotation?
-    ("=" Expression)?
+    Params Type-Annotation?
+    ("=" Expr)?
     Terminator
 
-Data-Declaration ::=
+Data-Decl ::=
     Data-Kind
     #Word
-    Parameters Type-Annotation?
-    ("of" (#Indentation (Terminator | Declaration)* #Dedentation)?)?
+    Params Type-Annotation?
+    ("of" (#Indentation (Terminator | Decl)* #Dedentation)?)?
     Terminator
 Data-Kind ::= "data" | "record" | "trait"
 
-Module-Declaration ::=
+Module-Decl ::=
     | Module-Header
-    | "module" #Word ("of" (#Indentation (Terminator | Declaration)* #Dedentation)?)? Terminator
+    | "module" #Word ("of" (#Indentation (Terminator | Decl)* #Dedentation)?)? Terminator
 Module-Header ::= "module" Terminator
 
-Use-Declaration ::= "use" Use-Path-Tree Terminator
+Use-Decl ::= "use" Use-Path-Tree Terminator
 
-Given-Declaration ::=
+Given-Decl ::=
     "given"
     #Word
-    Parameters Type-Annotation?
+    Params Type-Annotation?
     Given-Body?
     Terminator
 Given-Body ::=
-    | "of" (#Indentation (Terminator | Declaration)* #Dedentation)?
-    | "=" Expression
+    | "of" (#Indentation (Terminator | Decl)* #Dedentation)?
+    | "=" Expr
 
-Expression ::= Shorthand-Quantified-Type-Or-Lower
+Expr ::= Shorthand-Quantified-Type-Or-Lower
 
 ; Among other things, the grammar for pretty printers differs from the one for parsers
 ; in that `Shorthand-Quantified-Type-Or-Lower` also includes several complex (in the sense of
-; containing further expressions) `Lower-Expression`s namely let- and use-bindings, lambda literals,
+; containing further expressions) `Lower-Expr`s namely let- and use-bindings, lambda literals,
 ; case analyses and do blocks.
 ;
 Shorthand-Quantified-Type-Or-Lower ::=
-    Application-Expression-Or-Lower
+    Application-Expr-Or-Lower
     Quantifier
     Shorthand-Quantified-Type-Or-Lower
 Quantifier ::= "->" | "**"
 
-Application-Expression-Or-Lower ::= Lower-Expression Expression-Argument*
-Expression-Argument ::=
+Application-Expr-Or-Lower ::= Lower-Expr Expr-Argument*
+Expr-Argument ::=
     "'"?
-    (Lower-Expression | "(" (#Word "=")? Expression ")")
+    (Lower-Expr | "(" (#Word "=")? Expr ")")
 
 ; ; The left-recursive version of the rule above is unsuitable for a recursive descent parser.
 ; ; However, it is usable for pretty printers.
 ;
-; Application-Expression-Or-Lower ::= Application-Expression-Or-Lower? Expression-Argument*
-; Expression-Argument ::=
-;     | Lower-Expression
-;     | "'"? "(" (#Word "=")? Expression ")"
+; Application-Expr-Or-Lower ::= Application-Expr-Or-Lower? Expr-Argument*
+; Expr-Argument ::=
+;     | Lower-Expr
+;     | "'"? "(" (#Word "=")? Expr ")"
 
-Lower-Expression ::= Attribute* Bare-Lower-Expression
-Bare-Lower-Expression ::= Lowest-Expression ("::" Identifier)*
-Lowest-Expression ::=
+Lower-Expr ::= Attr* Bare-Lower-Expr
+Bare-Lower-Expr ::= Lowest-Expr ("::" Identifier)*
+Lowest-Expr ::=
     | Wildcard
     | #Number-Literal
     | #Text-Literal
@@ -162,51 +162,51 @@ Lowest-Expression ::=
     | Case-Analysis
     | Do-Block
     | Quantified-Type
-    | Sequence-Literal-Or-Bracketed-Expression
-    | Record-Literal-Expression
-    | Path-Or-Namespaced-Expression-Literal
+    | Sequence-Literal-Or-Bracketed-Expr
+    | Record-Literal-Expr
+    | Path-Or-Namespaced-Expr-Literal
 
-Lambda-Literal ::= "for" Parameters Type-Annotation? "=>" Expression
+Lambda-Literal ::= "for" Params Type-Annotation? "=>" Expr
 
-Quantified-Type ::= "For" Parameter* Quantifier Expression
+Quantified-Type ::= "For" Param* Quantifier Expr
 
 Let-Binding ::=
-    "let" Local-Binder Parameters Type-Annotation?
-    ("=" Expression)?
+    "let" Local-Binder Params Type-Annotation?
+    ("=" Expr)?
     #Line-Break?
-    "in" Expression
+    "in" Expr
 
 Use-Binding ::=
     "use" Use-Path-Tree
     #Line-Break?
-    "in" Expression
+    "in" Expr
 
-Case-Analysis ::= "case" Expression "of" (#Indentation Case* #Dedentation)?
-Case ::= Pattern "=>" Expression Terminator
+Case-Analysis ::= "case" Expr "of" (#Indentation Case* #Dedentation)?
+Case ::= Pat "=>" Expr Terminator
 
 Do-Block ::= "do" #Indentation Statement* #Dedentation
-Statement ::= Let-Statement | Use-Declaration | Expression-Statement
+Statement ::= Let-Statement | Use-Decl | Expr-Statement
 Let-Statement ::=
-    "let" Local-Binder Parameter* Type-Annotation?
+    "let" Local-Binder Param* Type-Annotation?
     Binding-Mode
-    Expression Terminator
-Expression-Statement ::= Expression Terminator
+    Expr Terminator
+Expr-Statement ::= Expr Terminator
 Binding-Mode ::=  "=" | "<-"
 
-Pattern ::=
+Pat ::=
     | Binder
-    | Lower-Pattern Pattern-Argument*
+    | Lower-Pat Pat-Argument*
 Binder ::= "let" Local-Binder
-Pattern-Argument ::=
+Pat-Argument ::=
     "'"?
-    (Lower-Pattern | "(" (#Word "=")? Pattern ")")
+    (Lower-Pat | "(" (#Word "=")? Pat ")")
 
-Lower-Pattern ::= Attribute* Bare-Lower-Pattern
-Bare-Lower-Pattern ::=
+Lower-Pat ::= Attr* Bare-Lower-Pat
+Bare-Lower-Pat ::=
     | Wildcard
     | #Number-Literal
     | #Text-Literal
-    | Sequence-Literal-Or-Bracketed-Pattern
-    | Record-Literal-Pattern
-    | Path-Or-Namespaced-Pattern-Literal
+    | Sequence-Literal-Or-Bracketed-Pat
+    | Record-Literal-Pat
+    | Path-Or-Namespaced-Pat-Literal
 

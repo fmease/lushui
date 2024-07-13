@@ -7,9 +7,9 @@ use crate::{
 };
 use diagnostics::{
     error::{Health, Outcome, Result},
-    Diagnostic, ErrorCode, Reporter,
+    Diag, ErrorCode, Reporter,
 };
-use span::{SourceFileIndex, SourceMap, Span, Spanning, WeaklySpanned};
+use span::{SourceMap, Span, Spanning, SrcFileIdx, WeaklySpanned};
 use std::sync::RwLock;
 
 #[cfg(test)]
@@ -17,40 +17,40 @@ mod test;
 
 pub fn parse(
     tokens: lexer::Outcome,
-    file: SourceFileIndex,
+    file: SrcFileIdx,
     map: &RwLock<SourceMap>,
-    reporter: &Reporter,
+    rep: &Reporter,
 ) -> Result<Value> {
     let mut health = Ok(());
 
     for error in tokens.errors {
-        let error = Diagnostic::from(error).report(reporter);
+        let error = Diag::from(error).report(rep);
 
         if health.is_ok() {
             health = Err(error);
         }
     }
 
-    let result = Parser::new(tokens.tokens, file, map, reporter).parse();
+    let result = Parser::new(tokens.tokens, file, map, rep).parse();
 
     health.and(result)
 }
 
 struct Parser<'a> {
     tokens: Vec<Token>,
-    file: SourceFileIndex,
+    file: SrcFileIdx,
     index: usize,
     health: Health,
     map: &'a RwLock<SourceMap>,
-    reporter: &'a Reporter,
+    rep: &'a Reporter,
 }
 
 impl<'a> Parser<'a> {
     fn new(
         tokens: Vec<Token>,
-        file: SourceFileIndex,
+        file: SrcFileIdx,
         map: &'a RwLock<SourceMap>,
-        reporter: &'a Reporter,
+        rep: &'a Reporter,
     ) -> Self {
         Self {
             file,
@@ -58,15 +58,15 @@ impl<'a> Parser<'a> {
             index: 0,
             health: Health::Untainted,
             map,
-            reporter,
+            rep,
         }
     }
 
-    fn current_token(&self) -> &Token {
+    fn curr_token(&self) -> &Token {
         &self.tokens[self.index]
     }
 
-    fn succeeding_token(&self) -> &Token {
+    fn succ_token(&self) -> &Token {
         &self.tokens[self.index + 1]
     }
 
@@ -75,14 +75,14 @@ impl<'a> Parser<'a> {
     }
 
     fn expect(&self, expected: TokenName) -> Result<Token> {
-        let token = self.current_token();
+        let token = self.curr_token();
         if token.name() == expected {
             Ok(token.clone())
         } else {
-            Err(Diagnostic::error()
+            Err(Diag::error()
                 .message(format!("found {token} but expected {expected}"))
                 .unlabeled_span(token)
-                .report(self.reporter))
+                .report(self.rep))
         }
     }
 
@@ -111,11 +111,9 @@ impl<'a> Parser<'a> {
     }
 
     fn has_top_level_record_entries(&self) -> bool {
-        matches!(
-            self.current_token().name(),
-            Identifier | False | True | Text
-        ) && self.succeeding_token().name() == Colon
-            || self.current_token().name() == EndOfInput
+        matches!(self.curr_token().name(), Ident | False | True | Text)
+            && self.succ_token().name() == Colon
+            || self.curr_token().name() == EndOfInput
     }
 
     /// Parse top-level record entries.
@@ -144,14 +142,14 @@ impl<'a> Parser<'a> {
     ///     | "false"
     ///     | "true"
     ///     | #Text
-    ///     | #Identifier
+    ///     | #Ident
     ///     | #Number
     ///     | Array
     ///     | Record
     /// ```
     fn parse_value(&mut self) -> Result<Value> {
-        let span = self.current_token().span;
-        match self.current_token().name() {
+        let span = self.curr_token().span;
+        match self.curr_token().name() {
             False => {
                 self.advance();
                 Ok(Value::new(span, false.into()))
@@ -162,18 +160,18 @@ impl<'a> Parser<'a> {
             }
             Text => {
                 // @Task avoid cloning!
-                let content = self.current_token().clone().into_text().unwrap();
+                let content = self.curr_token().clone().into_text().unwrap();
                 self.advance();
                 Ok(Value::new(span, content.into()))
             }
-            Identifier => {
+            Ident => {
                 // @Task avoid cloning!
-                let content = self.current_token().clone().into_identifier().unwrap();
+                let content = self.curr_token().clone().into_ident().unwrap();
                 self.advance();
                 Ok(Value::new(span, content.into()))
             }
             Integer => {
-                let value = self.current_token().clone().into_integer().unwrap();
+                let value = self.curr_token().clone().into_integer().unwrap();
                 self.advance();
 
                 Ok(Value::new(span, value.into()))
@@ -186,10 +184,10 @@ impl<'a> Parser<'a> {
                 self.advance();
                 self.finish_parse_record(span)
             }
-            _ => Err(Diagnostic::error()
-                .message(format!("found {} but expected value", self.current_token()))
+            _ => Err(Diag::error()
+                .message(format!("found {} but expected value", self.curr_token()))
                 .unlabeled_span(span)
-                .report(self.reporter)),
+                .report(self.rep)),
         }
     }
 
@@ -206,15 +204,15 @@ impl<'a> Parser<'a> {
         let mut span = opening_bracket_span;
         let mut elements = Vec::new();
 
-        while self.current_token().name() != ClosingSquareBracket {
+        while self.curr_token().name() != ClosingSquareBracket {
             elements.push(self.parse_value()?);
 
-            if self.current_token().name() != ClosingSquareBracket {
+            if self.curr_token().name() != ClosingSquareBracket {
                 self.consume(Comma)?;
             }
         }
 
-        span.merging(self.current_token());
+        span.merging(self.curr_token());
         self.advance();
 
         Ok(Value::new(span, elements.into()))
@@ -234,7 +232,7 @@ impl<'a> Parser<'a> {
 
         let record = self.parse_record_entries(ClosingCurlyBracket)?;
 
-        span.merging(self.current_token());
+        span.merging(self.curr_token());
         self.advance();
 
         Ok(Value::new(span, record.into()))
@@ -243,23 +241,23 @@ impl<'a> Parser<'a> {
     fn parse_record_entries(&mut self, delimiter: TokenName) -> Result<Record> {
         let mut record = Record::default();
 
-        while self.current_token().name() != delimiter {
+        while self.curr_token().name() != delimiter {
             let (key, value) = self.parse_record_entry()?;
 
             if let Some(previous_key) = record.keys().find(|&some_key| some_key == &key) {
                 // @Task make *all* duplicate entries *primary* highlights
-                let error = Diagnostic::error()
+                let error = Diag::error()
                     .code(ErrorCode::E803)
                     .message(format!("the entry ‘{key}’ is defined multiple times"))
                     .span(key.span, "redefinition")
                     .label(previous_key.span, "previous definition")
-                    .report(self.reporter);
+                    .report(self.rep);
                 self.health.taint(error);
             } else {
                 record.insert(key, value);
             }
 
-            if self.current_token().name() != delimiter {
+            if self.curr_token().name() != delimiter {
                 self.consume(Comma)?;
             }
         }
@@ -287,21 +285,21 @@ impl<'a> Parser<'a> {
     /// # Grammar
     ///
     /// ```ebnf
-    /// Record-Key ::= #Identifier | Keyword | #Text
+    /// Record-Key ::= #Ident | Keyword | #Text
     /// Keyword ::= "false" | "true"
     /// ```
     fn parse_record_key(&mut self) -> Result<WeaklySpanned<String>> {
-        let span = self.current_token().span;
-        let key = match self.current_token().name() {
-            Identifier => {
+        let span = self.curr_token().span;
+        let key = match self.curr_token().name() {
+            Ident => {
                 // @Task avoid cloning
-                let key = self.current_token().clone().into_identifier().unwrap();
+                let key = self.curr_token().clone().into_ident().unwrap();
                 self.advance();
                 key
             }
             Text => {
                 // @Task avoid cloning
-                let key = self.current_token().clone().into_text().unwrap();
+                let key = self.curr_token().clone().into_text().unwrap();
                 self.advance();
                 key
             }
@@ -314,10 +312,10 @@ impl<'a> Parser<'a> {
                 "true".into()
             }
             token => {
-                return Err(Diagnostic::error()
+                return Err(Diag::error()
                     .message(format!("found {token} but expected record key"))
                     .unlabeled_span(span)
-                    .report(self.reporter));
+                    .report(self.rep));
             }
         };
 

@@ -12,7 +12,7 @@
 use generic::Locality::*;
 use std::ops::{Add, Range, Sub};
 
-pub use source_map::{FileName, SourceFile, SourceFileIndex, SourceMap};
+pub use source_map::{FileName, SourceFile, SourceMap, SrcFileIdx};
 pub use spanned::Spanned;
 pub use spanning::{PossiblySpanning, Spanning};
 pub use weakly_spanned::WeaklySpanned;
@@ -32,9 +32,9 @@ mod generic {
 
     /// A locality-abstract byte index.
     #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash, Default)]
-    pub struct ByteIndex<const L: Locality>(pub(super) u32);
+    pub struct ByteIdx<const L: Locality>(pub(super) u32);
 
-    impl<const L: Locality> ByteIndex<L> {
+    impl<const L: Locality> ByteIdx<L> {
         /// Relates the index to the given span.
         ///
         /// If the index is to the left of the span, it is considered [less].
@@ -55,13 +55,13 @@ mod generic {
         }
     }
 
-    impl<const L: Locality> ByteIndex<L> {
+    impl<const L: Locality> ByteIdx<L> {
         pub const fn new(index: u32) -> Self {
             Self(index)
         }
     }
 
-    impl<const L: Locality> Add<u32> for ByteIndex<L> {
+    impl<const L: Locality> Add<u32> for ByteIdx<L> {
         type Output = Self;
 
         fn add(self, offset: u32) -> Self::Output {
@@ -69,13 +69,13 @@ mod generic {
         }
     }
 
-    impl<const L: Locality> AddAssign<u32> for ByteIndex<L> {
+    impl<const L: Locality> AddAssign<u32> for ByteIdx<L> {
         fn add_assign(&mut self, offset: u32) {
             self.0 += offset;
         }
     }
 
-    impl<const L: Locality> Sub for ByteIndex<L> {
+    impl<const L: Locality> Sub for ByteIdx<L> {
         type Output = Self;
 
         fn sub(self, other: Self) -> Self::Output {
@@ -83,7 +83,7 @@ mod generic {
         }
     }
 
-    impl<const L: Locality> Sub<u32> for ByteIndex<L> {
+    impl<const L: Locality> Sub<u32> for ByteIdx<L> {
         type Output = Self;
 
         fn sub(self, offset: u32) -> Self::Output {
@@ -91,7 +91,7 @@ mod generic {
         }
     }
 
-    impl<const L: Locality> TryFrom<usize> for ByteIndex<L> {
+    impl<const L: Locality> TryFrom<usize> for ByteIdx<L> {
         type Error = TryFromIntError;
 
         fn try_from(index: usize) -> Result<Self, Self::Error> {
@@ -104,14 +104,14 @@ mod generic {
     #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
     pub struct Span<const L: Locality> {
         /// The start of the span, inclusive.
-        pub(super) start: ByteIndex<L>,
+        pub(super) start: ByteIdx<L>,
         /// The end of the span, exclusive.
-        pub(super) end: ByteIndex<L>,
+        pub(super) end: ByteIdx<L>,
     }
 
     impl<const L: Locality> Span<L> {
         #[cfg_attr(debug_assertions, track_caller)]
-        pub fn new(start: ByteIndex<L>, end: ByteIndex<L>) -> Self {
+        pub fn new(start: ByteIdx<L>, end: ByteIdx<L>) -> Self {
             debug_assert!(
                 start <= end,
                 "span start ({}) > span end ({})",
@@ -123,12 +123,12 @@ mod generic {
         }
 
         /// Create an empty span at the given index.
-        pub fn empty(index: ByteIndex<L>) -> Self {
+        pub fn empty(index: ByteIdx<L>) -> Self {
             Self::new(index, index)
         }
 
-        pub fn with_length(start: ByteIndex<L>, length: u32) -> Self {
-            Self::new(start, ByteIndex(start.0 + length))
+        pub fn with_length(start: ByteIdx<L>, length: u32) -> Self {
+            Self::new(start, ByteIdx(start.0 + length))
         }
 
         pub fn length(self) -> u32 {
@@ -139,7 +139,7 @@ mod generic {
             self.start == self.end
         }
 
-        pub fn contains(self, index: ByteIndex<L>) -> bool {
+        pub fn contains(self, index: ByteIdx<L>) -> bool {
             self.start <= index && index <= self.end
         }
 
@@ -151,7 +151,7 @@ mod generic {
             Self::empty(self.end)
         }
 
-        pub fn set_end(&mut self, index: ByteIndex<L>) {
+        pub fn set_end(&mut self, index: ByteIdx<L>) {
             self.end = index;
         }
 
@@ -191,19 +191,19 @@ mod generic {
 /// A global byte index.
 ///
 /// Here, "global" means local relative to a [source map](SourceMap).
-pub type ByteIndex = generic::ByteIndex<{ Global }>;
+pub type ByteIdx = generic::ByteIdx<{ Global }>;
 
 /// A file-local byte index.
-pub type LocalByteIndex = generic::ByteIndex<{ Local }>;
+pub type LocalByteIdx = generic::ByteIdx<{ Local }>;
 
 // @Task replace
-impl From<LocalByteIndex> for usize {
-    fn from(index: LocalByteIndex) -> Self {
+impl From<LocalByteIdx> for usize {
+    fn from(index: LocalByteIdx) -> Self {
         index.0.try_into().unwrap()
     }
 }
 
-impl Add<char> for LocalByteIndex {
+impl Add<char> for LocalByteIdx {
     type Output = Self;
 
     fn add(self, character: char) -> Self::Output {
@@ -213,25 +213,25 @@ impl Add<char> for LocalByteIndex {
 }
 
 // @Task replace
-impl Sub<usize> for LocalByteIndex {
+impl Sub<usize> for LocalByteIdx {
     type Output = Self;
 
     fn sub(self, offset: usize) -> Self::Output {
-        self - LocalByteIndex::try_from(offset).unwrap()
+        self - LocalByteIdx::try_from(offset).unwrap()
     }
 }
 
-impl ByteIndex {
+impl ByteIdx {
     /// Map a global byte index to a local one.
-    pub fn local(self, file: &SourceFile) -> LocalByteIndex {
-        LocalByteIndex::new(self.0 - file.span().start.0)
+    pub fn local(self, file: &SourceFile) -> LocalByteIdx {
+        LocalByteIdx::new(self.0 - file.span().start.0)
     }
 }
 
-impl LocalByteIndex {
+impl LocalByteIdx {
     /// Map a local byte index to a global one.
-    pub fn global(self, file: &SourceFile) -> ByteIndex {
-        ByteIndex::new(file.span().start.0 + self.0)
+    pub fn global(self, file: &SourceFile) -> ByteIdx {
+        ByteIdx::new(file.span().start.0 + self.0)
     }
 }
 
@@ -316,7 +316,7 @@ impl Span {
 
         Span::new(
             self.start,
-            self.end - ByteIndex::try_from(difference).unwrap(),
+            self.end - ByteIdx::try_from(difference).unwrap(),
         )
     }
 
@@ -354,17 +354,17 @@ impl From<LocalSpan> for Range<usize> {
     }
 }
 
-impl Sub<LocalByteIndex> for LocalSpan {
+impl Sub<LocalByteIdx> for LocalSpan {
     type Output = Self;
 
-    fn sub(self, offset: LocalByteIndex) -> Self::Output {
+    fn sub(self, offset: LocalByteIdx) -> Self::Output {
         Self::new(self.start - offset, self.end - offset)
     }
 }
 
 /// Convenience function for for constructing a global span for test code.
 pub fn span(start: u32, end: u32) -> Span {
-    Span::new(ByteIndex::new(start), ByteIndex::new(end))
+    Span::new(ByteIdx::new(start), ByteIdx::new(end))
 }
 
 mod spanning {

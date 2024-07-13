@@ -1,11 +1,10 @@
 use crate::Display;
-use ast::ParameterKind::*;
+use ast::ParamKind::*;
 use hir::{
-    Attribute, Attributes, BareAttribute, Entity, EntityKind, Exposure, Expression, Identifier,
-    LocalDeclarationIndex, Number, Text,
+    Attr, Attrs, BareAttr, Entity, EntityKind, Exposure, Expr, Ident, LocalDeclIdx, NumLit, TextLit,
 };
 use session::{
-    component::{Component, IdentifierExt, LocalDeclarationIndexExt},
+    component::{Comp, IdentExt, LocalDeclIdxExt},
     Context, Session,
 };
 use span::Span;
@@ -18,8 +17,8 @@ use utility::{
 // @Beacon @Task do something smart if spaces differ (which cannot have color)
 // like replacing them with a different character like the Unicode space symbol
 // or however it is called ("SP")
-fn assert_format(expected: &str, actual: &Expression, session: &Session<'_>) {
-    let actual = displayed(|f| actual.write(session, f)).to_string();
+fn assert_format(expected: &str, actual: &Expr, sess: &Session<'_>) {
+    let actual = displayed(|f| actual.write(sess, f)).to_string();
 
     if actual != expected {
         // We also lock stdout since the test runner would otherwise interfere.
@@ -36,114 +35,98 @@ fn assert_format(expected: &str, actual: &Expression, session: &Session<'_>) {
 }
 
 trait ComponentExt {
-    fn add(&mut self, name: &str, kind: EntityKind) -> Identifier;
+    fn add(&mut self, name: &str, kind: EntityKind) -> Ident;
 
-    fn add_below(
-        &mut self,
-        name: &str,
-        kind: EntityKind,
-        parent: LocalDeclarationIndex,
-    ) -> Identifier;
+    fn add_below(&mut self, name: &str, kind: EntityKind, parent: LocalDeclIdx) -> Ident;
 }
 
-impl ComponentExt for Component {
-    fn add(&mut self, name: &str, kind: EntityKind) -> Identifier {
+impl ComponentExt for Comp {
+    fn add(&mut self, name: &str, kind: EntityKind) -> Ident {
         self.add_below(name, kind, self.root_local())
     }
 
-    fn add_below(
-        &mut self,
-        name: &str,
-        kind: EntityKind,
-        parent: LocalDeclarationIndex,
-    ) -> Identifier {
-        let identifier = ast::Identifier::new_unchecked(default(), name.into());
+    fn add_below(&mut self, name: &str, kind: EntityKind, parent: LocalDeclIdx) -> Ident {
+        let ident = ast::Ident::new_unchecked(default(), name.into());
         let entity = Entity {
-            source: identifier,
+            src: ident,
             parent: Some(parent),
-            exposure: Exposure::Unrestricted,
-            attributes: default(),
+            exp: Exposure::Unrestricted,
+            attrs: default(),
             kind,
         };
         let index = self.bindings.insert(entity);
-        Identifier::new(index.global(self), identifier)
+        Ident::new(index.global(self), ident)
     }
 }
 
-fn parameter(name: &str) -> Identifier {
-    Identifier::new(
-        hir::Index::Parameter,
-        ast::Identifier::new_unchecked(default(), name.into()),
+fn param(name: &str) -> Ident {
+    Ident::new(
+        hir::Index::Param,
+        ast::Ident::new_unchecked(default(), name.into()),
     )
 }
 
 #[test]
-fn pi_type_application_argument() {
-    let mut component = Component::mock();
-    let array = component
-        .add("Array", EntityKind::untyped_data_type())
-        .to_item();
-    let int = component
-        .add("Int", EntityKind::untyped_data_type())
-        .to_item();
-    let type_ = component
-        .add("Type", EntityKind::untyped_data_type())
-        .to_item();
+fn pi_ty_app_arg() {
+    let mut comp = Comp::mock();
+    let array = comp.add("Array", EntityKind::untyped_data_ty()).to_item();
+    let int = comp.add("Int", EntityKind::untyped_data_ty()).to_item();
+    let ty = comp.add("Type", EntityKind::untyped_data_ty()).to_item();
 
     let mut context = Context::mock();
-    let session = Session::new(component, &mut context);
+    let sess = Session::new(comp, &mut context);
 
     assert_format(
         "topmost.Array topmost.Int -> topmost.Type",
-        &Expression::bare(
-            hir::PiType {
+        &Expr::bare(
+            hir::PiTy {
                 kind: Explicit,
                 binder: None,
-                domain: Expression::bare(
-                    hir::Application {
+                domain: Expr::bare(
+                    hir::App {
                         callee: array,
-                        argument: int,
+                        arg: int,
                         kind: Explicit,
                     }
                     .into(),
                 ),
-                codomain: type_,
+                codomain: ty,
             }
             .into(),
         ),
-        &session,
+        &sess,
     );
 }
 
 #[test]
 fn pi_type_named_parameter() {
-    let mut component = Component::mock();
-    let array = component.add("Array", EntityKind::untyped_data_type());
-    let int = component.add("Int", EntityKind::untyped_data_type());
-    let container = component.add("Container", EntityKind::untyped_data_type());
-    let alpha = parameter("alpha");
+    let mut comp = Comp::mock();
+    let array = comp.add("Array", EntityKind::untyped_data_ty());
+    let int = comp.add("Int", EntityKind::untyped_data_ty());
+    let container = comp.add("Container", EntityKind::untyped_data_ty());
+    let alpha = param("alpha");
 
-    let mut context = Context::mock();
-    let session = Session::new(component, &mut context);
+    let mut cx = Context::mock();
+    let sess = Session::new(comp, &mut cx);
 
     assert_format(
         "For (alpha: topmost.Array topmost.Int) -> topmost.Container alpha",
-        &Expression::bare(
-            hir::PiType {
+        &Expr::bare(
+            hir::PiTy {
                 kind: Explicit,
                 binder: Some(alpha),
-                domain: Expression::bare(
-                    hir::Application {
+                domain: Expr::bare(
+                    hir::App {
                         callee: array.to_item(),
-                        argument: int.to_item(),
+                        arg: int.to_item(),
                         kind: Explicit,
                     }
                     .into(),
                 ),
-                codomain: Expression::bare(
-                    hir::Application {
+                codomain: Expr::bare(
+                    hir::App {
                         callee: container.to_item(),
-                        argument: alpha.to_item(),
+                        arg: alpha.to_item(),
                         kind: Explicit,
                     }
                     .into(),
@@ -151,54 +134,50 @@ fn pi_type_named_parameter() {
             }
             .into(),
         ),
-        &session,
+        &sess,
     );
 }
 
 #[test]
 fn pi_type_implicit_parameter() {
-    let mut component = Component::mock();
-    let type_ = component
-        .add("Type", EntityKind::untyped_data_type())
-        .to_item();
+    let mut comp = Comp::mock();
+    let ty = comp.add("Type", EntityKind::untyped_data_ty()).to_item();
 
-    let mut context = Context::mock();
-    let session = Session::new(component, &mut context);
+    let mut cx = Context::mock();
+    let sess = Session::new(comp, &mut cx);
 
     assert_format(
         "For '(whatever: topmost.Type) -> topmost.Type",
-        &Expression::bare(
-            hir::PiType {
+        &Expr::bare(
+            hir::PiTy {
                 kind: Implicit,
-                binder: Some(parameter("whatever")),
-                domain: type_.clone(),
-                codomain: type_,
+                binder: Some(param("whatever")),
+                domain: ty.clone(),
+                codomain: ty,
             }
             .into(),
         ),
-        &session,
+        &sess,
     );
 }
 
 /// Compare with [`pi_type_two_curried_arguments`].
 #[test]
 fn pi_type_higher_order_argument() {
-    let mut component = Component::mock();
-    let int = component
-        .add("Int", EntityKind::untyped_data_type())
-        .to_item();
+    let mut comp = Comp::mock();
+    let int = comp.add("Int", EntityKind::untyped_data_ty()).to_item();
 
-    let mut context = Context::mock();
-    let session = Session::new(component, &mut context);
+    let mut cx = Context::mock();
+    let sess = Session::new(comp, &mut cx);
 
     assert_format(
         "(topmost.Int -> topmost.Int) -> topmost.Int",
-        &Expression::bare(
-            hir::PiType {
+        &Expr::bare(
+            hir::PiTy {
                 kind: Explicit,
                 binder: None,
-                domain: Expression::bare(
-                    hir::PiType {
+                domain: Expr::bare(
+                    hir::PiTy {
                         kind: Explicit,
                         binder: None,
                         domain: int.clone(),
@@ -210,22 +189,22 @@ fn pi_type_higher_order_argument() {
             }
             .into(),
         ),
-        &session,
+        &sess,
     );
 }
 
 /// Compare with [`pi_type_higher_order_argument`].
 #[test]
 fn pi_type_two_curried_arguments() {
-    let mut component = Component::mock();
+    let mut component = Comp::mock();
     let int = component
-        .add("Int", EntityKind::untyped_data_type())
+        .add("Int", EntityKind::untyped_data_ty())
         .to_item();
     let text = component
-        .add("Text", EntityKind::untyped_data_type())
+        .add("Text", EntityKind::untyped_data_ty())
         .to_item();
-    let type_ = component
-        .add("Type", EntityKind::untyped_data_type())
+    let ty = component
+        .add("Type", EntityKind::untyped_data_ty())
         .to_item();
 
     let mut context = Context::mock();
@@ -233,17 +212,17 @@ fn pi_type_two_curried_arguments() {
 
     assert_format(
         "topmost.Int -> topmost.Text -> topmost.Type",
-        &Expression::bare(
-            hir::PiType {
+        &Expr::bare(
+            hir::PiTy {
                 kind: Explicit,
                 binder: None,
                 domain: int,
-                codomain: Expression::bare(
-                    hir::PiType {
+                codomain: Expr::bare(
+                    hir::PiTy {
                         kind: Explicit,
                         binder: None,
                         domain: text,
-                        codomain: type_,
+                        codomain: ty,
                     }
                     .into(),
                 ),
@@ -257,23 +236,23 @@ fn pi_type_two_curried_arguments() {
 /// Compare with [`lambda_pi_type_body`].
 #[test]
 fn pi_type_lambda_domain() {
-    let mut component = Component::mock();
-    let type_ = component
-        .add("Type", EntityKind::untyped_data_type())
+    let mut component = Comp::mock();
+    let ty = component
+        .add("Type", EntityKind::untyped_data_ty())
         .to_item();
-    let x = parameter("x");
+    let x = param("x");
 
     let mut context = Context::mock();
     let session = Session::new(component, &mut context);
 
     assert_format(
         "(for x => x) -> topmost.Type",
-        &Expression::bare(
-            hir::PiType {
+        &Expr::bare(
+            hir::PiTy {
                 kind: Explicit,
                 binder: None,
-                domain: Expression::bare(
-                    hir::Lambda {
+                domain: Expr::bare(
+                    hir::LamLit {
                         binder: Some(x),
                         domain: None,
                         codomain: None,
@@ -282,7 +261,7 @@ fn pi_type_lambda_domain() {
                     }
                     .into(),
                 ),
-                codomain: type_,
+                codomain: ty,
             }
             .into(),
         ),
@@ -292,10 +271,10 @@ fn pi_type_lambda_domain() {
 
 #[test]
 fn application_three_curried_arguments() {
-    let mut component = Component::mock();
-    let beta = component.add("beta", EntityKind::UntypedFunction);
-    let type_ = component
-        .add("Type", EntityKind::untyped_data_type())
+    let mut component = Comp::mock();
+    let beta = component.add("beta", EntityKind::FuncUntyped);
+    let ty = component
+        .add("Type", EntityKind::untyped_data_ty())
         .to_item();
 
     let mut context = Context::mock();
@@ -303,22 +282,22 @@ fn application_three_curried_arguments() {
 
     assert_format(
         "alpha topmost.beta (gamma topmost.Type) 0",
-        &Expression::bare(
-            hir::Application {
-                callee: Expression::bare(
-                    hir::Application {
-                        callee: Expression::bare(
-                            hir::Application {
-                                callee: parameter("alpha").to_item(),
-                                argument: beta.to_item(),
+        &Expr::bare(
+            hir::App {
+                callee: Expr::bare(
+                    hir::App {
+                        callee: Expr::bare(
+                            hir::App {
+                                callee: param("alpha").to_item(),
+                                arg: beta.to_item(),
                                 kind: Explicit,
                             }
                             .into(),
                         ),
-                        argument: Expression::bare(
-                            hir::Application {
-                                callee: parameter("gamma").to_item(),
-                                argument: type_,
+                        arg: Expr::bare(
+                            hir::App {
+                                callee: param("gamma").to_item(),
+                                arg: ty,
                                 kind: Explicit,
                             }
                             .into(),
@@ -327,7 +306,7 @@ fn application_three_curried_arguments() {
                     }
                     .into(),
                 ),
-                argument: Expression::bare(Number::Nat(0u8.into()).into()),
+                arg: Expr::bare(NumLit::Nat(0u8.into()).into()),
                 kind: Explicit,
             }
             .into(),
@@ -339,9 +318,9 @@ fn application_three_curried_arguments() {
 /// Compare with [`application_lambda_argument`].
 #[test]
 fn application_lambda_last_argument() {
-    let mut component = Component::mock();
-    let take = component.add("take", EntityKind::UntypedFunction);
-    let it = parameter("it");
+    let mut component = Comp::mock();
+    let take = component.add("take", EntityKind::FuncUntyped);
+    let it = param("it");
 
     let mut context = Context::mock();
     let session = Session::new(component, &mut context);
@@ -349,11 +328,11 @@ fn application_lambda_last_argument() {
     // we might want to format this special case as `topmost.take for it => it` in the future
     assert_format(
         "topmost.take (for it => it)",
-        &Expression::bare(
-            hir::Application {
+        &Expr::bare(
+            hir::App {
                 callee: take.to_item(),
-                argument: Expression::bare(
-                    hir::Lambda {
+                arg: Expr::bare(
+                    hir::LamLit {
                         binder: Some(it),
                         domain: None,
                         codomain: None,
@@ -374,22 +353,22 @@ fn application_lambda_last_argument() {
 /// Compare with [`application_lambda_last_argument`].
 #[test]
 fn application_lambda_argument() {
-    let mut component = Component::mock();
-    let take = component.add("take", EntityKind::UntypedFunction);
-    let it = parameter("it");
+    let mut component = Comp::mock();
+    let take = component.add("take", EntityKind::FuncUntyped);
+    let it = param("it");
 
     let mut context = Context::mock();
     let session = Session::new(component, &mut context);
 
     assert_format(
         r#"topmost.take (for it => it) "who""#,
-        &Expression::bare(
-            hir::Application {
-                callee: Expression::bare(
-                    hir::Application {
+        &Expr::bare(
+            hir::App {
+                callee: Expr::bare(
+                    hir::App {
                         callee: take.to_item(),
-                        argument: Expression::bare(
-                            hir::Lambda {
+                        arg: Expr::bare(
+                            hir::LamLit {
                                 binder: Some(it),
                                 domain: None,
                                 codomain: None,
@@ -403,7 +382,7 @@ fn application_lambda_argument() {
                     }
                     .into(),
                 ),
-                argument: Expression::bare(Text::Text("who".into()).into()),
+                arg: Expr::bare(TextLit::Text("who".into()).into()),
                 kind: Explicit,
             }
             .into(),
@@ -414,10 +393,10 @@ fn application_lambda_argument() {
 
 #[test]
 fn application_implicit_argument() {
-    let mut component = Component::mock();
-    let identity = component.add("identity", EntityKind::UntypedFunction);
-    let type_ = component
-        .add("Type", EntityKind::untyped_data_type())
+    let mut component = Comp::mock();
+    let identity = component.add("identity", EntityKind::FuncUntyped);
+    let ty = component
+        .add("Type", EntityKind::untyped_data_ty())
         .to_item();
 
     let mut context = Context::mock();
@@ -425,10 +404,10 @@ fn application_implicit_argument() {
 
     assert_format(
         r"topmost.identity 'topmost.Type",
-        &Expression::bare(
-            hir::Application {
+        &Expr::bare(
+            hir::App {
                 callee: identity.to_item(),
-                argument: type_,
+                arg: ty,
                 kind: Implicit,
             }
             .into(),
@@ -439,22 +418,22 @@ fn application_implicit_argument() {
 
 #[test]
 fn application_complex_implicit_argument() {
-    let mut component = Component::mock();
-    let identity = component.add("identity", EntityKind::UntypedFunction);
-    let text = component.add("Text", EntityKind::untyped_data_type());
+    let mut component = Comp::mock();
+    let identity = component.add("identity", EntityKind::FuncUntyped);
+    let text = component.add("Text", EntityKind::untyped_data_ty());
 
     let mut context = Context::mock();
     let session = Session::new(component, &mut context);
 
     assert_format(
         r"topmost.identity '(prepare topmost.Text)",
-        &Expression::bare(
-            hir::Application {
+        &Expr::bare(
+            hir::App {
                 callee: identity.to_item(),
-                argument: Expression::bare(
-                    hir::Application {
-                        callee: parameter("prepare").to_item(),
-                        argument: text.to_item(),
+                arg: Expr::bare(
+                    hir::App {
+                        callee: param("prepare").to_item(),
+                        arg: text.to_item(),
                         kind: Explicit,
                     }
                     .into(),
@@ -470,20 +449,20 @@ fn application_complex_implicit_argument() {
 #[test]
 fn application_intrinsic_application_callee() {
     let mut context = Context::mock();
-    let session = Session::new(Component::mock(), &mut context);
+    let session = Session::new(Comp::mock(), &mut context);
 
     assert_format(
         "eta 10 omicron",
-        &Expression::bare(
-            hir::Application {
-                callee: Expression::bare(
-                    hir::IntrinsicApplication {
-                        callee: parameter("eta"),
-                        arguments: vec![Expression::bare(Number::Nat(10u8.into()).into())],
+        &Expr::bare(
+            hir::App {
+                callee: Expr::bare(
+                    hir::IntrApp {
+                        callee: param("eta"),
+                        args: vec![Expr::bare(NumLit::Nat(10u8.into()).into())],
                     }
                     .into(),
                 ),
-                argument: parameter("omicron").to_item(),
+                arg: param("omicron").to_item(),
                 kind: Explicit,
             }
             .into(),
@@ -494,20 +473,20 @@ fn application_intrinsic_application_callee() {
 
 #[test]
 fn lambda_body_type_annotation() {
-    let mut component = Component::mock();
-    let output = component.add("Output", EntityKind::untyped_data_type());
+    let mut component = Comp::mock();
+    let output = component.add("Output", EntityKind::untyped_data_ty());
 
     let mut context = Context::mock();
     let session = Session::new(component, &mut context);
 
     assert_format(
         "for input: topmost.Output => 0",
-        &Expression::bare(
-            hir::Lambda {
-                binder: Some(parameter("input")),
+        &Expr::bare(
+            hir::LamLit {
+                binder: Some(param("input")),
                 domain: None,
                 codomain: Some(output.to_item()),
-                body: Expression::bare(Number::Nat(0u8.into()).into()),
+                body: Expr::bare(NumLit::Nat(0u8.into()).into()),
                 kind: Explicit,
             }
             .into(),
@@ -518,11 +497,11 @@ fn lambda_body_type_annotation() {
 
 #[test]
 fn lambda_parameter_type_annotation_body_type_annotation() {
-    let mut component = Component::mock();
-    let input = component.add("Input", EntityKind::untyped_data_type());
-    let output = component.add("Output", EntityKind::untyped_data_type());
-    let type_ = component
-        .add("Type", EntityKind::untyped_data_type())
+    let mut component = Comp::mock();
+    let input = component.add("Input", EntityKind::untyped_data_ty());
+    let output = component.add("Output", EntityKind::untyped_data_ty());
+    let ty = component
+        .add("Type", EntityKind::untyped_data_ty())
         .to_item();
 
     let mut context = Context::mock();
@@ -530,12 +509,12 @@ fn lambda_parameter_type_annotation_body_type_annotation() {
 
     assert_format(
         "for (input: topmost.Input): topmost.Output => topmost.Type",
-        &Expression::bare(
-            hir::Lambda {
-                binder: Some(parameter("input")),
+        &Expr::bare(
+            hir::LamLit {
+                binder: Some(param("input")),
                 domain: Some(input.to_item()),
                 codomain: Some(output.to_item()),
-                body: type_,
+                body: ty,
                 kind: Explicit,
             }
             .into(),
@@ -546,9 +525,9 @@ fn lambda_parameter_type_annotation_body_type_annotation() {
 
 #[test]
 fn lambda_implicit_parameter() {
-    let mut component = Component::mock();
-    let type_ = component
-        .add("Type", EntityKind::untyped_data_type())
+    let mut component = Comp::mock();
+    let ty = component
+        .add("Type", EntityKind::untyped_data_ty())
         .to_item();
 
     let mut context = Context::mock();
@@ -556,12 +535,12 @@ fn lambda_implicit_parameter() {
 
     assert_format(
         "for '(Input: topmost.Type) => topmost.Type",
-        &Expression::bare(
-            hir::Lambda {
-                binder: Some(parameter("Input")),
-                domain: Some(type_.clone()),
+        &Expr::bare(
+            hir::LamLit {
+                binder: Some(param("Input")),
+                domain: Some(ty.clone()),
                 codomain: None,
-                body: type_,
+                body: ty,
                 kind: Implicit,
             }
             .into(),
@@ -572,20 +551,20 @@ fn lambda_implicit_parameter() {
 
 #[test]
 fn lambda_implicit_unannotated_parameter() {
-    let a = parameter("a");
+    let a = param("a");
 
     let mut context = Context::mock();
-    let session = Session::new(Component::mock(), &mut context);
+    let session = Session::new(Comp::mock(), &mut context);
 
     assert_format(
         "for 'A => for a => a",
-        &Expression::bare(
-            hir::Lambda {
-                binder: Some(parameter("A")),
+        &Expr::bare(
+            hir::LamLit {
+                binder: Some(param("A")),
                 domain: None,
                 codomain: None,
-                body: Expression::bare(
-                    hir::Lambda {
+                body: Expr::bare(
+                    hir::LamLit {
                         binder: Some(a),
                         domain: None,
                         codomain: None,
@@ -605,28 +584,28 @@ fn lambda_implicit_unannotated_parameter() {
 /// Compare with [`pi_type_lambda_domain`].
 #[test]
 fn lambda_pi_type_body() {
-    let mut component = Component::mock();
-    let type_ = component
-        .add("Type", EntityKind::untyped_data_type())
+    let mut component = Comp::mock();
+    let ty = component
+        .add("Type", EntityKind::untyped_data_ty())
         .to_item();
-    let x = parameter("x");
+    let x = param("x");
 
     let mut context = Context::mock();
     let session = Session::new(component, &mut context);
 
     assert_format(
         r"for x => x -> topmost.Type",
-        &Expression::bare(
-            hir::Lambda {
+        &Expr::bare(
+            hir::LamLit {
                 binder: Some(x),
                 domain: None,
                 codomain: None,
-                body: Expression::bare(
-                    hir::PiType {
+                body: Expr::bare(
+                    hir::PiTy {
                         kind: Explicit,
                         binder: None,
                         domain: x.to_item(),
-                        codomain: type_,
+                        codomain: ty,
                     }
                     .into(),
                 ),
@@ -640,18 +619,18 @@ fn lambda_pi_type_body() {
 
 #[test]
 fn intrinsic_application_no_arguments() {
-    let mut component = Component::mock();
-    let add = component.add("add", EntityKind::UntypedFunction);
+    let mut component = Comp::mock();
+    let add = component.add("add", EntityKind::FuncUntyped);
 
     let mut context = Context::mock();
     let session = Session::new(component, &mut context);
 
     assert_format(
         "add",
-        &Expression::bare(
-            hir::IntrinsicApplication {
+        &Expr::bare(
+            hir::IntrApp {
                 callee: add,
-                arguments: Vec::new(),
+                args: Vec::new(),
             }
             .into(),
         ),
@@ -661,29 +640,29 @@ fn intrinsic_application_no_arguments() {
 
 #[test]
 fn intrinsic_application_two_arguments() {
-    let mut component = Component::mock();
-    let add = component.add("add", EntityKind::UntypedFunction);
+    let mut component = Comp::mock();
+    let add = component.add("add", EntityKind::FuncUntyped);
 
     let mut context = Context::mock();
     let session = Session::new(component, &mut context);
 
     assert_format(
         "add (add 1 3000) 0",
-        &Expression::bare(
-            hir::IntrinsicApplication {
+        &Expr::bare(
+            hir::IntrApp {
                 callee: add,
-                arguments: vec![
-                    Expression::bare(
-                        hir::IntrinsicApplication {
+                args: vec![
+                    Expr::bare(
+                        hir::IntrApp {
                             callee: add,
-                            arguments: vec![
-                                Expression::bare(Number::Nat(1u8.into()).into()),
-                                Expression::bare(Number::Nat(3000u16.into()).into()),
+                            args: vec![
+                                Expr::bare(NumLit::Nat(1u8.into()).into()),
+                                Expr::bare(NumLit::Nat(3000u16.into()).into()),
                             ],
                         }
                         .into(),
                     ),
-                    Expression::bare(Number::Nat(0u8.into()).into()),
+                    Expr::bare(NumLit::Nat(0u8.into()).into()),
                 ],
             }
             .into(),
@@ -695,33 +674,33 @@ fn intrinsic_application_two_arguments() {
 #[test]
 fn attributes() {
     let mut context = Context::mock();
-    let session = Session::new(Component::mock(), &mut context);
+    let session = Session::new(Comp::mock(), &mut context);
 
     assert_format(
         "== @static @unsafe 3 @static (increment 1)",
-        &Expression::bare(
-            hir::Application {
-                callee: Expression::bare(
-                    hir::Application {
-                        callee: parameter("==").to_item(),
-                        argument: Expression::new(
-                            Attributes(vec![
-                                Attribute::new(default(), BareAttribute::Static),
-                                Attribute::new(default(), BareAttribute::Unsafe),
+        &Expr::bare(
+            hir::App {
+                callee: Expr::bare(
+                    hir::App {
+                        callee: param("==").to_item(),
+                        arg: Expr::new(
+                            Attrs(vec![
+                                Attr::new(default(), BareAttr::Static),
+                                Attr::new(default(), BareAttr::Unsafe),
                             ]),
                             Span::default(),
-                            Number::Nat(3u8.into()).into(),
+                            NumLit::Nat(3u8.into()).into(),
                         ),
                         kind: Explicit,
                     }
                     .into(),
                 ),
-                argument: Expression::new(
-                    Attributes(vec![Attribute::new(default(), BareAttribute::Static)]),
+                arg: Expr::new(
+                    Attrs(vec![Attr::new(default(), BareAttr::Static)]),
                     default(),
-                    hir::Application {
-                        callee: parameter("increment").to_item(),
-                        argument: Expression::bare(Number::Nat(1u8.into()).into()),
+                    hir::App {
+                        callee: param("increment").to_item(),
+                        arg: Expr::bare(NumLit::Nat(1u8.into()).into()),
                         kind: Explicit,
                     }
                     .into(),
@@ -736,17 +715,17 @@ fn attributes() {
 
 #[test]
 fn path() {
-    let mut component = Component::mock();
+    let mut component = Comp::mock();
     let overarching = component.add("overarching", EntityKind::module());
     let middle = component.add_below(
         "middle",
         EntityKind::module(),
-        overarching.local_declaration_index(&component).unwrap(),
+        overarching.local_decl_idx(&component).unwrap(),
     );
     let sink = component.add_below(
         "sink",
-        EntityKind::UntypedFunction,
-        middle.local_declaration_index(&component).unwrap(),
+        EntityKind::FuncUntyped,
+        middle.local_decl_idx(&component).unwrap(),
     );
 
     let mut context = Context::mock();
@@ -756,23 +735,23 @@ fn path() {
 }
 
 #[test]
-fn path_identifier_symbol_symbol_identifier_segments() {
-    let mut component = Component::mock();
+fn path_ident_symbol_symbol_ident_segments() {
+    let mut component = Comp::mock();
     let overarching = component.add("overarching", EntityKind::module());
     let noisy = component.add_below(
         "&/.~##",
         EntityKind::module(),
-        overarching.local_declaration_index(&component).unwrap(),
+        overarching.local_decl_idx(&component).unwrap(),
     );
     let zickzack = component.add_below(
         "^^^",
         EntityKind::module(),
-        noisy.local_declaration_index(&component).unwrap(),
+        noisy.local_decl_idx(&component).unwrap(),
     );
     let sink = component.add_below(
         "sink",
-        EntityKind::UntypedFunction,
-        zickzack.local_declaration_index(&component).unwrap(),
+        EntityKind::FuncUntyped,
+        zickzack.local_decl_idx(&component).unwrap(),
     );
 
     let mut context = Context::mock();

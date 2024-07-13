@@ -2,7 +2,7 @@ use crate::{
     base::{Annotation, Expectation, Parser, SkipLineBreaks},
     synonym::PathHead,
 };
-use ast::{Expression, ParameterKind};
+use ast::{Expr, ParamKind};
 use diagnostics::error::Result;
 use lexer::token::BareToken::*;
 use span::{Span, Spanned};
@@ -16,10 +16,10 @@ impl Parser<'_> {
     /// # Grammar
     ///
     /// ```grammar
-    /// Expression ::= Shorthand-Quantified-Type-Or-Lower
+    /// Expr ::= Shorthand-Quantified-Type-Or-Lower
     /// ```
-    pub(crate) fn parse_expression(&mut self) -> Result<Expression> {
-        self.parse_shorthand_quantified_type_or_lower()
+    pub(crate) fn parse_expr(&mut self) -> Result<Expr> {
+        self.parse_shorthand_quantified_ty_or_lower()
     }
 
     /// Parse a shorthand [quantified type] or a lower expression.
@@ -29,19 +29,19 @@ impl Parser<'_> {
     /// ```grammar
     /// ; Among other things, the grammar for pretty printers differs from the one for parsers
     /// ; in that `Shorthand-Quantified-Type-Or-Lower` also includes several complex (in the sense of
-    /// ; containing further expressions) `Lower-Expression`s namely let- and use-bindings, lambda literals,
+    /// ; containing further expressions) `Lower-Expr`s namely let- and use-bindings, lambda literals,
     /// ; case analyses and do blocks.
     /// ;
     /// Shorthand-Quantified-Type-Or-Lower ::=
-    ///     Application-Expression-Or-Lower
+    ///     Application-Expr-Or-Lower
     ///     Quantifier
     ///     Shorthand-Quantified-Type-Or-Lower
     /// Quantifier ::= "->" | "**"
     /// ```
     ///
     /// [quantified type]: ast::QuantifiedType
-    fn parse_shorthand_quantified_type_or_lower(&mut self) -> Result<Expression> {
-        let domain = self.parse_application_expression_or_lower()?;
+    fn parse_shorthand_quantified_ty_or_lower(&mut self) -> Result<Expr> {
+        let domain = self.parse_app_expr_or_lower()?;
         let mut span = domain.span;
 
         let quantifier = match self.token() {
@@ -54,18 +54,18 @@ impl Parser<'_> {
         self.advance();
 
         // Using recursion to parse right-associatively.
-        let codomain = span.merging(self.parse_shorthand_quantified_type_or_lower()?);
+        let codomain = span.merging(self.parse_shorthand_quantified_ty_or_lower()?);
 
-        Ok(Expression::common(
+        Ok(Expr::common(
             span,
-            ast::QuantifiedType {
+            ast::QuantifiedTy {
                 quantifier,
-                parameters: smallvec![ast::Parameter::new(
+                params: smallvec![ast::Param::new(
                     domain.span,
-                    ast::BareParameter {
-                        kind: ParameterKind::Explicit,
+                    ast::BareParam {
+                        kind: ParamKind::Explicit,
                         binder: None,
-                        type_: Some(domain),
+                        ty: Some(domain),
                     },
                 )],
                 codomain,
@@ -79,24 +79,24 @@ impl Parser<'_> {
     /// # Grammar
     ///
     /// ```grammar
-    /// Application-Expression-Or-Lower ::= Lower-Expression Expression-Argument*
-    /// Expression-Argument ::=
+    /// Application-Expr-Or-Lower ::= Lower-Expr Expr-Argument*
+    /// Expr-Argument ::=
     ///     "'"?
-    ///     (Lower-Expression | "(" (#Word "=")? Expression ")")
+    ///     (Lower-Expr | "(" (#Word "=")? Expr ")")
     ///
     /// ; ; The left-recursive version of the rule above is unsuitable for a recursive descent parser.
     /// ; ; However, it is usable for pretty printers.
     /// ;
-    /// ; Application-Expression-Or-Lower ::= Application-Expression-Or-Lower? Expression-Argument*
-    /// ; Expression-Argument ::=
-    /// ;     | Lower-Expression
-    /// ;     | "'"? "(" (#Word "=")? Expression ")"
+    /// ; Application-Expr-Or-Lower ::= Application-Expr-Or-Lower? Expr-Argument*
+    /// ; Expr-Argument ::=
+    /// ;     | Lower-Expr
+    /// ;     | "'"? "(" (#Word "=")? Expr ")"
     /// ```
     ///
-    /// [application]: ast::Application
+    /// [application]: ast::App
     // @Task update grammar
-    fn parse_application_expression_or_lower(&mut self) -> Result<Expression> {
-        self.parse_application_or_lower()
+    fn parse_app_expr_or_lower(&mut self) -> Result<Expr> {
+        self.parse_app_or_lower()
     }
 
     /// Parse a lower expression.
@@ -104,9 +104,9 @@ impl Parser<'_> {
     /// # Grammar
     ///
     /// ```grammar
-    /// Lower-Expression ::= Attribute* Bare-Lower-Expression
-    /// Bare-Lower-Expression ::= Lowest-Expression ("::" Identifier)*
-    /// Lowest-Expression ::=
+    /// Lower-Expr ::= Attr* Bare-Lower-Expr
+    /// Bare-Lower-Expr ::= Lowest-Expr ("::" Identifier)*
+    /// Lowest-Expr ::=
     ///     | Wildcard
     ///     | #Number-Literal
     ///     | #Text-Literal
@@ -116,56 +116,56 @@ impl Parser<'_> {
     ///     | Case-Analysis
     ///     | Do-Block
     ///     | Quantified-Type
-    ///     | Sequence-Literal-Or-Bracketed-Expression
-    ///     | Record-Literal-Expression
-    ///     | Path-Or-Namespaced-Expression-Literal
+    ///     | Sequence-Literal-Or-Bracketed-Expr
+    ///     | Record-Literal-Expr
+    ///     | Path-Or-Namespaced-Expr-Literal
     /// ```
-    pub(crate) fn parse_lower_expression(&mut self) -> Result<Expression> {
+    pub(crate) fn parse_lower_expr(&mut self) -> Result<Expr> {
         //
         // IMPORTANT: To be kept in sync with `pattern::LowerExpressionPrefix`.
         //
 
-        let attributes = self.parse_attributes(SkipLineBreaks::No)?;
+        let attrs = self.parse_attrs(SkipLineBreaks::No)?;
 
         let span = self.span();
-        let mut expression = match self.token() {
+        let mut expr = match self.token() {
             Underscore => {
                 self.advance();
 
-                Expression::common(span, ast::Wildcard::Silent.into())
+                Expr::common(span, ast::Wildcard::Silent.into())
             }
             QuestionMark => {
                 self.advance();
-                self.finish_parse_signaling_wildcard(span)?
+                self.fin_parse_signaling_wildcard(span)?
             }
-            NumberLiteral(literal) => {
+            NumLit(num) => {
                 self.advance();
 
-                Expression::common(
+                Expr::common(
                     span,
-                    ast::NumberLiteral {
+                    ast::NumLit {
                         path: None,
-                        literal: Spanned::new(span, literal),
+                        lit: Spanned::new(span, num),
                     }
                     .into(),
                 )
             }
-            TextLiteral(literal) => {
+            TextLit(text) => {
                 self.advance();
 
-                Expression::common(
+                Expr::common(
                     span,
-                    ast::TextLiteral {
+                    ast::TextLit {
                         path: None,
-                        literal: Spanned::new(span, literal),
+                        lit: Spanned::new(span, text),
                     }
                     .into(),
                 )
             }
-            PathHead!() => self.parse_path_or_namespaced_literal()?,
+            PathHead!() => self.parse_path_or_namespaced_lit()?,
             ForUpper => {
                 self.advance();
-                self.finish_parse_quantified_type(span)?
+                self.finish_parse_quantified_ty(span)?
             }
             ForLower => {
                 self.advance();
@@ -189,39 +189,35 @@ impl Parser<'_> {
             }
             OpeningCurlyBracket => {
                 self.advance();
-                self.finish_parse_record_literal(None, span)?
+                self.fin_parse_rec_lit(None, span)?
             }
             OpeningRoundBracket => {
                 self.advance();
-                self.finish_parse_sequence_literal_or_bracketed_item(None, span)?
+                self.fin_parse_seq_lit_or_bracketed_item(None, span)?
             }
             _ => {
-                self.expected(Expectation::Expression);
+                self.expected(Expectation::Expr);
                 return self.error();
             }
         };
 
-        let mut attributes = Some(attributes);
+        let mut attributes = Some(attrs);
 
         while self.consume(DoubleColon) {
             let field = self.parse_word()?;
 
-            expression = Expression::new(
+            expr = Expr::new(
                 attributes.take().unwrap_or_default(),
-                expression.span.merge(&field),
-                ast::Projection {
-                    basis: expression,
-                    field,
-                }
-                .into(),
+                expr.span.merge(&field),
+                ast::Proj { basis: expr, field }.into(),
             );
         }
 
         if let Some(attributes) = attributes {
-            expression.attributes.extend(attributes);
+            expr.attrs.extend(attributes);
         }
 
-        Ok(expression)
+        Ok(expr)
     }
 
     /// Finish parsing a [lambda literal] given the span of the already parsed leading `for` keyword.
@@ -229,24 +225,24 @@ impl Parser<'_> {
     /// # Grammar
     ///
     /// ```grammar
-    /// Lambda-Literal ::= "for" Parameters Type-Annotation? "=>" Expression
+    /// Lambda-Literal ::= "for" Params Type-Annotation? "=>" Expr
     /// ```
     ///
     /// [lambda literal]: ast::LambdaLiteral
-    fn finish_parse_lambda_literal(&mut self, mut span: Span) -> Result<Expression> {
-        let parameters = self.parse_parameters()?;
-        let codomain = self.parse_optional_type_annotation()?;
+    fn finish_parse_lambda_literal(&mut self, mut span: Span) -> Result<Expr> {
+        let parameters = self.parse_params()?;
+        let codomain = self.parse_opt_ty_ann()?;
         self.annotate(Annotation::LabelWhileParsing {
             span,
             name: "lambda literal",
         });
         self.parse_wide_arrow()?;
-        let body = span.merging(self.parse_expression()?);
+        let body = span.merging(self.parse_expr()?);
 
-        Ok(Expression::common(
+        Ok(Expr::common(
             span,
-            ast::LambdaLiteral {
-                parameters,
+            ast::LamLit {
+                params: parameters,
                 codomain,
                 body,
             }
@@ -259,12 +255,12 @@ impl Parser<'_> {
     /// # Grammar
     ///
     /// ```grammar
-    /// Quantified-Type ::= "For" Parameter* Quantifier Expression
+    /// Quantified-Type ::= "For" Param* Quantifier Expr
     /// ```
     ///
     /// [quantified type]: ast::QuantifiedType
-    fn finish_parse_quantified_type(&mut self, mut span: Span) -> Result<Expression> {
-        let parameters = self.parse_parameters()?;
+    fn finish_parse_quantified_ty(&mut self, mut span: Span) -> Result<Expr> {
+        let parameters = self.parse_params()?;
 
         let quantifier = match self.token() {
             ThinArrowRight => ast::Quantifier::Pi,
@@ -292,13 +288,13 @@ impl Parser<'_> {
 
         self.advance();
 
-        let codomain = span.merging(self.parse_expression()?);
+        let codomain = span.merging(self.parse_expr()?);
 
-        Ok(Expression::common(
+        Ok(Expr::common(
             span,
-            ast::QuantifiedType {
+            ast::QuantifiedTy {
                 quantifier,
-                parameters,
+                params: parameters,
                 codomain,
             }
             .into(),
@@ -311,20 +307,20 @@ impl Parser<'_> {
     ///
     /// ```grammar
     /// Let-Binding ::=
-    ///     "let" Local-Binder Parameters Type-Annotation?
-    ///     ("=" Expression)?
+    ///     "let" Local-Binder Params Type-Annotation?
+    ///     ("=" Expr)?
     ///     #Line-Break?
-    ///     "in" Expression
+    ///     "in" Expr
     /// ```
     ///
     /// [let-binding]: ast::LetBinding
-    fn finish_parse_let_binding(&mut self, mut span: Span) -> Result<Expression> {
+    fn finish_parse_let_binding(&mut self, mut span: Span) -> Result<Expr> {
         let binder = self.parse_local_binder()?;
-        let parameters = self.parse_parameters()?;
-        let type_ = self.parse_optional_type_annotation()?;
+        let parameters = self.parse_params()?;
+        let ty = self.parse_opt_ty_ann()?;
 
         let body = if self.consume(Equals) {
-            Some(self.parse_expression()?)
+            Some(self.parse_expr()?)
         } else {
             None
         };
@@ -335,14 +331,14 @@ impl Parser<'_> {
 
         self.expect(In)?;
 
-        let scope = span.merging(self.parse_expression()?);
+        let scope = span.merging(self.parse_expr()?);
 
-        Ok(Expression::common(
+        Ok(Expr::common(
             span,
             ast::LetBinding {
                 binder,
-                parameters,
-                type_,
+                params: parameters,
+                ty,
                 body,
                 scope,
             }
@@ -358,11 +354,11 @@ impl Parser<'_> {
     /// Use-Binding ::=
     ///     "use" Use-Path-Tree
     ///     #Line-Break?
-    ///     "in" Expression
+    ///     "in" Expr
     /// ```
     ///
     /// [use-binding]: ast::UseBinding
-    fn finish_parse_use_binding(&mut self, span: Span) -> Result<Expression> {
+    fn finish_parse_use_binding(&mut self, span: Span) -> Result<Expr> {
         let bindings = self.parse_use_path_tree()?;
 
         if let LineBreak = self.token() {
@@ -371,9 +367,9 @@ impl Parser<'_> {
 
         self.expect(In)?;
 
-        let scope = self.parse_expression()?;
+        let scope = self.parse_expr()?;
 
-        Ok(Expression::common(
+        Ok(Expr::common(
             span.merge(&scope),
             ast::UseBinding { bindings, scope }.into(),
         ))
@@ -384,13 +380,13 @@ impl Parser<'_> {
     /// # Grammar
     ///
     /// ```grammar
-    /// Case-Analysis ::= "case" Expression "of" (#Indentation Case* #Dedentation)?
-    /// Case ::= Pattern "=>" Expression Terminator
+    /// Case-Analysis ::= "case" Expr "of" (#Indentation Case* #Dedentation)?
+    /// Case ::= Pat "=>" Expr Terminator
     /// ```
     ///
     /// [case analysis]: ast::CaseAnalysis
-    fn finish_parse_case_analysis(&mut self, mut span: Span) -> Result<Expression> {
-        let scrutinee = self.parse_expression()?;
+    fn finish_parse_case_analysis(&mut self, mut span: Span) -> Result<Expr> {
+        let scrutinee = self.parse_expr()?;
         span.merging(self.expect(Of)?);
 
         let mut cases = Vec::new();
@@ -401,7 +397,7 @@ impl Parser<'_> {
             while self.token() != Dedentation {
                 let pattern = self.parse_pattern()?;
                 self.parse_wide_arrow()?;
-                let body = self.parse_expression()?;
+                let body = self.parse_expr()?;
                 self.parse_terminator()?;
 
                 cases.push(ast::Case { pattern, body });
@@ -411,7 +407,7 @@ impl Parser<'_> {
             self.advance();
         }
 
-        Ok(Expression::common(
+        Ok(Expr::common(
             span,
             ast::CaseAnalysis { scrutinee, cases }.into(),
         ))
@@ -423,17 +419,17 @@ impl Parser<'_> {
     ///
     /// ```grammar
     /// Do-Block ::= "do" #Indentation Statement* #Dedentation
-    /// Statement ::= Let-Statement | Use-Declaration | Expression-Statement
+    /// Statement ::= Let-Statement | Use-Decl | Expr-Statement
     /// Let-Statement ::=
-    ///     "let" Local-Binder Parameter* Type-Annotation?
+    ///     "let" Local-Binder Param* Type-Annotation?
     ///     Binding-Mode
-    ///     Expression Terminator
-    /// Expression-Statement ::= Expression Terminator
+    ///     Expr Terminator
+    /// Expr-Statement ::= Expr Terminator
     /// Binding-Mode ::=  "=" | "<-"
     /// ```
     ///
     /// [do-block]: ast::DoBlock
-    fn finish_parse_do_block(&mut self, mut span: Span) -> Result<Expression> {
+    fn finish_parse_do_block(&mut self, mut span: Span) -> Result<Expr> {
         let mut statements = Vec::new();
 
         self.expect(Indentation)?;
@@ -450,8 +446,8 @@ impl Parser<'_> {
                     self.advance();
                     let binder = self.parse_local_binder()?;
 
-                    let parameters = self.parse_parameters()?;
-                    let type_ = self.parse_optional_type_annotation()?;
+                    let parameters = self.parse_params()?;
+                    let ty = self.parse_opt_ty_ann()?;
 
                     let body = match self.token() {
                         token @ (Equals | ThinArrowLeft) => {
@@ -462,7 +458,7 @@ impl Parser<'_> {
                             };
                             self.advance();
 
-                            Some((mode, self.parse_expression()?))
+                            Some((mode, self.parse_expr()?))
                         }
                         _ => None,
                     };
@@ -471,8 +467,8 @@ impl Parser<'_> {
 
                     ast::Statement::Let(ast::LetStatement {
                         binder,
-                        parameters,
-                        type_,
+                        params: parameters,
+                        ty,
                         body,
                     })
                 }
@@ -486,10 +482,10 @@ impl Parser<'_> {
                 _ => {
                     self.expected(Expectation::Statement);
 
-                    let expression = self.parse_expression()?;
+                    let expression = self.parse_expr()?;
                     self.parse_terminator()?;
 
-                    ast::Statement::Expression(expression)
+                    ast::Statement::Expr(expression)
                 }
             });
         }
@@ -497,6 +493,6 @@ impl Parser<'_> {
         span.merging(self.span());
         self.advance();
 
-        Ok(Expression::common(span, ast::DoBlock { statements }.into()))
+        Ok(Expr::common(span, ast::DoBlock { statements }.into()))
     }
 }

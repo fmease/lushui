@@ -1,4 +1,4 @@
-use super::{Error, Mode, Parameter, ParameterKind, Timeout};
+use super::{Error, Mode, Param, ParameterKind, Timeout};
 use crate::{
     configuration::{Configuration, TestTag},
     TestType::{self, *},
@@ -8,22 +8,22 @@ use utility::default;
 
 fn parse_configuration<'m>(
     source: &'static str,
-    type_: TestType,
+    ty: TestType,
     map: &'m mut SourceMap,
 ) -> Result<Configuration<'m>, Error> {
-    let file = map.add_str(FileName::Anonymous, source);
-    Configuration::parse(&map[file], type_, map)
+    let file = map.add_str(FileName::Anon, source);
+    Configuration::parse(&map[file], ty, map)
 }
 
 // @Temporary
-fn parse_parameter(source: &str, type_: TestType) -> Result<Parameter<'_>, Error> {
-    super::parse_parameter(Spanned::bare(source), type_)
+fn parse_parameter(source: &str, ty: TestType) -> Result<Param<'_>, Error> {
+    super::parse_parameter(Spanned::bare(source), ty)
 }
 
 #[test]
 fn parse_parameter_program_args() {
     assert_eq!(
-        Ok(Parameter {
+        Ok(Param {
             revisions: Vec::new(),
             kind: ParameterKind::ProgramArgs(vec!["outsourced"])
         }),
@@ -34,7 +34,7 @@ fn parse_parameter_program_args() {
 #[test]
 fn parse_parameter_pass_check() {
     assert_eq!(
-        Ok(Parameter {
+        Ok(Param {
             revisions: Vec::new(),
             kind: ParameterKind::Pass { mode: Mode::Check }
         }),
@@ -45,7 +45,7 @@ fn parse_parameter_pass_check() {
 #[test]
 fn parse_parameter_fail_build() {
     assert_eq!(
-        Ok(Parameter {
+        Ok(Param {
             revisions: Vec::new(),
             kind: ParameterKind::Fail { mode: Mode::Build }
         }),
@@ -99,7 +99,7 @@ fn parse_parameter_revision_missing_parameter_1() {
 #[test]
 fn parse_parameter_single_revision() {
     assert_eq!(
-        Ok(Parameter {
+        Ok(Param {
             revisions: vec!["great"],
             kind: ParameterKind::CompilerArgs(vec!["--something", "--else"])
         }),
@@ -110,7 +110,7 @@ fn parse_parameter_single_revision() {
 #[test]
 fn parse_parameter_non_alphanumeric_revisions() {
     assert_eq!(
-        Ok(Parameter {
+        Ok(Param {
             revisions: vec!["!@??//x"],
             kind: ParameterKind::CompilerArgs(vec!["-Zextra"])
         }),
@@ -121,7 +121,7 @@ fn parse_parameter_non_alphanumeric_revisions() {
 #[test]
 fn parse_parameter_multiple_revisions() {
     assert_eq!(
-        Ok(Parameter {
+        Ok(Param {
             revisions: vec!["alpha", "@beta", "gamma@addendum"],
             kind: ParameterKind::Timeout(Timeout::Overwritten(None))
         }),

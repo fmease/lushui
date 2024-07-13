@@ -2,7 +2,7 @@ use crate::{
     base::{Expectation, Parser, SkipLineBreaks},
     synonym::PathHead,
 };
-use ast::Pattern;
+use ast::Pat;
 use diagnostics::error::Result;
 use lexer::token::BareToken::*;
 use span::Spanned;
@@ -13,15 +13,15 @@ impl Parser<'_> {
     /// # Grammar
     ///
     /// ```grammar
-    /// Pattern ::=
+    /// Pat ::=
     ///     | Binder
-    ///     | Lower-Pattern Pattern-Argument*
+    ///     | Lower-Pat Pat-Argument*
     /// Binder ::= "let" Local-Binder
-    /// Pattern-Argument ::=
+    /// Pat-Argument ::=
     ///     "'"?
-    ///     (Lower-Pattern | "(" (#Word "=")? Pattern ")")
+    ///     (Lower-Pat | "(" (#Word "=")? Pat ")")
     /// ```
-    pub(crate) fn parse_pattern(&mut self) -> Result<Pattern> {
+    pub(crate) fn parse_pattern(&mut self) -> Result<Pat> {
         if let Let = self.token() {
             // We don't add ‘let’ to the list of expectations, so we don't end up with
             // “expected ‘let’ or pattern” in diagnostics which would be awkward.
@@ -29,10 +29,10 @@ impl Parser<'_> {
             self.advance();
 
             let binder = self.parse_local_binder()?;
-            return Ok(Pattern::common(span.merge(&binder), binder.into()));
+            return Ok(Pat::common(span.merge(&binder), binder.into()));
         }
 
-        self.parse_application_or_lower()
+        self.parse_app_or_lower()
     }
 
     /// Parse a lower pattern.
@@ -40,73 +40,73 @@ impl Parser<'_> {
     /// # Grammar
     ///
     /// ```grammar
-    /// Lower-Pattern ::= Attribute* Bare-Lower-Pattern
-    /// Bare-Lower-Pattern ::=
+    /// Lower-Pat ::= Attr* Bare-Lower-Pat
+    /// Bare-Lower-Pat ::=
     ///     | Wildcard
     ///     | #Number-Literal
     ///     | #Text-Literal
-    ///     | Sequence-Literal-Or-Bracketed-Pattern
-    ///     | Record-Literal-Pattern
-    ///     | Path-Or-Namespaced-Pattern-Literal
+    ///     | Sequence-Literal-Or-Bracketed-Pat
+    ///     | Record-Literal-Pat
+    ///     | Path-Or-Namespaced-Pat-Literal
     /// ```
-    pub(crate) fn parse_lower_pattern(&mut self) -> Result<Pattern> {
+    pub(crate) fn parse_lower_pattern(&mut self) -> Result<Pat> {
         //
         // IMPORTANT: To be kept in sync with `pattern::LowerPatternPrefix`.
         //
 
-        let attributes = self.parse_attributes(SkipLineBreaks::No)?;
+        let attributes = self.parse_attrs(SkipLineBreaks::No)?;
 
         let span = self.span();
         let mut pattern = match self.token() {
             Underscore => {
                 self.advance();
 
-                Pattern::common(span, ast::Wildcard::Silent.into())
+                Pat::common(span, ast::Wildcard::Silent.into())
             }
             QuestionMark => {
                 self.advance();
-                self.finish_parse_signaling_wildcard(span)?
+                self.fin_parse_signaling_wildcard(span)?
             }
-            NumberLiteral(literal) => {
+            NumLit(num) => {
                 self.advance();
 
-                Pattern::common(
+                Pat::common(
                     span,
-                    ast::NumberLiteral {
+                    ast::NumLit {
                         path: None,
-                        literal: Spanned::new(span, literal),
+                        lit: Spanned::new(span, num),
                     }
                     .into(),
                 )
             }
-            TextLiteral(literal) => {
+            TextLit(literal) => {
                 self.advance();
 
-                Pattern::common(
+                Pat::common(
                     span,
-                    ast::TextLiteral {
+                    ast::TextLit {
                         path: None,
-                        literal: Spanned::new(span, literal),
+                        lit: Spanned::new(span, literal),
                     }
                     .into(),
                 )
             }
-            PathHead!() => self.parse_path_or_namespaced_literal()?,
+            PathHead!() => self.parse_path_or_namespaced_lit()?,
             OpeningCurlyBracket => {
                 self.advance();
-                self.finish_parse_record_literal(None, span)?
+                self.fin_parse_rec_lit(None, span)?
             }
             OpeningRoundBracket => {
                 self.advance();
-                self.finish_parse_sequence_literal_or_bracketed_item(None, span)?
+                self.fin_parse_seq_lit_or_bracketed_item(None, span)?
             }
             _ => {
-                self.expected(Expectation::Pattern);
+                self.expected(Expectation::Pat);
                 return self.error();
             }
         };
 
-        pattern.attributes.extend(attributes);
+        pattern.attrs.extend(attributes);
 
         Ok(pattern)
     }

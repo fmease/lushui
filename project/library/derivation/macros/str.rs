@@ -13,10 +13,10 @@ use syn::{
 
 pub(crate) fn derive(input: TokenStream1) -> Result<TokenStream2, Error> {
     let input: syn::ItemEnum = syn::parse(input)?;
-    let type_ = input.ident;
+    let ty = input.ident;
     let visibility = input.vis;
 
-    let FormatAttribute { letter_case } = HelperAttribute::obtain(&type_, &input.attrs)?;
+    let FormatAttribute { letter_case } = HelperAttribute::obtain(&ty, &input.attrs)?;
     let StrAttribute { method } =
         HelperAttribute::obtain_optional(&input.attrs)?.unwrap_or_default();
 
@@ -46,7 +46,7 @@ pub(crate) fn derive(input: TokenStream1) -> Result<TokenStream2, Error> {
     };
 
     Ok(quote! {
-        impl #impl_generics #type_ #type_generics #where_clause {
+        impl #impl_generics #ty #type_generics #where_clause {
             #visibility const fn #method(&self) -> &'static ::core::primitive::str {
                 match #scrutinee { #( #mapping ),* }
             }

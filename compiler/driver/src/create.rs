@@ -1,6 +1,6 @@
 //! Package creation.
 
-use diagnostics::{error::Result, Diagnostic, Reporter};
+use diagnostics::{error::Result, Diag, Reporter};
 use lexer::word::Word;
 use session::package::ManifestPath;
 use std::{fs, io, path::PathBuf};
@@ -10,54 +10,50 @@ const SOURCE_FOLDER_NAME: &str = "source";
 const LIBRARY_FILE_STEM: &str = "library";
 const EXECUTABLE_FILE_STEM: &str = "main";
 
-pub(crate) fn create_package(
-    name: Word,
-    options: &PackageCreationOptions,
-    reporter: &Reporter,
-) -> Result {
-    if let Err(error) = create(name, options) {
-        return Err(Diagnostic::error()
+pub(crate) fn create_pkg(name: Word, opts: &PackageCreationOptions, rep: &Reporter) -> Result {
+    if let Err(error) = create(name, opts) {
+        return Err(Diag::error()
             .message(format!("could not create package ‘{name}’"))
             .with(|it| match &error.path {
                 Some(path) => it.path(path.clone()),
                 None => it,
             })
             .note(error.inner.format())
-            .report(reporter));
+            .report(rep));
     }
 
     Ok(())
 }
 
-fn create(name: Word, options: &PackageCreationOptions) -> Result<(), Error> {
+fn create(name: Word, opts: &PackageCreationOptions) -> Result<(), Error> {
     let current_path = std::env::current_dir()?;
 
-    let package_path = current_path.join(name.to_str());
-    fs::create_dir(&package_path).with_path(package_path.clone())?;
+    let pkg_path = current_path.join(name.to_str());
+    fs::create_dir(&pkg_path).with_path(pkg_path.clone())?;
 
-    let source_folder_path = package_path.join(SOURCE_FOLDER_NAME);
-    fs::create_dir(&source_folder_path).with_path(source_folder_path.clone())?;
+    let src_folder_path = pkg_path.join(SOURCE_FOLDER_NAME);
+    fs::create_dir(&src_folder_path).with_path(src_folder_path.clone())?;
 
     {
-        let path = package_path.join(ManifestPath::FILE_NAME);
-        let package_manifest = io::BufWriter::new(fs::File::create(&path).with_path(path)?);
-        create_package_manifest(name, options, package_manifest)?;
+        let path = pkg_path.join(ManifestPath::FILE_NAME);
+        let pkg_manifest = io::BufWriter::new(fs::File::create(&path).with_path(path)?);
+        create_pkg_manifest(name, opts, pkg_manifest)?;
     }
 
     {
-        let path = package_path.join(".gitignore");
+        let path = pkg_path.join(".gitignore");
         fs::write(&path, "build/\n").with_path(path)?;
     }
 
-    if options.library {
-        let path = source_folder_path
+    if opts.library {
+        let path = src_folder_path
             .join(LIBRARY_FILE_STEM)
             .with_extension(FILE_EXTENSION);
         fs::File::create(&path).with_path(path)?;
     }
 
-    if options.executable {
-        let path = source_folder_path
+    if opts.executable {
+        let path = src_folder_path
             .join(EXECUTABLE_FILE_STEM)
             .with_extension(FILE_EXTENSION);
         let content = "main: extern.core.text.Text =\n    \"Hello there!\"";
@@ -73,9 +69,9 @@ pub(crate) struct PackageCreationOptions {
     pub(crate) executable: bool,
 }
 
-fn create_package_manifest(
+fn create_pkg_manifest(
     name: Word,
-    options: &PackageCreationOptions,
+    opt: &PackageCreationOptions,
     mut sink: impl io::Write,
 ) -> io::Result<()> {
     {
@@ -95,7 +91,7 @@ fn create_package_manifest(
 
     writeln!(sink, "components: {{")?;
 
-    if options.library {
+    if opt.library {
         writeln!(sink, "    {name}: {{")?;
         // @Beacon @Note we might need to update this to ‘default-library’
         writeln!(sink, "        type: library,")?;
@@ -105,14 +101,14 @@ fn create_package_manifest(
         )?;
         writeln!(sink)?;
         writeln!(sink, "        dependencies: {{")?;
-        if !options.no_core {
+        if !opt.no_core {
             writeln!(sink, "            core: {{ provider: distribution }},")?;
         }
         writeln!(sink, "        }},")?;
         writeln!(sink, "    }},")?;
     }
 
-    if options.executable {
+    if opt.executable {
         let executable_name = if name.into_inner() != Atom::MAIN {
             "main"
         } else {
@@ -128,10 +124,10 @@ fn create_package_manifest(
         )?;
         writeln!(sink)?;
         writeln!(sink, "        dependencies: {{")?;
-        if options.library {
+        if opt.library {
             writeln!(sink, "            {name}: {{}},")?;
         }
-        if !options.no_core {
+        if !opt.no_core {
             writeln!(sink, "            core: {{ provider: distribution }},")?;
         }
         writeln!(sink, "        }},")?;

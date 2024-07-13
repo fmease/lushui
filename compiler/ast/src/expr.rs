@@ -1,26 +1,25 @@
 use crate::{
-    declaration::{Use, UsePathTree},
-    Application, Identifier, Item, LocalBinder, NumberLiteral, Parameters, Path, Pattern,
-    RecordLiteral, SequenceLiteral, TextLiteral, Wildcard,
+    decl::{Use, UsePathTree},
+    App, Ident, Item, LocalBinder, NumLit, Params, Pat, Path, RecLit, SeqLit, TextLit, Wildcard,
 };
 use diagnostics::{error::PossiblyErroneous, reporter::ErasedReportedError};
 
 /// An expression.
-pub type Expression = Item<BareExpression>;
+pub type Expr = Item<BareExpr>;
 
-/// An expression without an enclosing [`span::Span`].
+/// A location-less expression.
 #[derive(Clone, PartialEq, Eq)]
-pub enum BareExpression {
+pub enum BareExpr {
     Wildcard(Box<Wildcard>),
-    NumberLiteral(Box<NumberLiteral>),
-    TextLiteral(Box<TextLiteral>),
+    NumLit(Box<NumLit>),
+    TextLit(Box<TextLit>),
     Path(Box<Path>),
-    Application(Box<Application<Expression>>),
-    SequenceLiteral(Box<SequenceLiteral<Expression>>),
-    RecordLiteral(Box<RecordLiteral<Expression>>),
-    Projection(Box<Projection>),
-    QuantifiedType(Box<QuantifiedType>),
-    LambdaLiteral(Box<LambdaLiteral>),
+    App(Box<App<Expr>>),
+    SeqLit(Box<SeqLit<Expr>>),
+    RecLit(Box<RecLit<Expr>>),
+    Proj(Box<Proj>),
+    QuantifiedTy(Box<QuantifiedTy>),
+    LamLit(Box<LamLit>),
     CaseAnalysis(Box<CaseAnalysis>),
     LetBinding(Box<LetBinding>),
     UseBinding(Box<UseBinding>),
@@ -28,91 +27,91 @@ pub enum BareExpression {
     Error(ErasedReportedError),
 }
 
-impl From<Wildcard> for BareExpression {
+impl From<Wildcard> for BareExpr {
     fn from(wildcard: Wildcard) -> Self {
         Self::Wildcard(Box::new(wildcard))
     }
 }
 
-impl From<NumberLiteral> for BareExpression {
-    fn from(number: NumberLiteral) -> Self {
-        Self::NumberLiteral(Box::new(number))
+impl From<NumLit> for BareExpr {
+    fn from(num: NumLit) -> Self {
+        Self::NumLit(Box::new(num))
     }
 }
 
-impl From<TextLiteral> for BareExpression {
-    fn from(text: TextLiteral) -> Self {
-        Self::TextLiteral(Box::new(text))
+impl From<TextLit> for BareExpr {
+    fn from(text: TextLit) -> Self {
+        Self::TextLit(Box::new(text))
     }
 }
 
-impl From<Path> for BareExpression {
+impl From<Path> for BareExpr {
     fn from(path: Path) -> Self {
         Self::Path(Box::new(path))
     }
 }
 
-impl From<Application<Expression>> for BareExpression {
-    fn from(application: Application<Expression>) -> Self {
-        Self::Application(Box::new(application))
+impl From<App<Expr>> for BareExpr {
+    fn from(app: App<Expr>) -> Self {
+        Self::App(Box::new(app))
     }
 }
 
-impl From<SequenceLiteral<Expression>> for BareExpression {
-    fn from(sequence: SequenceLiteral<Expression>) -> Self {
-        Self::SequenceLiteral(Box::new(sequence))
+impl From<SeqLit<Expr>> for BareExpr {
+    fn from(seq: SeqLit<Expr>) -> Self {
+        Self::SeqLit(Box::new(seq))
     }
 }
 
-impl From<RecordLiteral<Expression>> for BareExpression {
-    fn from(record: RecordLiteral<Expression>) -> Self {
-        Self::RecordLiteral(Box::new(record))
+impl From<RecLit<Expr>> for BareExpr {
+    fn from(rec: RecLit<Expr>) -> Self {
+        Self::RecLit(Box::new(rec))
     }
 }
 
-impl From<Projection> for BareExpression {
-    fn from(projection: Projection) -> Self {
-        Self::Projection(Box::new(projection))
+impl From<Proj> for BareExpr {
+    fn from(proj: Proj) -> Self {
+        Self::Proj(Box::new(proj))
     }
 }
 
-impl From<QuantifiedType> for BareExpression {
-    fn from(type_: QuantifiedType) -> Self {
-        Self::QuantifiedType(Box::new(type_))
+impl From<QuantifiedTy> for BareExpr {
+    fn from(ty: QuantifiedTy) -> Self {
+        Self::QuantifiedTy(Box::new(ty))
     }
 }
 
-impl From<LambdaLiteral> for BareExpression {
-    fn from(lambda: LambdaLiteral) -> Self {
-        Self::LambdaLiteral(Box::new(lambda))
+impl From<LamLit> for BareExpr {
+    fn from(lambda: LamLit) -> Self {
+        Self::LamLit(Box::new(lambda))
     }
 }
 
-impl From<CaseAnalysis> for BareExpression {
+impl From<CaseAnalysis> for BareExpr {
     fn from(analysis: CaseAnalysis) -> Self {
         Self::CaseAnalysis(Box::new(analysis))
     }
 }
 
-impl From<LetBinding> for BareExpression {
+impl From<LetBinding> for BareExpr {
     fn from(binding: LetBinding) -> Self {
         Self::LetBinding(Box::new(binding))
     }
 }
 
-impl From<UseBinding> for BareExpression {
+impl From<UseBinding> for BareExpr {
     fn from(binding: UseBinding) -> Self {
         Self::UseBinding(Box::new(binding))
     }
 }
 
-impl From<DoBlock> for BareExpression {
+impl From<DoBlock> for BareExpr {
     fn from(do_: DoBlock) -> Self {
         Self::DoBlock(Box::new(do_))
     }
 }
 
-impl PossiblyErroneous for BareExpression {
+impl PossiblyErroneous for BareExpr {
     fn error(error: ErasedReportedError) -> Self {
         Self::Error(error)
     }
@@ -136,9 +135,9 @@ impl PossiblyErroneous for BareExpression {
 /// * `compound::first` is the *basis*
 /// * `second` is the *field*
 #[derive(Clone, PartialEq, Eq)]
-pub struct Projection {
-    pub basis: Expression,
-    pub field: Identifier,
+pub struct Proj {
+    pub basis: Expr,
+    pub field: Ident,
 }
 
 /// A quantified type.
@@ -184,10 +183,10 @@ pub struct Projection {
 /// [Σ]: Quantifier::Sigma
 // @Task add context parameters to docs
 #[derive(Clone, PartialEq, Eq)]
-pub struct QuantifiedType {
+pub struct QuantifiedTy {
     pub quantifier: Quantifier,
-    pub parameters: Parameters,
-    pub codomain: Expression,
+    pub params: Params,
+    pub codomain: Expr,
 }
 
 /// Infix quantifier used by [quantified types].
@@ -213,10 +212,10 @@ pub enum Quantifier {
 /// * `A` right before `=>` is the *codomain*
 /// * `identity a` is the *body*
 #[derive(Clone, PartialEq, Eq)]
-pub struct LambdaLiteral {
-    pub parameters: Parameters,
-    pub codomain: Option<Expression>,
-    pub body: Expression,
+pub struct LamLit {
+    pub params: Params,
+    pub codomain: Option<Expr>,
+    pub body: Expr,
 }
 
 /// A case-analysis expression.
@@ -234,14 +233,14 @@ pub struct LambdaLiteral {
 /// * the last two lines contain the *cases*
 #[derive(Clone, PartialEq, Eq)]
 pub struct CaseAnalysis {
-    pub scrutinee: Expression,
+    pub scrutinee: Expr,
     pub cases: Vec<Case>,
 }
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct Case {
-    pub pattern: Pattern,
-    pub body: Expression,
+    pub pattern: Pat,
+    pub body: Expr,
 }
 
 /// A let-binding.
@@ -262,10 +261,10 @@ pub struct Case {
 #[derive(Clone, PartialEq, Eq)]
 pub struct LetBinding {
     pub binder: LocalBinder,
-    pub parameters: Parameters,
-    pub type_: Option<Expression>,
-    pub body: Option<Expression>,
-    pub scope: Expression,
+    pub params: Params,
+    pub ty: Option<Expr>,
+    pub body: Option<Expr>,
+    pub scope: Expr,
 }
 
 /// A use-binding.
@@ -283,7 +282,7 @@ pub struct LetBinding {
 #[derive(Clone, PartialEq, Eq)]
 pub struct UseBinding {
     pub bindings: UsePathTree,
-    pub scope: Expression,
+    pub scope: Expr,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -296,7 +295,7 @@ pub struct DoBlock {
 pub enum Statement {
     Let(LetStatement),
     Use(Use),
-    Expression(Expression),
+    Expr(Expr),
 }
 
 /// A let-statement.
@@ -334,9 +333,9 @@ pub struct LetStatement {
     /// not semantically. They are rejected in the lowerer.
     ///
     /// [effectful]: BindingMode::Effectful
-    pub parameters: Parameters,
-    pub type_: Option<Expression>,
-    pub body: Option<(BindingMode, Expression)>,
+    pub params: Params,
+    pub ty: Option<Expr>,
+    pub body: Option<(BindingMode, Expr)>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

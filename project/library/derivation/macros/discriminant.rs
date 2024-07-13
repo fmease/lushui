@@ -14,13 +14,13 @@ use syn::{
 pub(crate) fn derive(input: TokenStream1) -> Result<TokenStream2, Error> {
     let input: syn::ItemEnum = syn::parse(input)?;
     let visibility = input.vis;
-    let type_ = input.ident;
+    let ty = input.ident;
 
     let DiscriminantAttribute {
-        type_: discriminant_type,
-        attributes: discriminant_attributes,
+        ty: discriminant_ty,
+        attrs: discriminant_attributes,
         method: discriminant_method,
-    } = HelperAttribute::obtain(&type_, &input.attrs)?;
+    } = HelperAttribute::obtain(&ty, &input.attrs)?;
 
     let discriminants = input.variants.iter().map(|variant| &variant.ident);
 
@@ -32,7 +32,7 @@ pub(crate) fn derive(input: TokenStream1) -> Result<TokenStream2, Error> {
         };
         let name = &variant.ident;
 
-        quote! { Self::#name #fields => self::#discriminant_type::#name }
+        quote! { Self::#name #fields => self::#discriminant_ty::#name }
     });
 
     let (impl_generics, type_generics, where_clause) = input.generics.split_for_impl();
@@ -41,12 +41,12 @@ pub(crate) fn derive(input: TokenStream1) -> Result<TokenStream2, Error> {
         #[derive(Clone, Copy, PartialEq, Eq)]
         #( #discriminant_attributes )*
         // @Task add const params to the discr type
-        #visibility enum #discriminant_type {
+        #visibility enum #discriminant_ty {
             #( #discriminants ),*
         }
 
-        impl #impl_generics #type_ #type_generics #where_clause {
-            #visibility const fn #discriminant_method(&self) -> self::#discriminant_type {
+        impl #impl_generics #ty #type_generics #where_clause {
+            #visibility const fn #discriminant_method(&self) -> self::#discriminant_ty {
                 match self {
                     #( #mapping ),*
                 }
@@ -57,8 +57,8 @@ pub(crate) fn derive(input: TokenStream1) -> Result<TokenStream2, Error> {
 
 struct DiscriminantAttribute {
     method: Ident,
-    attributes: Vec<Attribute>,
-    type_: Ident,
+    attrs: Vec<Attribute>,
+    ty: Ident,
 }
 
 impl HelperAttribute for DiscriminantAttribute {
@@ -69,15 +69,11 @@ impl Parse for DiscriminantAttribute {
     fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
         let method = input.parse()?;
         let _: Token![:] = input.parse()?;
-        let attributes = Attribute::parse_outer(input)?;
-        let type_ = input.parse()?;
+        let attrs = Attribute::parse_outer(input)?;
+        let ty = input.parse()?;
         let _: Nothing = input.parse()?;
         let _: Nothing = input.parse()?;
 
-        Ok(Self {
-            method,
-            attributes,
-            type_,
-        })
+        Ok(Self { method, attrs, ty })
     }
 }

@@ -15,7 +15,7 @@ pub enum BareToken {
     //
     Shebang,
     Comment,
-    DocumentationComment,
+    DocComment,
     //
     // Keywords
     //
@@ -78,9 +78,9 @@ pub enum BareToken {
     EndOfInput,
     Indentation,
     LineBreak,
-    NumberLiteral(Atom),
+    NumLit(Atom),
     Symbol(Atom),
-    TextLiteral(Atom),
+    TextLit(Atom),
     Word(Atom),
 }
 
@@ -98,7 +98,7 @@ impl fmt::Display for BareToken {
             //
             Shebang => "shebang",
             Comment => "comment",
-            DocumentationComment => "documentation comment",
+            DocComment => "documentation comment",
             //
             // Keywords
             //
@@ -153,9 +153,9 @@ impl fmt::Display for BareToken {
             EndOfInput => "end of input",
             Self::Indentation => "indentation",
             LineBreak => "line break",
-            NumberLiteral(_) => "number literal",
+            NumLit(_) => "number literal",
             Symbol(_) => "symbol",
-            TextLiteral(_) => "text literal",
+            TextLit(_) => "text literal",
             Self::Word(_) => "word",
         })
     }

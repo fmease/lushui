@@ -1,4 +1,4 @@
-use span::{ByteIndex, LocalByteIndex, SourceMap, Span};
+use span::{ByteIdx, LocalByteIdx, SourceMap, Span};
 use tower_lsp::lsp_types::{Location, Position, Range, Url};
 use utility::path::CanonicalPath;
 
@@ -37,11 +37,11 @@ pub(crate) trait FromPositionExt {
     fn from_position(position: Position, path: &CanonicalPath, map: &SourceMap) -> Self;
 }
 
-impl FromPositionExt for ByteIndex {
+impl FromPositionExt for ByteIdx {
     // @Beacon @Note this is an abomination!!!
     fn from_position(position: Position, path: &CanonicalPath, map: &SourceMap) -> Self {
         let file = map.file_by_path(path).unwrap();
-        let mut index = LocalByteIndex::new(0);
+        let mut index = LocalByteIdx::new(0);
 
         #[allow(clippy::map_unwrap_or)] // @Temporary
         for (line_number, line) in file.content().split('\n').enumerate() {

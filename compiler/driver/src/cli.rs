@@ -7,7 +7,7 @@ use derivation::{Elements, FromStr, Str};
 use diagnostics::error::Result;
 use lexer::word::Word;
 use package::ComponentFilter;
-use session::unit::ComponentType;
+use session::unit::CompTy;
 use std::{cmp::max, ffi::OsStr, io::Write, path::PathBuf};
 use utility::{
     default,
@@ -17,6 +17,8 @@ use utility::{
 // @Task update the color scheme of the `-Zhelp` output from clap-3-style to clap-4-style
 //       i.e. from upper-case section titles and the use of yellow & green to
 //       bold & underlined section titles and the use of bold letters
+
+// FIXME: Make use of `clap`'s `Lazy`.
 
 pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
     let short_version = format!(
@@ -52,29 +54,29 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
     )
     .unwrap();
 
-    let path_argument = Arg::new(argument::PATH).value_parser(ValueParser::path_buf());
+    let path_arg = Arg::new(argument::PATH).value_parser(ValueParser::path_buf());
 
-    let package_path_argument = path_argument.clone().help(
+    let pkg_path_arg = path_arg.clone().help(
         "The path to a folder containing a package. Defaults to the local package \
          i.e. the first package whose manifest is found starting the search in the current folder \
          then looking through each parent folder",
     );
 
-    let backend_option = Arg::new(option::BACKEND)
+    let backend_opt = Arg::new(option::BACKEND)
         .long("backend")
         .short('b')
         .value_name("BACKEND")
         .value_parser(BackendParser)
         .help("Set the backend");
 
-    let component_type_option = Arg::new(option::COMPONENT_TYPE)
+    let comp_ty_opt = Arg::new(option::COMPONENT_TYPE)
         .long("component-type")
         .short('t')
         .value_name("TYPE")
         .value_parser(ComponentTypeParser);
 
-    let file_build_arguments = [
-        path_argument
+    let file_build_args = [
+        path_arg
             .clone()
             .required(true)
             .help("The path to a source file"),
@@ -83,10 +85,10 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
             .short('0')
             .action(ArgAction::SetTrue)
             .help("Drop the default dependency on the standard library ‘core’"),
-        component_type_option.clone().help("Set the component type"),
+        comp_ty_opt.clone().help("Set the component type"),
     ];
 
-    let documentation_arguments = [
+    let doc_args = [
         Arg::new(option::OPEN)
             .long("open")
             .short('o')
@@ -98,7 +100,7 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
             .help("Prevent the dependencies from being documented"),
     ];
 
-    let package_creation_arguments = [
+    let pkg_creation_args = [
         Arg::new(option::NO_CORE)
             .long("no-core")
             .action(ArgAction::SetTrue)
@@ -115,7 +117,7 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
             .help("Create a library component in the new package"),
     ];
 
-    let filter_options = [
+    let filter_opts = [
         Arg::new(option::COMPONENT)
             .long("component")
             .short('c')
@@ -123,12 +125,12 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
             .action(ArgAction::Append)
             .value_parser(WordParser)
             .help("Target only the given component"),
-        component_type_option
+        comp_ty_opt
             .action(ArgAction::Append)
             .help("Target only components of the given type"),
     ];
 
-    let unstable_options = Arg::new(option::UNSTABLE_OPTION)
+    let unstable_opts = Arg::new(option::UNSTABLE_OPTION)
         .short('Z')
         .value_name("OPTION")
         .action(ArgAction::Append)
@@ -160,24 +162,24 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
             clap::Command::new(subcommand::CHECK)
                 .visible_alias("c")
                 .about("Check the given or local package for errors")
-                .args([&package_path_argument, &unstable_options])
-                .args(&filter_options),
+                .args([&pkg_path_arg, &unstable_opts])
+                .args(&filter_opts),
             clap::Command::new(subcommand::BUILD)
                 .visible_alias("b")
                 .about("Compile the given or local package")
-                .args([&package_path_argument, &backend_option, &unstable_options])
-                .args(&filter_options),
+                .args([&pkg_path_arg, &backend_opt, &unstable_opts])
+                .args(&filter_opts),
             clap::Command::new(subcommand::RUN)
                 .visible_alias("r")
                 .about("Run the given or local package")
-                .args([&package_path_argument, &backend_option, &unstable_options])
-                .args(&filter_options),
+                .args([&pkg_path_arg, &backend_opt, &unstable_opts])
+                .args(&filter_opts),
             clap::Command::new(subcommand::DOCUMENT)
                 .visible_aliases(["doc", "d"])
                 .about("Document the given or local package")
-                .args([&package_path_argument, &unstable_options])
-                .args(&filter_options)
-                .args(&documentation_arguments),
+                .args([&pkg_path_arg, &unstable_opts])
+                .args(&filter_opts)
+                .args(&doc_args),
             clap::Command::new(subcommand::FILE)
                 .visible_alias("f")
                 .subcommand_required(true)
@@ -187,24 +189,24 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
                     clap::Command::new(subcommand::CHECK)
                         .visible_alias("c")
                         .about("Check the given source file for errors")
-                        .args(&file_build_arguments)
-                        .arg(&unstable_options),
+                        .args(&file_build_args)
+                        .arg(&unstable_opts),
                     clap::Command::new(subcommand::BUILD)
                         .visible_alias("b")
                         .about("Compile the given source file")
-                        .args(&file_build_arguments)
-                        .args([&backend_option, &unstable_options]),
+                        .args(&file_build_args)
+                        .args([&backend_opt, &unstable_opts]),
                     clap::Command::new(subcommand::RUN)
                         .visible_alias("r")
                         .about("Run the given source file")
-                        .args(&file_build_arguments)
-                        .args([&backend_option, &unstable_options]),
+                        .args(&file_build_args)
+                        .args([&backend_opt, &unstable_opts]),
                     clap::Command::new(subcommand::DOCUMENT)
                         .visible_aliases(["doc", "d"])
                         .about("Document the given source file")
-                        .args(file_build_arguments)
-                        .arg(unstable_options)
-                        .args(documentation_arguments),
+                        .args(file_build_args)
+                        .arg(unstable_opts)
+                        .args(doc_args),
                 ]),
             #[cfg(feature = "lsp")]
             clap::Command::new(subcommand::SERVE).about("Launch an LSP server"),
@@ -219,7 +221,7 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
             clap::Command::new(subcommand::INITIALIZE)
                 .visible_alias("init")
                 .about("Create a new package in the current folder")
-                .args(&package_creation_arguments),
+                .args(&pkg_creation_args),
             clap::Command::new(subcommand::NEW)
                 .about("Create a new package in a new folder")
                 .arg(
@@ -228,16 +230,12 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
                         .value_parser(WordParser)
                         .help("The name of the package"),
                 )
-                .args(package_creation_arguments),
+                .args(pkg_creation_args),
             clap::Command::new(subcommand::RECNOT)
                 .about("Check a Recnot file for syntax errors")
                 .hide(true)
                 .after_help(recnot_subcommand_disclaimer)
-                .arg(
-                    path_argument
-                        .required(true)
-                        .help("The path to the Recnot file"),
-                ),
+                .arg(path_arg.required(true).help("The path to the Recnot file")),
         ])
         .get_matches();
 
@@ -249,16 +247,16 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
             | subcommand::DOCUMENT),
             matches,
         ) => {
-            let (mode, unstable_build_options) = match command {
+            let (mode, unstable_build_opts) = match command {
                 subcommand::BUILD | subcommand::RUN => {
-                    let (unstable_build_options, unstable_compilation_options) =
+                    let (unstable_build_options, unstable_compilation_opts) =
                         unstable::deserialize(matches).map(unstable::Or::split)?;
                     let options =
-                        CompilationOptions::deserialize(matches, unstable_compilation_options);
+                        CompilationOptions::deserialize(matches, unstable_compilation_opts);
 
                     let mode = match command {
-                        subcommand::BUILD => BuildMode::Compile { options },
-                        subcommand::RUN => BuildMode::Run { options },
+                        subcommand::BUILD => BuildMode::Compile { opts: options },
+                        subcommand::RUN => BuildMode::Run { opts: options },
                         _ => unreachable!(),
                     };
 
@@ -266,23 +264,20 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
                 }
                 subcommand::CHECK => (BuildMode::Check, unstable::deserialize(matches)?),
                 subcommand::DOCUMENT => {
-                    let (unstable_build_options, unstable_documentation_options) =
+                    let (unstable_build_opts, unstable_doc_opts) =
                         unstable::deserialize(matches).map(unstable::Or::split)?;
 
                     let mode = BuildMode::Document {
-                        options: DocumentationOptions::deserialize(
-                            matches,
-                            unstable_documentation_options,
-                        ),
+                        opts: DocumentationOptions::deserialize(matches, unstable_doc_opts),
                     };
 
-                    (mode, unstable_build_options)
+                    (mode, unstable_build_opts)
                 }
                 _ => unreachable!(),
             };
             Command::BuildPackage {
                 mode,
-                options: PackageBuildOptions::deserialize(matches, unstable_build_options),
+                opts: PackageBuildOptions::deserialize(matches, unstable_build_opts),
             }
         }
         (subcommand::FILE, matches) => {
@@ -291,38 +286,35 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
             let (mode, unstable_build_options) = match command {
                 subcommand::CHECK => (BuildMode::Check, unstable::deserialize(matches)?),
                 subcommand::BUILD | subcommand::RUN => {
-                    let (unstable_build_options, unstable_compilation_options) =
+                    let (unstable_build_opts, unstable_compilation_opts) =
                         unstable::deserialize(matches).map(unstable::Or::split)?;
                     let options =
-                        CompilationOptions::deserialize(matches, unstable_compilation_options);
+                        CompilationOptions::deserialize(matches, unstable_compilation_opts);
 
                     let mode = match command {
-                        subcommand::BUILD => BuildMode::Compile { options },
-                        subcommand::RUN => BuildMode::Run { options },
+                        subcommand::BUILD => BuildMode::Compile { opts: options },
+                        subcommand::RUN => BuildMode::Run { opts: options },
                         _ => unreachable!(),
                     };
 
-                    (mode, unstable_build_options)
+                    (mode, unstable_build_opts)
                 }
                 subcommand::DOCUMENT => {
-                    let (unstable_build_options, unstable_documentation_options) =
+                    let (unstable_build_opts, unstable_doc_opts) =
                         unstable::deserialize(matches).map(unstable::Or::split)?;
 
                     let mode = BuildMode::Document {
-                        options: DocumentationOptions::deserialize(
-                            matches,
-                            unstable_documentation_options,
-                        ),
+                        opts: DocumentationOptions::deserialize(matches, unstable_doc_opts),
                     };
 
-                    (mode, unstable_build_options)
+                    (mode, unstable_build_opts)
                 }
                 _ => unreachable!(),
             };
 
             Command::BuildFile {
                 mode,
-                options: FileBuildOptions::deserialize(matches, unstable_build_options),
+                opts: FileBuildOptions::deserialize(matches, unstable_build_options),
             }
         }
         #[cfg(feature = "lsp")]
@@ -332,11 +324,11 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
             mode: match command {
                 subcommand::INITIALIZE => PackageCreationMode::Initialize,
                 subcommand::NEW => PackageCreationMode::New {
-                    package_name: matches.get_one(argument::NAME).copied().unwrap(),
+                    pkg_name: matches.get_one(argument::NAME).copied().unwrap(),
                 },
                 _ => unreachable!(),
             },
-            options: PackageCreationOptions::deserialize(matches),
+            opts: PackageCreationOptions::deserialize(matches),
         },
         (subcommand::RECNOT, matches) => Command::Recnot {
             path: matches.get_one(argument::PATH).cloned().unwrap(),
@@ -378,7 +370,7 @@ mod option {
     pub(super) const NO_DEPENDENCIES: &str = "no_dependencies";
     pub(super) const OPEN: &str = "open";
     pub(super) const QUIET: &str = "quiet";
-    pub(super) const UNSTABLE_OPTION: &str = "unstable-option";
+    pub(super) const UNSTABLE_OPTION: &str = "unstable_option";
 }
 
 const RECNOT_SUBCOMMAND_DISCLAIMER: &str = "\
@@ -390,18 +382,18 @@ const RECNOT_SUBCOMMAND_DISCLAIMER: &str = "\
 pub(crate) enum Command {
     BuildPackage {
         mode: BuildMode,
-        options: PackageBuildOptions,
+        opts: PackageBuildOptions,
     },
     BuildFile {
         mode: BuildMode,
-        options: FileBuildOptions,
+        opts: FileBuildOptions,
     },
     #[cfg(feature = "lsp")]
     Serve,
     Explain,
     CreatePackage {
         mode: PackageCreationMode,
-        options: PackageCreationOptions,
+        opts: PackageCreationOptions,
     },
     Recnot {
         path: PathBuf,
@@ -457,9 +449,9 @@ impl TypedValueParser for ColorChoiceParser {
 #[format(dash_case)]
 pub(crate) enum BuildMode {
     Check,
-    Compile { options: CompilationOptions },
-    Run { options: CompilationOptions },
-    Document { options: DocumentationOptions },
+    Compile { opts: CompilationOptions },
+    Run { opts: CompilationOptions },
+    Document { opts: DocumentationOptions },
 }
 
 pub(crate) struct PackageBuildOptions {
@@ -469,10 +461,10 @@ pub(crate) struct PackageBuildOptions {
 }
 
 impl PackageBuildOptions {
-    fn deserialize(matches: &ArgMatches, unstable_options: Vec<unstable::BuildOption>) -> Self {
+    fn deserialize(matches: &ArgMatches, unstable_opts: Vec<unstable::BuildOption>) -> Self {
         Self {
             path: matches.get_one(argument::PATH).cloned(),
-            general: BuildOptions::deserialize(unstable_options),
+            general: BuildOptions::deserialize(unstable_opts),
             filter: ComponentFilter::deserialize(matches),
         }
     }
@@ -490,7 +482,7 @@ impl DeserializeExt for ComponentFilter {
             filter.names.extend(components);
         }
 
-        if let Some(types) = matches.get_many::<ComponentType>(option::COMPONENT_TYPE) {
+        if let Some(types) = matches.get_many::<CompTy>(option::COMPONENT_TYPE) {
             filter.types.extend(types);
         }
 
@@ -502,16 +494,16 @@ pub(crate) struct FileBuildOptions {
     pub(crate) path: PathBuf,
     pub(crate) general: BuildOptions,
     pub(crate) no_core: bool,
-    pub(crate) component_type: Option<ComponentType>,
+    pub(crate) comp_ty: Option<CompTy>,
 }
 
 impl FileBuildOptions {
-    fn deserialize(matches: &ArgMatches, unstable_options: Vec<unstable::BuildOption>) -> Self {
+    fn deserialize(matches: &ArgMatches, unstable_opts: Vec<unstable::BuildOption>) -> Self {
         Self {
             path: matches.get_one(argument::PATH).cloned().unwrap(),
-            general: BuildOptions::deserialize(unstable_options),
+            general: BuildOptions::deserialize(unstable_opts),
             no_core: matches.get_flag(option::NO_CORE),
-            component_type: matches.get_one(option::COMPONENT_TYPE).copied(),
+            comp_ty: matches.get_one(option::COMPONENT_TYPE).copied(),
         }
     }
 }
@@ -530,10 +522,10 @@ pub(crate) struct BuildOptions {
 }
 
 impl BuildOptions {
-    fn deserialize(unstable_options: Vec<unstable::BuildOption>) -> Self {
+    fn deserialize(unstable_opts: Vec<unstable::BuildOption>) -> Self {
         let mut options = Self::default();
 
-        for unstable_option in unstable_options {
+        for unstable_option in unstable_opts {
             use unstable::BuildOption::*;
 
             match unstable_option {
@@ -578,12 +570,9 @@ pub(crate) struct CompilationOptions {
 }
 
 impl CompilationOptions {
-    fn deserialize(
-        matches: &ArgMatches,
-        unstable_options: Vec<unstable::CompilationOption>,
-    ) -> Self {
+    fn deserialize(matches: &ArgMatches, unstable_opts: Vec<unstable::CompilationOption>) -> Self {
         #[allow(unused_mut, clippy::needless_update)]
-        let mut options = Self {
+        let mut opts = Self {
             // @Task instead of unwrap_or_default use clap's way sth sth default_value
             backend: matches
                 .get_one(option::BACKEND)
@@ -592,19 +581,19 @@ impl CompilationOptions {
             ..default()
         };
 
-        for unstable_option in unstable_options {
+        for unstable_opt in unstable_opts {
             #[allow(unused_imports)]
             use unstable::CompilationOption::*;
 
-            match unstable_option {
+            match unstable_opt {
                 #[cfg(feature = "cranelift")]
-                EmitClif => options.emit_clif = true,
+                EmitClif => opts.emit_clif = true,
                 #[cfg(feature = "llvm")]
-                EmitLlvmIr => options.emit_llvm_ir = true,
+                EmitLlvmIr => opts.emit_llvm_ir = true,
                 #[cfg(feature = "cranelift")]
-                VerifyClif => options.verify_clif = true,
+                VerifyClif => opts.verify_clif = true,
                 #[cfg(feature = "llvm")]
-                VerifyLlvmIr => options.verify_llvm_ir = true,
+                VerifyLlvmIr => opts.verify_llvm_ir = true,
             }
         }
 
@@ -612,7 +601,7 @@ impl CompilationOptions {
         // * backend == Llvm && (emit_clif || verify_clif)
         // * backend == Cranelift && (emit_llvm_ir || verify_llvm_ir)
 
-        options
+        opts
     }
 }
 
@@ -640,7 +629,7 @@ pub(crate) enum PassRestriction {
 
 pub(crate) enum PackageCreationMode {
     Initialize,
-    New { package_name: Word },
+    New { pkg_name: Word },
 }
 
 impl PackageCreationOptions {
@@ -659,25 +648,25 @@ impl PackageCreationOptions {
 #[derive(Default)]
 pub(crate) struct DocumentationOptions {
     pub(crate) open: bool,
-    pub(crate) no_dependencies: bool,
+    pub(crate) no_deps: bool,
     pub(crate) general: documenter::Options,
 }
 
 impl DocumentationOptions {
     fn deserialize(
         matches: &ArgMatches,
-        unstable_options: Vec<unstable::DocumentationOption>,
+        unstable_opts: Vec<unstable::DocumentationOption>,
     ) -> Self {
         let mut options = Self {
             open: matches.get_flag(option::OPEN),
-            no_dependencies: matches.get_flag(option::NO_DEPENDENCIES),
+            no_deps: matches.get_flag(option::NO_DEPENDENCIES),
             ..default()
         };
 
-        for unstable_option in unstable_options {
+        for unstable_opt in unstable_opts {
             use unstable::DocumentationOption::*;
 
-            match unstable_option {
+            match unstable_opt {
                 AsciiDoc => options.general.asciidoc = true,
                 LoremIpsum(amount) => options.general.lorem_ipsum = amount,
             }
@@ -716,7 +705,7 @@ impl TypedValueParser for WordParser {
 struct ComponentTypeParser;
 
 impl TypedValueParser for ComponentTypeParser {
-    type Value = ComponentType;
+    type Value = CompTy;
 
     fn parse_ref(
         &self,
@@ -739,7 +728,7 @@ impl TypedValueParser for ComponentTypeParser {
 
     fn possible_values(&self) -> Option<Box<dyn Iterator<Item = PossibleValue>>> {
         Some(Box::new(
-            ComponentType::elements().map(|type_| PossibleValue::new(type_.name())),
+            CompTy::elements().map(|ty| PossibleValue::new(ty.name())),
         ))
     }
 }
@@ -778,7 +767,7 @@ impl TypedValueParser for BackendParser {
 mod unstable {
     use clap::ArgMatches;
     use derivation::{Elements, FromStr, Str};
-    use diagnostics::{error::Result, Diagnostic, Reporter};
+    use diagnostics::{error::Result, Diag, Reporter};
     use std::{
         io::{self, Write},
         iter::once,
@@ -811,7 +800,7 @@ mod unstable {
         }
 
         if !invalid_options.is_empty() {
-            Err(Diagnostic::error()
+            Err(Diag::error()
                 .message(format!(
                     "invalid unstable {} {}",
                     pluralize!(invalid_options.len(), "option"),
@@ -840,20 +829,20 @@ mod unstable {
         writeln!(stdout, "Unstable Options:")?;
         stdout.unset()?;
 
-        let mut elements: Vec<_> = O::elements()
-            .map(|element| (element.syntax(), element.help()))
+        let mut elems: Vec<_> = O::elements()
+            .map(|elem| (elem.syntax(), elem.help()))
             .chain(once((HELP_OPTION, "Print help information and halt")))
             .collect();
 
-        let padding = elements
+        let padding = elems
             .iter()
             .map(|(syntax, _)| syntax.len())
             .max()
             .unwrap_or_default();
 
-        elements.sort_by_key(|&(syntax, _)| syntax);
+        elems.sort_by_key(|&(syntax, _)| syntax);
 
-        for (syntax, help) in elements {
+        for (syntax, help) in elems {
             stdout.set(Effects::BOLD)?;
             write!(stdout, "    -Z {syntax:<padding$}     ")?;
             stdout.unset()?;

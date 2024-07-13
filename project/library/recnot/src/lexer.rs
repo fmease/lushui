@@ -1,6 +1,6 @@
 use derivation::Discriminant;
-use diagnostics::Diagnostic;
-use span::{LocalByteIndex, LocalSpan, SourceFile, Span, Spanned};
+use diagnostics::Diag;
+use span::{LocalByteIdx, LocalSpan, SourceFile, Span, Spanned};
 use std::{fmt, iter::Peekable, num::ParseIntError, str::CharIndices};
 use utility::{obtain, quoted};
 use BareToken::*;
@@ -49,7 +49,7 @@ impl<'a> Lexer<'a> {
                 '#' => self.lex_comment(),
                 character if character.is_ascii_whitespace() => self.lex_whitespace(),
                 '"' => self.lex_text(),
-                character if is_identifier_segment_start(character) => self.lex_identifier(),
+                character if is_identifier_segment_start(character) => self.lex_ident(),
                 character if character.is_ascii_digit() => self.lex_number(),
                 '-' => self.lex_number(),
                 '[' => self.consume(OpeningSquareBracket),
@@ -138,23 +138,23 @@ impl<'a> Lexer<'a> {
         self.add(Text(self.file[content_span].into()));
     }
 
-    fn lex_identifier(&mut self) {
-        self.lex_first_identifier_segment();
+    fn lex_ident(&mut self) {
+        self.lex_first_ident_segment();
 
         while self.peek() == Some('-') {
             self.take();
             self.advance();
-            self.lex_identifier_segment();
+            self.lex_ident_segment();
         }
 
         self.add(match self.source() {
             "false" => False,
             "true" => True,
-            identifier => Identifier(identifier.to_owned()),
+            ident => Ident(ident.to_owned()),
         });
     }
 
-    fn lex_first_identifier_segment(&mut self) {
+    fn lex_first_ident_segment(&mut self) {
         if let Some(character) = self.peek() {
             if is_identifier_segment_start(character) {
                 self.take();
@@ -164,7 +164,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn lex_identifier_segment(&mut self) {
+    fn lex_ident_segment(&mut self) {
         self.take_while(is_identifier_segment_middle);
     }
 
@@ -230,7 +230,7 @@ impl<'a> Lexer<'a> {
         self.peek_with_index().map(|(_, character)| character)
     }
 
-    fn peek_with_index(&mut self) -> Option<(LocalByteIndex, char)> {
+    fn peek_with_index(&mut self) -> Option<(LocalByteIdx, char)> {
         self.characters
             .peek()
             .map(|&(index, character)| (index.try_into().unwrap(), character))
@@ -278,7 +278,7 @@ pub type Token = Spanned<BareToken>;
 
 pub trait TokenExt {
     fn name(&self) -> TokenName;
-    fn into_identifier(self) -> Option<String>;
+    fn into_ident(self) -> Option<String>;
     fn into_text(self) -> Option<String>;
     fn into_integer(self) -> Option<i64>;
 }
@@ -288,8 +288,8 @@ impl TokenExt for Token {
         self.bare.name()
     }
 
-    fn into_identifier(self) -> Option<String> {
-        obtain!(self.bare, Identifier(identifier) => identifier)
+    fn into_ident(self) -> Option<String> {
+        obtain!(self.bare, Ident(ident) => ident)
     }
 
     fn into_text(self) -> Option<String> {
@@ -314,7 +314,7 @@ pub enum BareToken {
     ClosingCurlyBracket,
     False,
     True,
-    Identifier(String),
+    Ident(String),
     Text(String),
     Integer(i64),
     EndOfInput,
@@ -340,7 +340,7 @@ impl fmt::Display for TokenName {
             ClosingCurlyBracket => quoted!("}"),
             False => "keyword ‘false’",
             True => "keyword ‘true’",
-            Identifier => "identifier",
+            Ident => "identifier",
             Text => "text",
             Integer => "integer",
             EndOfInput => "end of input",
@@ -355,7 +355,7 @@ pub enum Error {
     NumberExceedsSizeLimit(Spanned<ParseIntError>),
 }
 
-impl From<Error> for Diagnostic {
+impl From<Error> for Diag {
     fn from(error: Error) -> Self {
         match error {
             Error::InvalidToken(token) => {
@@ -364,18 +364,18 @@ impl From<Error> for Diagnostic {
                     token.bare as u32,
                 );
 
-                Diagnostic::error()
+                Diag::error()
                     .message(message)
                     .span(token, "unexpected token")
             }
             // @Task improve message, mention closing it with quotes
-            Error::UnterminatedText(span) => Diagnostic::error()
+            Error::UnterminatedText(span) => Diag::error()
                 .message("unterminated text")
                 .unlabeled_span(span),
             Error::NumberExceedsSizeLimit(parse_error) => {
                 use std::num::IntErrorKind::*;
 
-                Diagnostic::error()
+                Diag::error()
                     .message("the number exceeds the size limit")
                     .with(|it| match parse_error.bare.kind() {
                         PosOverflow => it.note("numbers must not be larger than 2^63 - 1"),

@@ -4,7 +4,7 @@ use clap::{
     Arg, ArgAction, Command,
 };
 use derivation::Elements;
-use diagnostics::{Diagnostic, Reporter};
+use diagnostics::{Diag, Reporter};
 use std::{ffi::OsStr, num::NonZeroUsize, path::PathBuf, time::Duration};
 use utility::{paint::ColorChoice, FormatError};
 
@@ -94,7 +94,7 @@ pub(crate) fn arguments() -> Result<Arguments, ()> {
                     success = false;
                 }
 
-                Diagnostic::error()
+                Diag::error()
                     .message("could not load the test file")
                     .path(path.clone())
                     .note(error.format())

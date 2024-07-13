@@ -30,41 +30,37 @@
 
 use diagnostics::{
     error::{Handler, Health, Outcome, PossiblyErroneous, Result},
-    Diagnostic,
+    Diag,
 };
 use session::Session;
 
-mod attribute;
-mod declaration;
-mod expression;
-mod pattern;
+mod attr;
+mod decl;
+mod expr;
+mod pat;
 
 /// Lower a file.
-pub fn lower_file(
-    declaration: ast::Declaration,
-    options: Options,
-    session: &Session<'_>,
-) -> Result<lo_ast::Declaration> {
+pub fn lower_file(decl: ast::Decl, opts: Options, sess: &Session<'_>) -> Result<lo_ast::Decl> {
     let mut lowerer = Lowerer {
-        options,
-        session,
+        opts,
+        sess,
         health: Health::Untainted,
     };
-    let mut declaration = lowerer.lower_declaration(declaration);
+    let mut declaration = lowerer.lower_decl(decl);
     let root = declaration.pop().unwrap();
     Outcome::new(root, lowerer.health).into()
 }
 
 /// The state of the lowering pass.
 struct Lowerer<'a> {
-    options: Options,
-    session: &'a Session<'a>,
+    opts: Options,
+    sess: &'a Session<'a>,
     health: Health,
 }
 
 impl Handler for &mut Lowerer<'_> {
-    fn embed<T: PossiblyErroneous>(self, diagnostic: Diagnostic) -> T {
-        let error = diagnostic.report(self.session.reporter());
+    fn embed<T: PossiblyErroneous>(self, diag: Diag) -> T {
+        let error = diag.report(self.sess.rep());
         self.health.taint(error);
         T::error(error)
     }
@@ -76,5 +72,5 @@ pub struct Options {
     /// Specifies if internal language and library features are enabled.
     pub internal_features_enabled: bool,
     /// Specifies if documentation comments should be kept in the Lo-AST.
-    pub keep_documentation_comments: bool,
+    pub keep_doc_comments: bool,
 }

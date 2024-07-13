@@ -2,8 +2,8 @@
 #![feature(let_chains)]
 #![allow(clippy::match_same_arms)] // @Temporary
 
-use diagnostics::{error::Result, Diagnostic};
-use hir::{special::Type, DeclarationIndex};
+use diagnostics::{error::Result, Diag};
+use hir::{special::Ty, DeclIdx};
 use hir_format::SessionExt;
 use inkwell::{
     builder::Builder,
@@ -23,30 +23,26 @@ use std::{
 };
 use utility::{default, FormatError, HashMap, Str, PROGRAM_ENTRY};
 
-pub fn compile_and_link(
-    options: Options,
-    component_root: &hir::Declaration,
-    session: &Session<'_>,
-) -> Result<()> {
-    let context = inkwell::context::Context::create();
-    let module = compile(component_root, &context, options, session);
+pub fn compile_and_link(opts: Options, comp_root: &hir::Decl, sess: &Session<'_>) -> Result<()> {
+    let cx = inkwell::context::Context::create();
+    let module = compile(comp_root, &cx, opts, sess);
 
-    if options.emit_llvm_ir {
+    if opts.emit_llvm_ir {
         // @Question shouldn't we print to stdout??
         module.print_to_stderr();
     }
 
-    if options.verify_llvm_ir
+    if opts.verify_llvm_ir
         && let Err(message) = module.verify()
     {
-        return Err(Diagnostic::bug()
+        return Err(Diag::bug()
             .message("the generated LLVM-IR is invalid")
             .note(message.to_string())
-            .report(session.reporter()));
+            .report(sess.rep()));
     }
 
-    if let Err(error) = link(&module, session) {
-        return Err(Diagnostic::error()
+    if let Err(error) = link(&module, sess) {
+        return Err(Diag::error()
             .message("could not link object files")
             .with(|it| match error {
                 // @Task print the path
@@ -64,7 +60,7 @@ pub fn compile_and_link(
                     .note("the linker `clang` exited unsuccessfully")
                     .note(stderr),
             })
-            .report(session.reporter()));
+            .report(sess.rep()));
     }
 
     Ok(())
@@ -77,27 +73,27 @@ pub struct Options {
 }
 
 fn compile<'ctx>(
-    component_root: &hir::Declaration,
-    context: &'ctx Context,
-    options: Options,
-    session: &Session<'_>,
+    comp_root: &hir::Decl,
+    cx: &'ctx Context,
+    opts: Options,
+    sess: &Session<'_>,
 ) -> Module<'ctx> {
-    let generator = Generator::new(context, options, session);
-    generator.start_compile_declaration(component_root);
-    generator.finish_compile_declaration(component_root);
-    generator.module
+    let gen = Generator::new(cx, opts, sess);
+    gen.start_compile_decl(comp_root);
+    gen.finish_compile_decl(comp_root);
+    gen.module
 }
 
 // @Task support linkers other than clang
 //       (e.g. "`cc`", `gcc` (requires the use of `llc`))
-fn link(module: &inkwell::module::Module<'_>, session: &Session<'_>) -> Result<(), LinkingError> {
+fn link(module: &inkwell::module::Module<'_>, sess: &Session<'_>) -> Result<(), LinkingError> {
     let buffer = module.write_bitcode_to_memory();
-    let name = session.component().name().to_str();
+    let name = sess.comp().name().to_str();
 
-    let output_file_path = match session.root_package() {
+    let output_file_path = match sess.root_pkg() {
         // @Task ensure that the build folder exists
         Some(package) => {
-            let mut path = session[package].folder().join(OUTPUT_FOLDER_NAME);
+            let mut path = sess[package].folder().join(OUTPUT_FOLDER_NAME);
             path.push(name);
             path
         }
@@ -153,67 +149,65 @@ impl From<std::io::Error> for LinkingError {
 }
 
 struct Generator<'a, 'ctx> {
-    context: &'ctx Context,
+    cx: &'ctx Context,
     builder: Builder<'ctx>,
     module: Module<'ctx>,
-    bindings: RefCell<HashMap<DeclarationIndex, Entity<'a, 'ctx>>>,
-    options: Options,
-    session: &'a Session<'a>,
+    bindings: RefCell<HashMap<DeclIdx, Entity<'a, 'ctx>>>,
+    opts: Options,
+    sess: &'a Session<'a>,
 }
 
 impl<'a, 'ctx> Generator<'a, 'ctx> {
-    fn new(context: &'ctx Context, options: Options, session: &'a Session<'a>) -> Self {
-        let module = context.create_module("main");
+    fn new(cx: &'ctx Context, opts: Options, sess: &'a Session<'a>) -> Self {
+        let module = cx.create_module("main");
         module.set_triple(&TargetMachine::get_default_triple());
-        let builder = context.create_builder();
+        let builder = cx.create_builder();
 
         Self {
             builder,
-            context,
+            cx,
             module,
             bindings: default(),
-            options,
-            session,
+            opts,
+            sess,
         }
     }
 
     /// Start compiling the given declaration.
-    fn start_compile_declaration(&self, declaration: &'a hir::Declaration) {
-        use hir::BareDeclaration::*;
+    fn start_compile_decl(&self, decl: &'a hir::Decl) {
+        use hir::BareDecl::*;
 
-        match &declaration.bare {
-            Function(function) => {
-                use ExpressionClassification::*;
+        match &decl.bare {
+            Func(func) => {
+                use ExprClass::*;
 
-                let index = function.binder.index.declaration().unwrap();
+                let index = func.binder.idx.decl_idx().unwrap();
 
                 // @Task somewhere store the info if we've already found the program entry or not
-                let is_program_entry = function.binder.bare() == PROGRAM_ENTRY
-                    && self.session.parent_of(index).unwrap() == self.session.component().root();
+                let is_program_entry = func.binder.bare() == PROGRAM_ENTRY
+                    && self.sess.parent_of(index).unwrap() == self.sess.comp().root();
 
-                let classification = function.body.as_ref().map(|expression| {
-                    let classification = if is_program_entry {
+                let class = func.body.as_ref().map(|expr| {
+                    let class = if is_program_entry {
                         Thunk
                     } else {
-                        expression.classify(self.session)
+                        expr.classify(self.sess)
                     };
-                    (classification, expression)
+                    (class, expr)
                 });
 
-                match classification {
-                    Some((Constant, expression)) => {
-                        let type_ = self.translate_type(&function.type_);
-                        let value = self
-                            .module
-                            .add_global(type_, None, self.name(index).as_ref());
+                match class {
+                    Some((Constant, expr)) => {
+                        let ty = self.translate_ty(&func.ty);
+                        let value = self.module.add_global(ty, None, self.name(index).as_ref());
                         value.set_unnamed_address(UnnamedAddress::Global);
                         value.set_linkage(Linkage::Internal);
                         value.set_constant(true);
-                        value.set_initializer(&self.compile_constant_expression(expression));
+                        value.set_initializer(&self.compile_const_expr(expr));
 
                         self.bindings
                             .borrow_mut()
-                            .insert(index, Entity::Constant { value, type_ });
+                            .insert(index, Entity::Constant { value, ty });
                     }
                     // @Beacon @Task simplify
                     Some((Thunk, _)) => {
@@ -223,11 +217,11 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
                             self.name(index)
                         };
 
-                        let type_ = self.translate_type(&function.type_).fn_type(&[], false);
+                        let ty = self.translate_ty(&func.ty).fn_type(&[], false);
 
                         let thunk = self.module.add_function(
                             name.as_ref(),
-                            type_,
+                            ty,
                             if is_program_entry {
                                 None
                             } else {
@@ -243,64 +237,60 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
                             .borrow_mut()
                             .insert(index, Entity::Thunk(thunk));
                     }
-                    Some((Function(lambda), _)) => {
+                    Some((Fn(lambda), _)) => {
                         // @Beacon @Task handle functions of arbitrary "arity" here!
 
-                        let function_value = self.module.add_function(
+                        let func_value = self.module.add_function(
                             self.name(index).as_ref(),
-                            self.translate_unary_function_type(&function.type_),
+                            self.translate_unary_func_ty(&func.ty),
                             Some(Linkage::Internal),
                         );
 
-                        function_value
+                        func_value
                             .as_global_value()
                             .set_unnamed_address(UnnamedAddress::Global);
 
                         self.bindings.borrow_mut().insert(
                             index,
-                            Entity::UnaryFunction {
-                                value: function_value,
+                            Entity::UnaryFunc {
+                                value: func_value,
                                 lambda,
                             },
                         );
                     }
                     None => {
-                        let hir::EntityKind::IntrinsicFunction {
-                            function: intrinsic,
-                            ..
-                        } = self.session[index].kind
+                        let hir::EntityKind::FuncIntr {
+                            func: intrinsic, ..
+                        } = self.sess[index].kind
                         else {
                             unreachable!();
                         };
 
                         // @Beacon @Task handle functions of arbitrary "arity" here!
 
-                        let function_value = self.module.add_function(
+                        let func_value = self.module.add_function(
                             intrinsic.name(),
-                            self.translate_unary_function_type(&function.type_),
+                            self.translate_unary_func_ty(&func.ty),
                             None,
                         );
 
-                        function_value
+                        func_value
                             .as_global_value()
                             .set_unnamed_address(UnnamedAddress::Global);
 
-                        self.bindings.borrow_mut().insert(
-                            index,
-                            Entity::Intrinsic {
-                                value: function_value,
-                            },
-                        );
+                        self.bindings
+                            .borrow_mut()
+                            .insert(index, Entity::Intrinsic { value: func_value });
                     }
                 }
             }
             // @Temporary skipping for now
-            Data(_) => {}
+            DataTy(_) => {}
             // @Temporary skipping for now
-            Constructor(_) => {}
+            Ctor(_) => {}
             Module(module) => {
-                for declaration in &module.declarations {
-                    self.start_compile_declaration(declaration);
+                for decl in &module.decls {
+                    self.start_compile_decl(decl);
                 }
             }
             Use(_) => {}
@@ -310,42 +300,40 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
     }
 
     /// Finish compiling the given declaration.
-    fn finish_compile_declaration(&self, declaration: &hir::Declaration) {
-        use hir::BareDeclaration::*;
+    fn finish_compile_decl(&self, decl: &hir::Decl) {
+        use hir::BareDecl::*;
 
-        match &declaration.bare {
-            Function(function) => {
-                let index = function.binder.index.declaration().unwrap();
+        match &decl.bare {
+            Func(func) => {
+                let index = func.binder.idx.decl_idx().unwrap();
 
-                if declaration.attributes.has(hir::AttributeName::Intrinsic) {
+                if decl.attrs.has(hir::AttrName::Intrinsic) {
                     return;
                 }
 
-                let expression = function.body.as_ref().unwrap();
+                let expr = func.body.as_ref().unwrap();
 
                 match self.bindings.borrow()[&index] {
                     Entity::Constant { .. } | Entity::Intrinsic { .. } => {}
                     Entity::Thunk(thunk) => {
-                        let start_block = self.context.append_basic_block(thunk, "start");
+                        let start_block = self.cx.append_basic_block(thunk, "start");
                         self.builder.position_at_end(start_block);
 
-                        let value = self.compile_expression(expression, Vec::new());
+                        let value = self.compile_expr(expr, Vec::new());
 
                         self.builder
                             .build_return(value.as_ref().map(|value| value as _))
                             .unwrap();
                     }
-                    Entity::UnaryFunction {
-                        value: unary_function,
+                    Entity::UnaryFunc {
+                        value: unary_func,
                         lambda,
                     } => {
-                        let start_block = self.context.append_basic_block(unary_function, "start");
+                        let start_block = self.cx.append_basic_block(unary_func, "start");
                         self.builder.position_at_end(start_block);
 
-                        let value = self.compile_expression(
-                            &lambda.body,
-                            vec![unary_function.get_nth_param(0).unwrap()],
-                        );
+                        let value = self
+                            .compile_expr(&lambda.body, vec![unary_func.get_nth_param(0).unwrap()]);
 
                         self.builder
                             .build_return(value.as_ref().map(|value| value as _))
@@ -354,12 +342,12 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
                 }
             }
             // @Temporary skipping for now
-            Data(_) => {}
+            DataTy(_) => {}
             // @Temporary skipping for now
-            Constructor(_) => {}
+            Ctor(_) => {}
             Module(module) => {
-                for declaration in &module.declarations {
-                    self.finish_compile_declaration(declaration);
+                for declaration in &module.decls {
+                    self.finish_compile_decl(declaration);
                 }
             }
             Use(_) => {}
@@ -368,93 +356,85 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
         };
     }
 
-    fn name(&self, index: DeclarationIndex) -> Str {
-        if self.options.emit_llvm_ir {
-            self.session.index_to_path(index).into()
+    fn name(&self, index: DeclIdx) -> Str {
+        if self.opts.emit_llvm_ir {
+            self.sess.index_to_path(index).into()
         } else {
             "".into()
         }
     }
 
-    fn compile_constant_expression(&self, expression: &hir::Expression) -> BasicValueEnum<'ctx> {
-        use hir::BareExpression::*;
+    fn compile_const_expr(&self, expr: &hir::Expr) -> BasicValueEnum<'ctx> {
+        use hir::BareExpr::*;
 
         // @Task return a unit-struct value for any types
-        match &expression.bare {
-            PiType(_) => todo!(),
-            Number(number) => self.compile_number(number).into(),
-            Text(_) => todo!(),
-            Record(_) => todo!(),
+        match &expr.bare {
+            PiTy(_) => todo!(),
+            NumLit(num) => self.compile_num(num).into(),
+            TextLit(_) => todo!(),
+            RecLit(_) => todo!(),
             Binding(_) => todo!(),
-            Lambda(_)
-            | CaseAnalysis(_)
-            | Application(_)
-            | IntrinsicApplication(_)
-            | Projection(_) => {
+            LamLit(_) | CaseAnalysis(_) | App(_) | IntrApp(_) | Proj(_) => {
                 unreachable!()
             }
-            Substituted(_) => todo!(),
+            Substed(_) => todo!(),
             IO(_) => todo!(),
             Error(_) => todo!(),
         }
     }
 
-    fn compile_expression(
+    fn compile_expr(
         &self,
-        expression: &hir::Expression,
-        substitutions: Vec<BasicValueEnum<'ctx>>,
+        expr: &hir::Expr,
+        substs: Vec<BasicValueEnum<'ctx>>,
     ) -> Option<BasicValueEnum<'ctx>> {
-        use hir::BareExpression::*;
+        use hir::BareExpr::*;
 
-        match &expression.bare {
-            PiType(_) => None,
-            Application(application) => {
+        match &expr.bare {
+            PiTy(_) => None,
+            App(app) => {
                 use hir::Index::*;
 
-                let Binding(callee) = &application.callee.bare else {
+                let Binding(callee) = &app.callee.bare else {
                     todo!("compiling applications with non-binding callee");
                 };
 
-                let argument = self
-                    .compile_expression(&application.argument, substitutions)
-                    .unwrap();
+                let arg = self.compile_expr(&app.arg, substs).unwrap();
 
-                let value = match callee.0.index {
-                    Declaration(index) => {
-                        let (Entity::UnaryFunction {
-                            value: function, ..
-                        }
-                        | Entity::Intrinsic { value: function }) = self.bindings.borrow()[&index]
+                let value = match callee.0.idx {
+                    Decl(index) => {
+                        let (Entity::UnaryFunc { value: func, .. }
+                        | Entity::Intrinsic { value: func }) = self.bindings.borrow()[&index]
                         else {
                             unreachable!();
                         };
 
                         self.builder
-                            .build_call(function, &[argument.into()], "")
+                            .build_call(func, &[arg.into()], "")
                             .unwrap()
                             .try_as_basic_value()
                             .left()
                             .unwrap()
                     }
                     DeBruijn(_) => todo!("compiling application with local callee"),
-                    Parameter => unreachable!(),
+                    Param => unreachable!(),
                 };
 
                 Some(value)
             }
-            Number(number) => Some(self.compile_number(number).into()),
-            Text(_) => todo!("compiling text"),
-            Record(_) => todo!("compiling records"),
-            Binding(binding) if self.session.specials().is(binding.0, Type::Type) => None,
+            NumLit(num) => Some(self.compile_num(num).into()),
+            TextLit(_) => todo!("compiling text"),
+            RecLit(_) => todo!("compiling records"),
+            Binding(binding) if self.sess.specials().is(binding.0, Ty::Type) => None,
             Binding(binding) => {
                 use hir::Index::*;
 
-                match binding.0.index {
-                    Declaration(index) => {
+                match binding.0.idx {
+                    Decl(index) => {
                         let value = match self.bindings.borrow()[&index] {
-                            Entity::Constant { value, type_ } => self
+                            Entity::Constant { value, ty } => self
                                 .builder
-                                .build_load(type_, value.as_pointer_value(), "")
+                                .build_load(ty, value.as_pointer_value(), "")
                                 .unwrap(),
                             Entity::Thunk(thunk) => self
                                 .builder
@@ -463,137 +443,136 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
                                 .try_as_basic_value()
                                 .left()
                                 .unwrap(),
-                            Entity::UnaryFunction { .. } | Entity::Intrinsic { .. } => {
+                            Entity::UnaryFunc { .. } | Entity::Intrinsic { .. } => {
                                 unreachable!()
                             }
                         };
 
                         Some(value)
                     }
-                    DeBruijn(index) => Some(substitutions[index.0]),
+                    DeBruijn(index) => Some(substs[index.0]),
 
-                    Parameter => unreachable!(),
+                    Param => unreachable!(),
                 }
             }
-            Lambda(_) => todo!("compiling lambdas"),
+            LamLit(_) => todo!("compiling lambdas"),
             CaseAnalysis(_) => todo!("compiling case analyses"),
-            IntrinsicApplication(_) => todo!("compiling intrinsic applications"),
-            Projection(_) => todo!("compiling record projections"),
+            IntrApp(_) => todo!("compiling intrinsic applications"),
+            Proj(_) => todo!("compiling record projections"),
             IO(_) => todo!("compiling IO actions"),
-            Substituted(_) | Error(_) => unreachable!(),
+            Substed(_) | Error(_) => unreachable!(),
         }
     }
 
-    fn compile_number(&self, number: &hir::Number) -> IntValue<'ctx> {
-        use hir::Number::*;
+    fn compile_num(&self, number: &hir::NumLit) -> IntValue<'ctx> {
+        use hir::NumLit::*;
 
         #[allow(clippy::cast_sign_loss, clippy::cast_lossless)]
         // @Question is the sign-extension stuff correct?
         match number {
             Nat(_) => todo!(),
-            &Nat32(number) => self.context.i32_type().const_int(number as _, false),
-            &Nat64(number) => self.context.i64_type().const_int(number, false),
+            &Nat32(number) => self.cx.i32_type().const_int(number as _, false),
+            &Nat64(number) => self.cx.i64_type().const_int(number, false),
             Int(_) => todo!(),
-            &Int32(number) => self.context.i32_type().const_int(number as _, true),
-            &Int64(number) => self.context.i64_type().const_int(number as _, true),
+            &Int32(number) => self.cx.i32_type().const_int(number as _, true),
+            &Int64(number) => self.cx.i64_type().const_int(number as _, true),
         }
     }
 
     // @Note currently only handles numeric types
-    fn translate_type(&self, type_: &hir::Expression) -> IntType<'ctx> {
-        use hir::BareExpression::*;
+    fn translate_ty(&self, ty: &hir::Expr) -> IntType<'ctx> {
+        use hir::BareExpr::*;
 
-        match &type_.bare {
-            PiType(_) => todo!(),
-            Application(_) => todo!(),
+        match &ty.bare {
+            PiTy(_) => todo!(),
+            App(_) => todo!(),
             Binding(binding) => {
                 use hir::Index::*;
 
-                match binding.0.index {
-                    Declaration(index) => {
-                        use hir::special::{Binding, NumericType::*, Type::*};
+                match binding.0.idx {
+                    Decl(index) => {
+                        use hir::special::{Binding, NumTy::*, Ty::*};
 
                         // @Task don't unwrap
-                        let Binding::Type(type_) = self.session.specials().get(index).unwrap()
-                        else {
+                        let Binding::Ty(ty) = self.sess.specials().get(index).unwrap() else {
                             unreachable!();
                         };
 
-                        match type_ {
+                        match ty {
                             Type => todo!(),
-                            Numeric(Nat) => todo!(),
-                            Numeric(Int) => todo!(),
-                            Numeric(Nat32 | Int32) => self.context.i32_type(),
-                            Numeric(Nat64 | Int64) => self.context.i64_type(),
+                            Num(Nat) => todo!(),
+                            Num(Int) => todo!(),
+                            Num(Nat32 | Int32) => self.cx.i32_type(),
+                            Num(Nat64 | Int64) => self.cx.i64_type(),
                             Text => todo!(),
                             IO => todo!(),
                             // @Temporary
-                            Unit | Bool | Option | Sequential(_) => unreachable!(),
+                            Unit | Bool | Option | Seq(_) => unreachable!(),
                         }
                     }
                     DeBruijn(_) => todo!(),
-                    Parameter => unreachable!(),
+                    Param => unreachable!(),
                 }
             }
-            Lambda(_) => todo!(),
+            LamLit(_) => todo!(),
             CaseAnalysis(_) => todo!(),
-            Substituted(_) => todo!(),
-            IntrinsicApplication(_) => todo!(),
-            Projection(_) => todo!(),
+            Substed(_) => todo!(),
+            IntrApp(_) => todo!(),
+            Proj(_) => todo!(),
             Error(_) => todo!(),
-            Number(_) | Text(_) | Record(_) | IO(_) => unreachable!(),
+            NumLit(_) | TextLit(_) | RecLit(_) | IO(_) => unreachable!(),
         }
     }
 
-    fn translate_unary_function_type(&self, type_: &hir::Expression) -> FunctionType<'ctx> {
-        use hir::BareExpression::*;
+    fn translate_unary_func_ty(&self, ty: &hir::Expr) -> FunctionType<'ctx> {
+        use hir::BareExpr::*;
 
-        match &type_.bare {
-            PiType(pi) => {
-                let domain = self.translate_type(&pi.domain);
+        match &ty.bare {
+            PiTy(pi_ty) => {
+                let domain = self.translate_ty(&pi_ty.domain);
                 // @Task pass along the parameter!
-                let codomain = self.translate_type(&pi.codomain);
+                let codomain = self.translate_ty(&pi_ty.codomain);
 
                 codomain.fn_type(&[domain.into()], false)
             }
-            Application(_) => todo!(),
+            App(_) => todo!(),
             Binding(_) => todo!(),
-            Lambda(_) => todo!(),
+            LamLit(_) => todo!(),
             CaseAnalysis(_) => todo!(),
-            Substituted(_) => todo!(),
-            IntrinsicApplication(_) => todo!(),
-            Projection(_) => todo!(),
+            Substed(_) => todo!(),
+            IntrApp(_) => todo!(),
+            Proj(_) => todo!(),
             Error(_) => todo!(),
-            Number(_) | Text(_) | Record(_) | IO(_) => unreachable!(),
+            NumLit(_) | TextLit(_) | RecLit(_) | IO(_) => unreachable!(),
         }
     }
 }
 
-trait ExpressionExt {
-    fn classify(&self, session: &Session<'_>) -> ExpressionClassification<'_>;
+trait ExprExt {
+    fn classify(&self, sess: &Session<'_>) -> ExprClass<'_>;
 }
 
-impl ExpressionExt for hir::Expression {
-    fn classify(&self, session: &Session<'_>) -> ExpressionClassification<'_> {
-        use hir::BareExpression::*;
-        use ExpressionClassification::*;
+impl ExprExt for hir::Expr {
+    fn classify(&self, sess: &Session<'_>) -> ExprClass<'_> {
+        use hir::BareExpr::*;
+        use ExprClass::*;
 
         match &self.bare {
-            PiType(pi) => match (pi.domain.classify(session), pi.codomain.classify(session)) {
+            PiTy(pi_ty) => match (pi_ty.domain.classify(sess), pi_ty.codomain.classify(sess)) {
                 (Constant, Constant) => Constant,
                 _ => Thunk,
             },
-            Application(_) | IntrinsicApplication(_) => Thunk,
-            Number(_) | Text(_) => Constant,
-            Binding(binding) if session.specials().is(binding.0, Type::Type) => Constant,
+            App(_) | IntrApp(_) => Thunk,
+            NumLit(_) | TextLit(_) => Constant,
+            Binding(binding) if sess.specials().is(binding.0, Ty::Type) => Constant,
             // @Note we could make this more nuanced (prefering Constant if possible)
             Binding(_) => Thunk,
-            Lambda(lambda) => Function(lambda),
+            LamLit(lambda) => Fn(lambda),
             CaseAnalysis(_) => Thunk,
-            Substituted(_) => todo!(),
-            Projection(_) => todo!(),
+            Substed(_) => todo!(),
+            Proj(_) => todo!(),
             IO(_) => todo!(),
-            Record(_) => todo!(),
+            RecLit(_) => todo!(),
             Error(_) => todo!(),
         }
     }
@@ -602,20 +581,20 @@ impl ExpressionExt for hir::Expression {
 enum Entity<'a, 'ctx> {
     Constant {
         value: GlobalValue<'ctx>,
-        type_: IntType<'ctx>,
+        ty: IntType<'ctx>,
     },
     Thunk(FunctionValue<'ctx>),
-    UnaryFunction {
+    UnaryFunc {
         value: FunctionValue<'ctx>,
-        lambda: &'a hir::Lambda,
+        lambda: &'a hir::LamLit,
     },
     Intrinsic {
         value: FunctionValue<'ctx>,
     },
 }
 
-enum ExpressionClassification<'a> {
+enum ExprClass<'a> {
     Constant,
     Thunk,
-    Function(&'a hir::Lambda),
+    Fn(&'a hir::LamLit),
 }

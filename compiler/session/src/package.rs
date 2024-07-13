@@ -2,7 +2,7 @@ use lexer::word::Word;
 use std::{path::Path, sync::LazyLock};
 use utility::{
     path::{CanonicalPath, CanonicalPathBuf},
-    ComponentIndex, HashMap,
+    CompIdx, HashMap,
 };
 
 /// A collection of [components](crate::Component) and some metadata.
@@ -47,7 +47,7 @@ pub struct Version(pub String);
 #[derive(Debug)]
 pub enum PossiblyUnresolvedComponent {
     Unresolved,
-    Resolved(ComponentIndex),
+    Resolved(CompIdx),
 }
 
 // @Task make this type more ergonomic to use

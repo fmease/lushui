@@ -1,8 +1,8 @@
-use crate::{Attributes, Identifier, ParameterKind, Path};
+use crate::{Attrs, Ident, ParamKind, Path};
 use span::Spanned;
 use utility::Atom;
 
-pub type Item<Bare> = span::item::Item<Bare, Attributes>;
+pub type Item<Bare> = span::item::Item<Bare, Attrs>;
 
 /// A wildcard.
 ///
@@ -32,40 +32,45 @@ pub enum Wildcard {
         ///
         /// It's *tag* not *binder* or *name* to emphasize that
         /// it's not unique inside of a program.
-        tag: Identifier,
+        tag: Ident,
     },
 }
 
 // @Task docs for all of these!!!
 
+/// A number literal.
 #[derive(Clone, PartialEq, Eq)]
-pub struct NumberLiteral {
+pub struct NumLit {
     pub path: Option<Path>,
-    pub literal: Spanned<Atom>,
+    pub lit: Spanned<Atom>,
 }
 
+/// A text literal.
 #[derive(Clone, PartialEq, Eq)]
-pub struct TextLiteral {
+pub struct TextLit {
     pub path: Option<Path>,
-    pub literal: Spanned<Atom>,
+    pub lit: Spanned<Atom>,
 }
 
+/// A function application.
 #[derive(Clone, PartialEq, Eq)]
-pub struct Application<T> {
+pub struct App<T> {
     pub callee: T,
-    pub kind: ParameterKind,
-    pub binder: Option<Identifier>,
-    pub argument: T,
+    pub kind: ParamKind,
+    pub binder: Option<Ident>,
+    pub arg: T,
 }
 
+/// A sequence literal.
 #[derive(Clone, PartialEq, Eq)]
-pub struct SequenceLiteral<T> {
+pub struct SeqLit<T> {
     pub path: Option<Path>,
-    pub elements: Spanned<Vec<T>>,
+    pub elems: Spanned<Vec<T>>,
 }
 
+/// A record literal.
 #[derive(Clone, PartialEq, Eq)]
-pub struct RecordLiteral<T> {
+pub struct RecLit<T> {
     pub path: Option<Path>,
     pub fields: Spanned<Vec<Field<T>>>,
     pub base: Option<T>,
@@ -74,9 +79,8 @@ pub struct RecordLiteral<T> {
 // @Task smh. represent `::=` in here! it should only work for expressions, right??
 
 #[derive(Clone, PartialEq, Eq)]
-
 pub struct Field<T> {
     // @Task generalize this to some new kind of path that is delimited by "::" OR "."
-    pub binder: Identifier,
+    pub binder: Ident,
     pub body: Option<T>,
 }

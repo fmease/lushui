@@ -1,48 +1,48 @@
-use crate::{Expression, Identifier, Item, Parameters, Path};
-use span::{PossiblySpanning, SourceFileIndex, Spanned};
+use crate::{Expr, Ident, Item, Params, Path};
+use span::{PossiblySpanning, Spanned, SrcFileIdx};
 use utility::obtain;
 
 /// A declaration.
 ///
 /// The syntactic category of module-level definitions like functions, data types and modules.
-pub type Declaration = Item<BareDeclaration>;
+pub type Decl = Item<BareDecl>;
 
-/// A declaration without an enclosing [`span::Span`].
+/// A location-less declaration.
 #[derive(PartialEq, Eq)]
-pub enum BareDeclaration {
-    Function(Box<Function>),
-    Data(Box<Data>),
+pub enum BareDecl {
+    Func(Box<Func>),
+    DataTy(Box<DataTy>),
     Module(Box<Module>),
     ModuleHeader,
     Use(Box<Use>),
     Given(Box<Given>),
 }
 
-impl From<Function> for BareDeclaration {
-    fn from(function: Function) -> Self {
-        Self::Function(Box::new(function))
+impl From<Func> for BareDecl {
+    fn from(func: Func) -> Self {
+        Self::Func(Box::new(func))
     }
 }
 
-impl From<Data> for BareDeclaration {
-    fn from(type_: Data) -> Self {
-        Self::Data(Box::new(type_))
+impl From<DataTy> for BareDecl {
+    fn from(ty: DataTy) -> Self {
+        Self::DataTy(Box::new(ty))
     }
 }
 
-impl From<Module> for BareDeclaration {
+impl From<Module> for BareDecl {
     fn from(module: Module) -> Self {
         Self::Module(Box::new(module))
     }
 }
 
-impl From<Use> for BareDeclaration {
+impl From<Use> for BareDecl {
     fn from(use_: Use) -> Self {
         Self::Use(Box::new(use_))
     }
 }
 
-impl From<Given> for BareDeclaration {
+impl From<Given> for BareDecl {
     fn from(given: Given) -> Self {
         Self::Given(Box::new(given))
     }
@@ -64,11 +64,11 @@ impl From<Given> for BareDeclaration {
 /// * `a` at the end is the *body*
 // @Task update docs
 #[derive(Clone, PartialEq, Eq)]
-pub struct Function {
-    pub binder: Identifier,
-    pub parameters: Parameters,
-    pub type_: Option<Expression>,
-    pub body: Option<Expression>,
+pub struct Func {
+    pub binder: Ident,
+    pub params: Params,
+    pub ty: Option<Expr>,
+    pub body: Option<Expr>,
 }
 
 /// A data type declaration.
@@ -87,12 +87,12 @@ pub struct Function {
 /// * the last two lines contain the *constructors*
 // @Task update docs
 #[derive(PartialEq, Eq)]
-pub struct Data {
+pub struct DataTy {
     pub kind: DataKind,
-    pub binder: Identifier,
-    pub parameters: Parameters,
-    pub type_: Option<Expression>,
-    pub declarations: Option<Vec<Declaration>>,
+    pub binder: Ident,
+    pub params: Params,
+    pub ty: Option<Expr>,
+    pub decls: Option<Vec<Decl>>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -118,16 +118,16 @@ pub enum DataKind {
 /// * the last line contains the only *declaration* (or subdeclaration)
 #[derive(PartialEq, Eq)]
 pub struct Module {
-    pub binder: Identifier,
-    pub file: SourceFileIndex,
-    pub declarations: Option<Vec<Declaration>>,
+    pub binder: Ident,
+    pub file: SrcFileIdx,
+    pub decls: Option<Vec<Decl>>,
 }
 
-impl TryFrom<BareDeclaration> for Module {
+impl TryFrom<BareDecl> for Module {
     type Error = ();
 
-    fn try_from(declaration: BareDeclaration) -> Result<Self, Self::Error> {
-        obtain!(declaration, BareDeclaration::Module(module) => *module).ok_or(())
+    fn try_from(decl: BareDecl) -> Result<Self, Self::Error> {
+        obtain!(decl, BareDecl::Module(module) => *module).ok_or(())
     }
 }
 
@@ -145,7 +145,7 @@ pub type UsePathTree = Spanned<BareUsePathTree>;
 pub enum BareUsePathTree {
     Single {
         target: Path,
-        binder: Option<Identifier>,
+        binder: Option<Ident>,
     },
     Multiple {
         path: Path,
@@ -154,45 +154,43 @@ pub enum BareUsePathTree {
 }
 
 /*
-
 @Task write docs
-
-                /// A trait literal.
-        ///
-        /// # Examples
-        ///
-        /// ```lushui
-        /// main = trait of
-        ///     empty = 0
-        ///     append (x: Nat) (y: Nat) = + x y
-        /// ```
-        ///
-        /// * `empty = 0` is a *field*
-        /// * `append (x: Nat) (y: Nat) = + x y` is a *field*
-        #[derive(Clone, PartialEq, Eq)]
-        pub struct TraitLiteral {
-            pub fields: Vec<Item<crate::Function>>,
-        }
+/// A trait literal.
+///
+/// # Examples
+///
+/// ```lushui
+/// main = trait of
+///     empty = 0
+///     append (x: Nat) (y: Nat) = + x y
+/// ```
+///
+/// * `empty = 0` is a *field*
+/// * `append (x: Nat) (y: Nat) = + x y` is a *field*
+#[derive(Clone, PartialEq, Eq)]
+pub struct TraitLiteral {
+    pub fields: Vec<Item<crate::Function>>,
+}
 */
 #[derive(PartialEq, Eq)]
 pub struct Given {
-    pub binder: Identifier,
-    pub parameters: Parameters,
-    pub type_: Option<Expression>,
+    pub binder: Ident,
+    pub params: Params,
+    pub ty: Option<Expr>,
     pub body: Option<Body>,
 }
 
 #[derive(PartialEq, Eq)]
 pub enum Body {
-    Block { fields: Vec<Declaration> },
-    Expression { body: Expression },
+    Block { fields: Vec<Decl> },
+    Expr { body: Expr },
 }
 
 impl PossiblySpanning for Body {
     fn possible_span(&self) -> Option<span::Span> {
         match self {
             Self::Block { fields } => fields.possible_span(),
-            Self::Expression { body } => Some(body.span),
+            Self::Expr { body } => Some(body.span),
         }
     }
 }

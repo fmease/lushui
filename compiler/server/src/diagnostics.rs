@@ -1,5 +1,5 @@
 use crate::span::ToLocationExt;
-use diagnostics::{Code, Highlight, LintCode, Role, Severity, UnboxedUntaggedDiagnostic};
+use diagnostics::{Code, Highlight, LintCode, Role, Severity, UnboxedUntaggedDiag};
 use span::SourceMap;
 use std::collections::BTreeSet;
 use tower_lsp::lsp_types::{
@@ -13,11 +13,11 @@ const SOURCE: &str = "lushui";
 pub(crate) type LspMessage = (MessageType, String);
 
 pub(crate) trait DiagnosticExt {
-    fn into_lsp_type(self, map: &SourceMap) -> OneOf<lsp_types::Diagnostic, LspMessage>;
+    fn into_lsp_ty(self, map: &SourceMap) -> OneOf<lsp_types::Diagnostic, LspMessage>;
 }
 
-impl DiagnosticExt for UnboxedUntaggedDiagnostic {
-    fn into_lsp_type(self, map: &SourceMap) -> OneOf<lsp_types::Diagnostic, LspMessage> {
+impl DiagnosticExt for UnboxedUntaggedDiag {
+    fn into_lsp_ty(self, map: &SourceMap) -> OneOf<lsp_types::Diagnostic, LspMessage> {
         // @Task explain the " "-hack
         let message = self.message.unwrap_or_else(|| " ".into()).into();
 

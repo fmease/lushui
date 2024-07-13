@@ -4,15 +4,14 @@
 
 use super::parse;
 use ast::{
-    Attribute, BareAttribute, BareParameter, BareUsePathTree, Case, Declaration, Expression,
-    Identifier, Item, Parameter,
-    ParameterKind::{Explicit, Implicit},
-    Parameters, Path, Pattern, Render, UsePathTree,
+    Attr, BareAttr, BareParam, BareUsePathTree, Case, Decl, Expr, Ident, Item, Param,
+    ParamKind::{Explicit, Implicit},
+    Params, Pat, Path, Render, UsePathTree,
 };
 use diagnostics::{error::Result, Reporter};
 use index_map::Index as _;
 use lexer::lex;
-use span::{span, FileName, SourceFileIndex, SourceMap, Span, Spanned};
+use span::{span, FileName, SourceMap, Span, Spanned, SrcFileIdx};
 use std::sync::{Arc, RwLock};
 use utility::{
     default,
@@ -20,24 +19,24 @@ use utility::{
     smallvec, Changeset, ChangesetExt, SmallVec,
 };
 
-fn parse_expression(source: &str) -> Result<Expression> {
+fn parse_expression(source: &str) -> Result<Expr> {
     let mut map = SourceMap::default();
-    let file = map.add_str(FileName::Anonymous, source);
+    let file = map.add_str(FileName::Anon, source);
     let map = Arc::new(RwLock::new(map));
     let reporter = Reporter::stderr(ColorChoice::Auto).with_map(map.clone());
     let map = map.read().unwrap();
     parse(
         lex(&map[file], &default()),
-        |parser| parser.parse_expression(),
+        |parser| parser.parse_expr(),
         file,
         &map,
         &reporter,
     )
 }
 
-fn parse_pattern(source: &str) -> Result<Pattern> {
+fn parse_pattern(source: &str) -> Result<Pat> {
     let mut map = SourceMap::default();
-    let file = map.add_str(FileName::Anonymous, source);
+    let file = map.add_str(FileName::Anon, source);
     let map = Arc::new(RwLock::new(map));
     let reporter = Reporter::stderr(ColorChoice::Auto).with_map(map.clone());
     let map = map.read().unwrap();
@@ -50,9 +49,9 @@ fn parse_pattern(source: &str) -> Result<Pattern> {
     )
 }
 
-fn parse_declaration(source: &str) -> Result<Declaration> {
+fn parse_declaration(source: &str) -> Result<Decl> {
     let mut map = SourceMap::default();
-    let file = map.add_str(FileName::Anonymous, source);
+    let file = map.add_str(FileName::Anon, source);
     let map = Arc::new(RwLock::new(map));
     let reporter = Reporter::stderr(ColorChoice::Auto).with_map(map.clone());
     let map = map.read().unwrap();
@@ -66,12 +65,12 @@ fn parse_declaration(source: &str) -> Result<Declaration> {
 }
 
 /// The name of the module returned by [`parse_declaration`].
-fn test_module_name() -> Identifier {
-    identifier("test", default())
+fn test_module_name() -> Ident {
+    ident("test", default())
 }
 
-fn test_file_index() -> SourceFileIndex {
-    SourceFileIndex::new(0)
+fn test_file_index() -> SrcFileIdx {
+    SrcFileIdx::new(0)
 }
 
 fn assert_eq<BareItem>(actual: Result<Item<BareItem>>, expected: Result<Item<BareItem>>)
@@ -123,36 +122,36 @@ use no_std_assert as assert_eq;
 use no_std_assert as assert_ne;
 
 // @Task swap arguments
-fn identifier(name: &str, span: Span) -> Identifier {
-    Identifier::new_unchecked(span, name.into())
+fn ident(name: &str, span: Span) -> Ident {
+    Ident::new_unchecked(span, name.into())
 }
 
-/// Compare with [`application_lambda_literal_argument_strict_grouping`].
+/// Compare with [`app_lam_lit_arg_strict_grouping`].
 /// They parse to the same AST modulo spans.
 #[test]
-fn application_lambda_literal_argument_lax_grouping() {
+fn app_lam_lit_arg_lax_grouping() {
     assert_eq(
         parse_expression(r"(read for this => this) alpha"),
-        Ok(Expression::common(
+        Ok(Expr::common(
             span(1, 30),
-            ast::Application {
-                callee: Expression::common(
+            ast::App {
+                callee: Expr::common(
                     span(1, 24),
-                    ast::Application {
-                        callee: identifier("read", span(2, 6)).into(),
-                        argument: Expression::common(
+                    ast::App {
+                        callee: ident("read", span(2, 6)).into(),
+                        arg: Expr::common(
                             span(7, 23),
-                            ast::LambdaLiteral {
-                                parameters: smallvec![Parameter::new(
+                            ast::LamLit {
+                                params: smallvec![Param::new(
                                     span(11, 15),
-                                    BareParameter {
+                                    BareParam {
                                         kind: Explicit,
-                                        binder: Some(identifier("this", span(11, 15)).into()),
-                                        type_: None,
+                                        binder: Some(ident("this", span(11, 15)).into()),
+                                        ty: None,
                                     },
                                 )],
                                 codomain: None,
-                                body: identifier("this", span(19, 23)).into(),
+                                body: ident("this", span(19, 23)).into(),
                             }
                             .into(),
                         ),
@@ -161,7 +160,7 @@ fn application_lambda_literal_argument_lax_grouping() {
                     }
                     .into(),
                 ),
-                argument: identifier("alpha", span(25, 30)).into(),
+                arg: ident("alpha", span(25, 30)).into(),
                 binder: None,
                 kind: Explicit,
             }
@@ -170,32 +169,32 @@ fn application_lambda_literal_argument_lax_grouping() {
     );
 }
 
-/// Compare with [`application_lambda_literal_argument_lax_grouping`].
+/// Compare with [`app_lam_lit_arg_lax_grouping`].
 /// They parse to the same AST modulo spans.
 #[test]
-fn application_lambda_literal_argument_strict_grouping() {
+fn app_lam_lit_arg_strict_grouping() {
     assert_eq(
         parse_expression(r"read (for this => this) alpha"),
-        Ok(Expression::common(
+        Ok(Expr::common(
             span(1, 30),
-            ast::Application {
-                callee: Expression::common(
+            ast::App {
+                callee: Expr::common(
                     span(1, 24),
-                    ast::Application {
-                        callee: identifier("read", span(1, 5)).into(),
-                        argument: Expression::common(
+                    ast::App {
+                        callee: ident("read", span(1, 5)).into(),
+                        arg: Expr::common(
                             span(6, 24),
-                            ast::LambdaLiteral {
-                                parameters: smallvec![Parameter::new(
+                            ast::LamLit {
+                                params: smallvec![Param::new(
                                     span(11, 15),
-                                    BareParameter {
+                                    BareParam {
                                         kind: Explicit,
-                                        binder: Some(identifier("this", span(11, 15)).into()),
-                                        type_: None,
+                                        binder: Some(ident("this", span(11, 15)).into()),
+                                        ty: None,
                                     },
                                 )],
                                 codomain: None,
-                                body: identifier("this", span(19, 23)).into(),
+                                body: ident("this", span(19, 23)).into(),
                             }
                             .into(),
                         ),
@@ -204,7 +203,7 @@ fn application_lambda_literal_argument_strict_grouping() {
                     }
                     .into(),
                 ),
-                argument: identifier("alpha", span(25, 30)).into(),
+                arg: ident("alpha", span(25, 30)).into(),
                 binder: None,
                 kind: Explicit,
             }
@@ -217,20 +216,20 @@ fn application_lambda_literal_argument_strict_grouping() {
 fn pi_type_literal_application_bracketed_argument_domain() {
     assert_eq(
         parse_expression("Alpha (Beta) -> Gamma"),
-        Ok(Expression::common(
+        Ok(Expr::common(
             span(1, 22),
-            ast::QuantifiedType {
+            ast::QuantifiedTy {
                 quantifier: ast::Quantifier::Pi,
-                parameters: smallvec![Parameter::new(
+                params: smallvec![Param::new(
                     span(1, 13),
-                    BareParameter {
+                    BareParam {
                         kind: Explicit,
                         binder: None,
-                        type_: Some(Expression::common(
+                        ty: Some(Expr::common(
                             span(1, 13),
-                            ast::Application {
-                                callee: identifier("Alpha", span(1, 6)).into(),
-                                argument: identifier("Beta", span(7, 13)).into(),
+                            ast::App {
+                                callee: ident("Alpha", span(1, 6)).into(),
+                                arg: ident("Beta", span(7, 13)).into(),
                                 kind: Explicit,
                                 binder: None,
                             }
@@ -238,7 +237,7 @@ fn pi_type_literal_application_bracketed_argument_domain() {
                         )),
                     }
                 ),],
-                codomain: identifier("Gamma", span(17, 22)).into(),
+                codomain: ident("Gamma", span(17, 22)).into(),
             }
             .into(),
         )),
@@ -249,20 +248,20 @@ fn pi_type_literal_application_bracketed_argument_domain() {
 fn bracketed_pi_type_literal_application_bracketed_argument_domain() {
     assert_eq(
         parse_expression("(Alpha (Beta) -> Gamma)"),
-        Ok(Expression::common(
+        Ok(Expr::common(
             span(1, 24),
-            ast::QuantifiedType {
+            ast::QuantifiedTy {
                 quantifier: ast::Quantifier::Pi,
-                parameters: smallvec![Parameter::new(
+                params: smallvec![Param::new(
                     span(2, 14),
-                    BareParameter {
+                    BareParam {
                         kind: Explicit,
                         binder: None,
-                        type_: Some(Expression::common(
+                        ty: Some(Expr::common(
                             span(2, 14),
-                            ast::Application {
-                                callee: identifier("Alpha", span(2, 7)).into(),
-                                argument: identifier("Beta", span(8, 14)).into(),
+                            ast::App {
+                                callee: ident("Alpha", span(2, 7)).into(),
+                                arg: ident("Beta", span(8, 14)).into(),
                                 kind: Explicit,
                                 binder: None,
                             }
@@ -270,7 +269,7 @@ fn bracketed_pi_type_literal_application_bracketed_argument_domain() {
                         )),
                     }
                 )],
-                codomain: identifier("Gamma", span(18, 23)).into(),
+                codomain: ident("Gamma", span(18, 23)).into(),
             }
             .into(),
         )),
@@ -285,20 +284,20 @@ fn bracketed_pi_type_literal_application_bracketed_argument_domain() {
 fn pi_type_literal_application_implicit_argument_domain() {
     assert_eq(
         parse_expression("f 'Int -> Type"),
-        Ok(Expression::common(
+        Ok(Expr::common(
             span(1, 15),
-            ast::QuantifiedType {
+            ast::QuantifiedTy {
                 quantifier: ast::Quantifier::Pi,
-                parameters: smallvec![Parameter::new(
+                params: smallvec![Param::new(
                     span(1, 7),
-                    BareParameter {
+                    BareParam {
                         kind: Explicit,
                         binder: None,
-                        type_: Some(Expression::common(
+                        ty: Some(Expr::common(
                             span(1, 7),
-                            ast::Application {
-                                callee: identifier("f", span(1, 2)).into(),
-                                argument: identifier("Int", span(4, 7)).into(),
+                            ast::App {
+                                callee: ident("f", span(1, 2)).into(),
+                                arg: ident("Int", span(4, 7)).into(),
                                 kind: Implicit,
                                 binder: None,
                             }
@@ -306,7 +305,7 @@ fn pi_type_literal_application_implicit_argument_domain() {
                         )),
                     }
                 )],
-                codomain: identifier("Type", span(11, 15)).into(),
+                codomain: ident("Type", span(11, 15)).into(),
             }
             .into(),
         )),
@@ -317,28 +316,28 @@ fn pi_type_literal_application_implicit_argument_domain() {
 fn pi_type_literal_application_implicit_named_argument_domain() {
     assert_eq(
         parse_expression("f '(T = Int) -> Type"),
-        Ok(Expression::common(
+        Ok(Expr::common(
             span(1, 21),
-            ast::QuantifiedType {
+            ast::QuantifiedTy {
                 quantifier: ast::Quantifier::Pi,
-                parameters: smallvec![Parameter::new(
+                params: smallvec![Param::new(
                     span(1, 13),
-                    BareParameter {
+                    BareParam {
                         kind: Explicit,
                         binder: None,
-                        type_: Some(Expression::common(
+                        ty: Some(Expr::common(
                             span(1, 13),
-                            ast::Application {
-                                callee: identifier("f", span(1, 2)).into(),
-                                argument: identifier("Int", span(9, 12)).into(),
+                            ast::App {
+                                callee: ident("f", span(1, 2)).into(),
+                                arg: ident("Int", span(9, 12)).into(),
                                 kind: Implicit,
-                                binder: Some(identifier("T", span(5, 6))),
+                                binder: Some(ident("T", span(5, 6))),
                             }
                             .into(),
                         )),
                     }
                 )],
-                codomain: identifier("Type", span(17, 21)).into(),
+                codomain: ident("Type", span(17, 21)).into(),
             }
             .into(),
         )),
@@ -350,23 +349,23 @@ fn pi_type_literal_application_implicit_named_argument_domain() {
 fn application_pi_type_literal_implicit_domain() {
     assert_eq(
         parse_expression("receive (For '(n: Int) -> Type)"),
-        Ok(Expression::common(
+        Ok(Expr::common(
             span(1, 32),
-            ast::Application {
-                callee: identifier("receive", span(1, 8)).into(),
-                argument: Expression::common(
+            ast::App {
+                callee: ident("receive", span(1, 8)).into(),
+                arg: Expr::common(
                     span(9, 32),
-                    ast::QuantifiedType {
+                    ast::QuantifiedTy {
                         quantifier: ast::Quantifier::Pi,
-                        parameters: smallvec![Parameter::new(
+                        params: smallvec![Param::new(
                             span(14, 23),
-                            BareParameter {
+                            BareParam {
                                 kind: Implicit,
-                                binder: Some(identifier("n", span(16, 17)).into()),
-                                type_: Some(identifier("Int", span(19, 22)).into()),
+                                binder: Some(ident("n", span(16, 17)).into()),
+                                ty: Some(ident("Int", span(19, 22)).into()),
                             }
                         )],
-                        codomain: identifier("Type", span(27, 31)).into(),
+                        codomain: ident("Type", span(27, 31)).into(),
                     }
                     .into(),
                 ),
@@ -382,18 +381,18 @@ fn application_pi_type_literal_implicit_domain() {
 fn chained_fields() {
     assert_eq(
         parse_expression("base::member::protrusion"),
-        Ok(Expression::common(
+        Ok(Expr::common(
             span(1, 25),
-            ast::Projection {
-                basis: Expression::common(
+            ast::Proj {
+                basis: Expr::common(
                     span(1, 13),
-                    ast::Projection {
-                        basis: identifier("base", span(1, 5)).into(),
-                        field: identifier("member", span(7, 13)),
+                    ast::Proj {
+                        basis: ident("base", span(1, 5)).into(),
+                        field: ident("member", span(7, 13)),
                     }
                     .into(),
                 ),
-                field: identifier("protrusion", span(15, 25)),
+                field: ident("protrusion", span(15, 25)),
             }
             .into(),
         )),
@@ -404,22 +403,22 @@ fn chained_fields() {
 fn namespaced_base_with_field() {
     assert_eq(
         parse_expression("path.to.base::member"),
-        Ok(Expression::common(
+        Ok(Expr::common(
             span(1, 21),
-            ast::Projection {
-                basis: Expression::common(
+            ast::Proj {
+                basis: Expr::common(
                     span(1, 13),
                     ast::Path {
                         hanger: None,
                         segments: smallvec![
-                            identifier("path", span(1, 5)),
-                            identifier("to", span(6, 8)),
-                            identifier("base", span(9, 13)),
+                            ident("path", span(1, 5)),
+                            ident("to", span(6, 8)),
+                            ident("base", span(9, 13)),
                         ],
                     }
                     .into(),
                 ),
-                field: identifier("member", span(15, 21)),
+                field: ident("member", span(15, 21)),
             }
             .into(),
         )),
@@ -431,18 +430,18 @@ fn namespaced_base_with_field() {
 fn field_with_attribute() {
     assert_eq(
         parse_expression("@overall compound::projection"),
-        Ok(Expression::new(
-            vec![Attribute::new(
+        Ok(Expr::new(
+            vec![Attr::new(
                 span(1, 9),
-                BareAttribute::Regular {
-                    binder: identifier("overall", span(2, 9)),
-                    arguments: default(),
+                BareAttr::Reg {
+                    binder: ident("overall", span(2, 9)),
+                    args: default(),
                 },
             )],
             span(10, 30),
-            ast::Projection {
-                basis: identifier("compound", span(10, 18)).into(),
-                field: identifier("projection", span(20, 30)),
+            ast::Proj {
+                basis: ident("compound", span(10, 18)).into(),
+                field: ident("projection", span(20, 30)),
             }
             .into(),
         )),
@@ -454,21 +453,21 @@ fn field_with_attribute() {
 fn base_with_attribute_and_field() {
     assert_eq(
         parse_expression("(@specifically compound)::projection"),
-        Ok(Expression::common(
+        Ok(Expr::common(
             span(1, 37),
-            ast::Projection {
-                basis: Expression::new(
-                    vec![Attribute::new(
+            ast::Proj {
+                basis: Expr::new(
+                    vec![Attr::new(
                         span(2, 15),
-                        BareAttribute::Regular {
-                            binder: identifier("specifically", span(3, 15)),
-                            arguments: default(),
+                        BareAttr::Reg {
+                            binder: ident("specifically", span(3, 15)),
+                            args: default(),
                         },
                     )],
                     span(1, 25),
-                    Path::from(identifier("compound", span(16, 24))).into(),
+                    Path::from(ident("compound", span(16, 24))).into(),
                 ),
-                field: identifier("projection", span(27, 37)),
+                field: ident("projection", span(27, 37)),
             }
             .into(),
         )),
@@ -479,22 +478,22 @@ fn base_with_attribute_and_field() {
 fn field_inside_application() {
     assert_eq(
         parse_expression("cb::cm ab::am"),
-        Ok(Expression::common(
+        Ok(Expr::common(
             span(1, 14),
-            ast::Application {
-                callee: Expression::common(
+            ast::App {
+                callee: Expr::common(
                     span(1, 7),
-                    ast::Projection {
-                        basis: identifier("cb", span(1, 3)).into(),
-                        field: identifier("cm", span(5, 7)),
+                    ast::Proj {
+                        basis: ident("cb", span(1, 3)).into(),
+                        field: ident("cm", span(5, 7)),
                     }
                     .into(),
                 ),
-                argument: Expression::common(
+                arg: Expr::common(
                     span(8, 14),
-                    ast::Projection {
-                        basis: identifier("ab", span(8, 10)).into(),
-                        field: identifier("am", span(12, 14)),
+                    ast::Proj {
+                        basis: ident("ab", span(8, 10)).into(),
+                        field: ident("am", span(12, 14)),
                     }
                     .into(),
                 ),
@@ -510,32 +509,32 @@ fn field_inside_application() {
 fn outer_and_inner_attributes() {
     assert_eq(
         parse_expression("@outer @outer (@inner Type)"),
-        Ok(Expression::new(
+        Ok(Expr::new(
             vec![
-                Attribute::new(
+                Attr::new(
                     span(16, 22),
-                    BareAttribute::Regular {
-                        binder: identifier("inner", span(17, 22)),
-                        arguments: default(),
+                    BareAttr::Reg {
+                        binder: ident("inner", span(17, 22)),
+                        args: default(),
                     },
                 ),
-                Attribute::new(
+                Attr::new(
                     span(1, 7),
-                    BareAttribute::Regular {
-                        binder: identifier("outer", span(2, 7)),
-                        arguments: default(),
+                    BareAttr::Reg {
+                        binder: ident("outer", span(2, 7)),
+                        args: default(),
                     },
                 ),
-                Attribute::new(
+                Attr::new(
                     span(8, 14),
-                    BareAttribute::Regular {
-                        binder: identifier("outer", span(9, 14)),
-                        arguments: default(),
+                    BareAttr::Reg {
+                        binder: ident("outer", span(9, 14)),
+                        args: default(),
                     },
                 ),
             ],
             span(15, 28),
-            Path::from(identifier("Type", span(15, 28))).into(),
+            Path::from(ident("Type", span(15, 28))).into(),
         )),
     );
 }
@@ -550,14 +549,14 @@ fn outer_and_inner_attributes() {
 fn bracketed_empty_case_analysis() {
     assert_eq(
         parse_expression("(case 1 of)"),
-        Ok(Expression::common(
+        Ok(Expr::common(
             span(1, 12),
             ast::CaseAnalysis {
-                scrutinee: Expression::common(
+                scrutinee: Expr::common(
                     span(7, 8),
-                    ast::NumberLiteral {
+                    ast::NumLit {
                         path: None,
-                        literal: Spanned::new(span(7, 8), "1".into()),
+                        lit: Spanned::new(span(7, 8), "1".into()),
                     }
                     .into(),
                 ),
@@ -579,29 +578,29 @@ fn bracketed_case_analysis() {
 lengthy-space-filler (case 0 of
     let n => n)",
         ),
-        Ok(Expression::common(
+        Ok(Expr::common(
             span(1, 48),
-            ast::Application {
+            ast::App {
                 kind: Explicit,
                 binder: None,
-                callee: identifier("lengthy-space-filler", span(1, 21)).into(),
-                argument: Expression::common(
+                callee: ident("lengthy-space-filler", span(1, 21)).into(),
+                arg: Expr::common(
                     span(22, 48),
                     ast::CaseAnalysis {
-                        scrutinee: Expression::common(
+                        scrutinee: Expr::common(
                             span(28, 29),
-                            ast::NumberLiteral {
+                            ast::NumLit {
                                 path: None,
-                                literal: Spanned::new(span(28, 29), "0".into()),
+                                lit: Spanned::new(span(28, 29), "0".into()),
                             }
                             .into(),
                         ),
                         cases: vec![Case {
-                            pattern: Pattern::common(
+                            pattern: Pat::common(
                                 span(37, 42),
-                                ast::LocalBinder::Named(identifier("n", span(41, 42))).into(),
+                                ast::LocalBinder::Named(ident("n", span(41, 42))).into(),
                             ),
-                            body: identifier("n", span(46, 47)).into(),
+                            body: ident("n", span(46, 47)).into(),
                         }],
                     }
                     .into(),
@@ -635,12 +634,12 @@ lengthy-space-filler (case 0 of
 fn use_as_plain() {
     assert_eq(
         parse_declaration("use alpha.beta as gamma\n"),
-        Ok(Declaration::common(
+        Ok(Decl::common(
             span(1, 25),
             ast::Module {
                 binder: test_module_name(),
                 file: test_file_index(),
-                declarations: Some(vec![Declaration::common(
+                decls: Some(vec![Decl::common(
                     span(1, 24),
                     ast::Use {
                         bindings: UsePathTree::new(
@@ -649,11 +648,11 @@ fn use_as_plain() {
                                 target: Path {
                                     hanger: None,
                                     segments: smallvec![
-                                        identifier("alpha", span(5, 10)),
-                                        identifier("beta", span(11, 15)),
+                                        ident("alpha", span(5, 10)),
+                                        ident("beta", span(11, 15)),
                                     ],
                                 },
-                                binder: Some(identifier("gamma", span(19, 24))),
+                                binder: Some(ident("gamma", span(19, 24))),
                             },
                         ),
                     }
@@ -678,50 +677,47 @@ main =
             \"bar\"
 ",
         ),
-        Ok(Declaration::common(
+        Ok(Decl::common(
             span(1, 78),
             ast::Module {
                 binder: test_module_name(),
                 file: test_file_index(),
-                declarations: Some(vec![Declaration::common(
+                decls: Some(vec![Decl::common(
                     span(1, 78),
-                    ast::Function {
-                        binder: identifier("main", span(1, 5)),
-                        parameters: Parameters::new(),
-                        type_: None,
-                        body: Some(Expression::common(
+                    ast::Func {
+                        binder: ident("main", span(1, 5)),
+                        params: Params::new(),
+                        ty: None,
+                        body: Some(Expr::common(
                             span(12, 78),
                             ast::CaseAnalysis {
-                                scrutinee: identifier("x", span(17, 18)).into(),
+                                scrutinee: ident("x", span(17, 18)).into(),
                                 cases: vec![
                                     Case {
-                                        pattern: Pattern::common(
+                                        pattern: Pat::common(
                                             span(30, 35),
-                                            Path::from(identifier("false", span(30, 35))).into(),
+                                            Path::from(ident("false", span(30, 35))).into(),
                                         ),
-                                        body: Expression::common(
+                                        body: Expr::common(
                                             span(39, 40),
-                                            ast::NumberLiteral {
+                                            ast::NumLit {
                                                 path: None,
-                                                literal: Spanned::new(span(39, 40), "0".into()),
+                                                lit: Spanned::new(span(39, 40), "0".into()),
                                             }
                                             .into(),
                                         ),
                                     },
                                     Case {
-                                        pattern: Pattern::common(
+                                        pattern: Pat::common(
                                             span(49, 56),
-                                            ast::LocalBinder::Named(identifier(
-                                                "bar",
-                                                span(53, 56),
-                                            ))
-                                            .into(),
+                                            ast::LocalBinder::Named(ident("bar", span(53, 56)))
+                                                .into(),
                                         ),
-                                        body: Expression::common(
+                                        body: Expr::common(
                                             span(72, 77),
-                                            ast::TextLiteral {
+                                            ast::TextLit {
                                                 path: None,
-                                                literal: Spanned::new(span(72, 77), "bar".into()),
+                                                lit: Spanned::new(span(72, 77), "bar".into()),
                                             }
                                             .into(),
                                         ),
@@ -751,50 +747,47 @@ main = case x of
         \"bar\"
 ",
         ),
-        Ok(Declaration::common(
+        Ok(Decl::common(
             span(1, 62),
             ast::Module {
                 binder: test_module_name(),
                 file: test_file_index(),
-                declarations: Some(vec![Declaration::common(
+                decls: Some(vec![Decl::common(
                     span(1, 62),
-                    ast::Function {
-                        binder: identifier("main", span(1, 5)),
-                        parameters: Parameters::new(),
-                        type_: None,
-                        body: Some(Expression::common(
+                    ast::Func {
+                        binder: ident("main", span(1, 5)),
+                        params: Params::new(),
+                        ty: None,
+                        body: Some(Expr::common(
                             span(8, 62),
                             ast::CaseAnalysis {
-                                scrutinee: identifier("x", span(13, 14)).into(),
+                                scrutinee: ident("x", span(13, 14)).into(),
                                 cases: vec![
                                     Case {
-                                        pattern: Pattern::common(
+                                        pattern: Pat::common(
                                             span(22, 27),
-                                            Path::from(identifier("false", span(22, 27))).into(),
+                                            Path::from(ident("false", span(22, 27))).into(),
                                         ),
-                                        body: Expression::common(
+                                        body: Expr::common(
                                             span(31, 32),
-                                            ast::NumberLiteral {
+                                            ast::NumLit {
                                                 path: None,
-                                                literal: Spanned::new(span(31, 32), "0".into()),
+                                                lit: Spanned::new(span(31, 32), "0".into()),
                                             }
                                             .into(),
                                         ),
                                     },
                                     Case {
-                                        pattern: Pattern::common(
+                                        pattern: Pat::common(
                                             span(37, 44),
-                                            ast::LocalBinder::Named(identifier(
-                                                "bar",
-                                                span(41, 44),
-                                            ))
-                                            .into(),
+                                            ast::LocalBinder::Named(ident("bar", span(41, 44)))
+                                                .into(),
                                         ),
-                                        body: Expression::common(
+                                        body: Expr::common(
                                             span(56, 61),
-                                            ast::TextLiteral {
+                                            ast::TextLit {
                                                 path: None,
-                                                literal: Spanned::new(span(56, 61), "bar".into()),
+                                                lit: Spanned::new(span(56, 61), "bar".into()),
                                             }
                                             .into(),
                                         ),
@@ -816,32 +809,29 @@ main = case x of
 fn pattern_with_attributes() {
     assert_eq(
         parse_pattern("@it (has @IT HAS)"),
-        Ok(Pattern::new(
-            vec![Attribute::new(
+        Ok(Pat::new(
+            vec![Attr::new(
                 span(1, 4),
-                BareAttribute::Regular {
-                    binder: identifier("it", span(2, 4)),
-                    arguments: SmallVec::new(),
+                BareAttr::Reg {
+                    binder: ident("it", span(2, 4)),
+                    args: SmallVec::new(),
                 },
             )],
             span(5, 18),
-            ast::Application {
-                callee: Pattern::common(
-                    span(6, 9),
-                    Path::from(identifier("has", span(6, 9))).into(),
-                ),
+            ast::App {
+                callee: Pat::common(span(6, 9), Path::from(ident("has", span(6, 9))).into()),
                 kind: Explicit,
                 binder: None,
-                argument: Pattern::new(
-                    vec![Attribute::new(
+                arg: Pat::new(
+                    vec![Attr::new(
                         span(10, 13),
-                        BareAttribute::Regular {
-                            binder: identifier("IT", span(11, 13)),
-                            arguments: SmallVec::new(),
+                        BareAttr::Reg {
+                            binder: ident("IT", span(11, 13)),
+                            args: SmallVec::new(),
                         },
                     )],
                     span(14, 17),
-                    Path::from(identifier("HAS", span(14, 17))).into(),
+                    Path::from(ident("HAS", span(14, 17))).into(),
                 ),
             }
             .into(),

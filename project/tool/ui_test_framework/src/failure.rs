@@ -1,6 +1,6 @@
 use crate::{path::shorten, terminal_width, Stream};
 use derivation::{Elements, FromStr, Str};
-use diagnostics::Diagnostic;
+use diagnostics::Diag;
 use span::{SourceMap, Span};
 use std::{
     io::{self, Write},
@@ -47,7 +47,7 @@ impl FailedTest {
                     false => ("unsuccessfully", "‘pass’ (succeed)", "failure"),
                 };
 
-                let diagnostic = Diagnostic::error().path(shorten(&self.path).into())
+                let diagnostic = Diag::error().path(shorten(&self.path).into())
                     .message(format!("the compiler unexpectedly exited {adverb}"))
                     .note(format!(
                         "expected the compiler to {verb} but it exited with {code} indicating {noun}",
@@ -60,7 +60,7 @@ impl FailedTest {
                 actual,
                 stream,
             } => {
-                let diagnostic = Diagnostic::error()
+                let diagnostic = Diag::error()
                     .path(shorten(&self.path).into())
                     .message(format!(
                         "the {stream} output of the compiler differs from the expected one"
@@ -96,7 +96,7 @@ impl FailedTest {
                 note,
                 span,
             } => {
-                let diagnostic = Diagnostic::error()
+                let diagnostic = Diag::error()
                     .path(shorten(&self.path).into())
                     .message(message.clone())
                     .with(|it| match note {
@@ -112,7 +112,7 @@ impl FailedTest {
             }
             Failure::InvalidConfiguration(error) => {
                 // @Temporary
-                let diagnostic = Diagnostic::error()
+                let diagnostic = Diag::error()
                     .message(error.message.clone())
                     .unlabeled_span(error.span);
 
@@ -134,7 +134,7 @@ impl FailedTest {
                     (None, _) => "set via the command-line option",
                 };
 
-                let diagnostic = Diagnostic::error()
+                let diagnostic = Diag::error()
                     .path(shorten(&self.path).into())
                     .message("the test ran longer than the specified timeout")
                     .note(format!(

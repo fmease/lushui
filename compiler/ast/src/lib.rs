@@ -1,61 +1,60 @@
 //! The abstract syntax tree (AST).
 //!
-//! The most important definitions are [`Declaration`], [`Expression`] and [`Pattern`].
+//! The most important definitions are [`Decl`], [`Expr`] and [`Pat`].
 #![feature(let_chains)]
 
 use span::{Span, Spanned};
 use utility::SmallVec;
 
-pub use attribute::{
-    Attribute, AttributeArgument, Attributes, BareAttribute, BareAttributeArgument,
-    NamedAttributeArgument,
-};
-pub use declaration::*;
-pub use expression::*;
-pub use identifier::Identifier;
+pub use attr::{Attr, AttrArg, Attrs, BareAttr, BareAttrArg, NamedAttrArg};
+pub use decl::*;
+pub use expr::*;
+pub use ident::Ident;
 pub use item::*;
+pub use pat::*;
 pub use path::{BareHanger, Hanger, Path};
-pub use pattern::*;
 pub use render::Render;
 
-mod attribute;
-mod declaration;
-mod expression;
-mod identifier;
+mod attr;
+mod decl;
+mod expr;
+mod ident;
 mod item;
+mod pat;
 mod path;
-mod pattern;
 mod render;
 
-pub type Parameters = SmallVec<Parameter, 1>;
+/// A list of parameters.
+pub type Params = SmallVec<Param, 1>;
+/// A parameter.
 // @Beacon @Task make this an Item<_> for attribute support on params
-pub type Parameter = Spanned<BareParameter>;
+pub type Param = Spanned<BareParam>;
 
 #[derive(Clone, PartialEq, Eq)]
-pub struct BareParameter {
-    pub kind: ParameterKind,
+pub struct BareParam {
+    pub kind: ParamKind,
     pub binder: Option<LocalBinder>,
-    pub type_: Option<Expression>,
+    pub ty: Option<Expr>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub enum ParameterKind {
+pub enum ParamKind {
     #[default]
     Explicit,
     Implicit,
     Context,
 }
 
-impl ParameterKind {
+impl ParamKind {
     // @Question shouldn't this live in the parser?
-    pub fn from_apostrophe(apostrophe: Option<Span>) -> Self {
-        match apostrophe {
+    pub fn from_apostrophe(apo: Option<Span>) -> Self {
+        match apo {
             Some(_) => Self::Implicit,
             None => Self::Explicit,
         }
     }
 
-    pub fn adjust_for_child(self) -> ParameterKind {
+    pub fn adjust_for_child(self) -> ParamKind {
         match self {
             kind @ Self::Context => kind,
             _ => Self::Implicit,
@@ -63,4 +62,4 @@ impl ParameterKind {
     }
 }
 
-pub type LocalBinder = span::binder::LocalBinder<Identifier>;
+pub type LocalBinder = span::binder::LocalBinder<Ident>;

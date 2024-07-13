@@ -103,14 +103,6 @@ impl<I: Index, T> IndexMap<I, T> {
         self.values.get_mut(index.value())
     }
 
-    pub fn iter(&self) -> Iter<'_, I, T> {
-        self.values.iter().enumerate().map(map_entry)
-    }
-
-    pub fn iter_mut(&mut self) -> IterMut<'_, I, T> {
-        self.values.iter_mut().enumerate().map(map_entry)
-    }
-
     pub fn indices(&self) -> impl Iterator<Item = I> {
         (0..self.len()).map(I::new)
     }
@@ -177,12 +169,40 @@ impl<I: Index + fmt::Debug, T: fmt::Debug> fmt::Debug for IndexMap<I, T> {
     }
 }
 
+use iter::{IntoIter, Iter, IterMut};
+
+mod iter {
+    use super::{map, Index, IndexMap};
+
+    // FIXME: Shouldn't rustc be smart enough to imply `T: 'a`? Is this related to
+    // the `implied_bounds(ty::Weak)` oversight of mine?
+    // https://github.com/rust-lang/rust/pull/122340
+
+    pub type IntoIter<I: Index, T> = impl Iterator<Item = (I, T)>;
+    pub type Iter<'a, I: Index, T: 'a> = impl Iterator<Item = (I, &'a T)>;
+    pub type IterMut<'a, I: Index, T: 'a> = impl Iterator<Item = (I, &'a mut T)>;
+
+    impl<I: Index, T> IndexMap<I, T> {
+        pub(super) fn into_iter(self) -> IntoIter<I, T> {
+            self.values.into_iter().enumerate().map(map)
+        }
+
+        pub fn iter(&self) -> Iter<'_, I, T> {
+            self.values.iter().enumerate().map(map)
+        }
+
+        pub fn iter_mut(&mut self) -> IterMut<'_, I, T> {
+            self.values.iter_mut().enumerate().map(map)
+        }
+    }
+}
+
 impl<I: Index, T> IntoIterator for IndexMap<I, T> {
     type Item = (I, T);
     type IntoIter = IntoIter<I, T>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.values.into_iter().enumerate().map(map_entry)
+        self.into_iter()
     }
 }
 
@@ -204,13 +224,9 @@ impl<'a, I: Index, T> IntoIterator for &'a mut IndexMap<I, T> {
     }
 }
 
-fn map_entry<I: Index, T>((index, value): (usize, T)) -> (I, T) {
+fn map<I: Index, T>((index, value): (usize, T)) -> (I, T) {
     (I::new(index), value)
 }
-
-pub type IntoIter<I: Index, T> = impl Iterator<Item = (I, T)>;
-pub type Iter<'a, I: Index, T: 'a> = impl Iterator<Item = (I, &'a T)>;
-pub type IterMut<'a, I: Index, T: 'a> = impl Iterator<Item = (I, &'a mut T)>;
 
 pub trait Index {
     fn new(index: usize) -> Self;

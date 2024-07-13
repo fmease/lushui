@@ -4,7 +4,7 @@
 use diagnostics::{
     error::{Health, Outcome, Result},
     reporter::ErasedReportedError,
-    Diagnostic, ErrorCode, Reporter,
+    Diag, ErrorCode, Reporter,
 };
 use index_map::IndexMap;
 use lexer::word::Word;
@@ -12,7 +12,7 @@ use manifest::{DependencyDeclaration, DependencyProvider, PackageManifest, Packa
 use recnot::Record;
 use session::{
     package::{ManifestPath, Package, PossiblyUnresolvedComponent::*, CORE_PACKAGE_NAME},
-    unit::{BuildUnit, ComponentType},
+    unit::{BuildUnit, CompTy},
     Context,
 };
 use span::{SourceMap, Spanned, WeaklySpanned};
@@ -22,8 +22,8 @@ use std::{
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 use utility::{
-    cycle::find_cycles_by_key, default, path::CanonicalPathBuf, pluralize, ComponentIndex,
-    Conjunction, FormatError, HashMap, ListingExt, QuoteExt, FILE_EXTENSION,
+    cycle::find_cycles_by_key, default, path::CanonicalPathBuf, pluralize, CompIdx, Conjunction,
+    FormatError, HashMap, ListingExt, QuoteExt, FILE_EXTENSION,
 };
 
 mod error;
@@ -46,9 +46,9 @@ pub fn resolve_package(
     path: &Path,
     filter: &ComponentFilter,
     map: &Arc<RwLock<SourceMap>>,
-    reporter: Reporter,
-) -> Result<(IndexMap<ComponentIndex, BuildUnit>, Context)> {
-    let mut queue = BuildQueue::new(map, reporter);
+    rep: Reporter,
+) -> Result<(IndexMap<CompIdx, BuildUnit>, Context)> {
+    let mut queue = BuildQueue::new(map, rep);
     queue.resolve_package(path, filter)?;
     Ok(queue.finalize())
 }
@@ -57,13 +57,13 @@ pub fn resolve_package(
 pub fn resolve_file(
     path: &Path,
     content: Option<Arc<String>>,
-    type_: ComponentType,
+    ty: CompTy,
     no_core: bool,
     map: &Arc<RwLock<SourceMap>>,
-    reporter: Reporter,
-) -> Result<(IndexMap<ComponentIndex, BuildUnit>, Context)> {
-    let mut queue = BuildQueue::new(map, reporter);
-    queue.resolve_file(path, content, type_, no_core)?;
+    rep: Reporter,
+) -> Result<(IndexMap<CompIdx, BuildUnit>, Context)> {
+    let mut queue = BuildQueue::new(map, rep);
+    queue.resolve_file(path, content, ty, no_core)?;
     Ok(queue.finalize())
 }
 
@@ -88,22 +88,22 @@ impl PackageExt for Package {
 
 struct BuildQueue {
     /// The components which have not been built yet.
-    components: IndexMap<ComponentIndex, BuildUnit>,
-    packages: HashMap<ManifestPath, Package>,
+    comps: IndexMap<CompIdx, BuildUnit>,
+    pkgs: HashMap<ManifestPath, Package>,
     /// The mapping from component to corresponding package.
-    component_packages: HashMap<ComponentIndex, ManifestPath>,
+    comp_pkgs: HashMap<CompIdx, ManifestPath>,
     map: Arc<RwLock<SourceMap>>,
-    reporter: Reporter,
+    rep: Reporter,
 }
 
 impl BuildQueue {
-    fn new(map: &Arc<RwLock<SourceMap>>, reporter: Reporter) -> Self {
+    fn new(map: &Arc<RwLock<SourceMap>>, rep: Reporter) -> Self {
         Self {
-            components: default(),
-            packages: default(),
-            component_packages: default(),
+            comps: default(),
+            pkgs: default(),
+            comp_pkgs: default(),
             map: map.clone(),
-            reporter,
+            rep,
         }
     }
 }
@@ -115,14 +115,14 @@ impl BuildQueue {
         let manifest = match manifest {
             Ok(file) => file,
             Err(error) => {
-                return Err(Diagnostic::error()
+                return Err(Diag::error()
                     .message("could not load the package")
                     .path(manifest_path)
                     .note(format!(
                         "failed to open the package manifest:\n{}",
                         error.format()
                     ))
-                    .report(&self.reporter));
+                    .report(&self.rep));
             }
         };
 
@@ -130,14 +130,14 @@ impl BuildQueue {
         let manifest = PackageManifest::parse(manifest, self)?;
 
         let package = Package::from_manifest(manifest.profile, manifest_path);
-        self.packages.insert(manifest_path, package);
+        self.pkgs.insert(manifest_path, package);
 
         let mut health = Health::Untainted;
 
         if !filter.is_empty() {
-            return Err(Diagnostic::error()
+            return Err(Diag::error()
                 .message("component filters are not supported yet")
-                .report(&self.reporter));
+                .report(&self.rep));
         }
 
         // @Task apply the ComponentFilter here!
@@ -182,28 +182,26 @@ impl BuildQueue {
                         }
                     };
 
-                    let type_ = component.bare.type_;
+                    let ty = component.bare.ty;
 
-                    if type_.bare != ComponentType::Library
-                        && type_.bare != ComponentType::Executable
-                    {
-                        let error = Diagnostic::error()
-                            .message(format!("the component type ‘{type_}’ is not supported yet"))
-                            .unlabeled_span(type_)
-                            .report(&self.reporter);
+                    if ty.bare != CompTy::Library && ty.bare != CompTy::Executable {
+                        let error = Diag::error()
+                            .message(format!("the component type ‘{ty}’ is not supported yet"))
+                            .unlabeled_span(ty)
+                            .report(&self.rep);
                         health.taint(error);
                     }
 
                     // @Task add UI test
                     if let Some(public) = component.bare.public {
-                        let error = Diagnostic::error()
+                        let error = Diag::error()
                             .message("setting the component exposure is not supported yet")
                             .unlabeled_span(public)
-                            .report(&self.reporter);
+                            .report(&self.rep);
                         health.taint(error);
                     }
 
-                    let component = self.components.insert_with(|index| {
+                    let component = self.comps.insert_with(|index| {
                         BuildUnit {
                             name: name.bare,
                             index,
@@ -213,7 +211,7 @@ impl BuildQueue {
                                     manifest_path.folder().join(relative_path),
                                 )
                             }),
-                            type_: type_.bare,
+                            ty: ty.bare,
                             dependencies,
                         }
                     });
@@ -242,14 +240,14 @@ impl BuildQueue {
 
                         // @Task if the circular components are local, i.e. all come from the same package,
                         //       add “in package ‘<package>’ [is/are circular]”
-                        Diagnostic::error()
+                        Diag::error()
                             .message(format!(
                                 "the library {} {components} {} circular",
                                 pluralize!(cycle.len(), "component"),
                                 pluralize!(cycle.len(), "is", "are"),
                             ))
                             .unlabeled_spans(cycle)
-                            .report(&self.reporter);
+                            .report(&self.rep);
                     }
 
                     return Err(ErasedReportedError::new_unchecked());
@@ -266,22 +264,22 @@ impl BuildQueue {
         &mut self,
         file_path: &Path,
         _: Option<Arc<String>>,
-        type_: ComponentType,
+        ty: CompTy,
         no_core: bool,
     ) -> Result {
         let file_path = match CanonicalPathBuf::new(file_path) {
             Ok(path) => path,
             Err(error) => {
                 // @Task better message
-                return Err(Diagnostic::error()
+                return Err(Diag::error()
                     .message("could not load the file")
                     .path(file_path.into())
                     .note(error.format())
-                    .report(&self.reporter));
+                    .report(&self.rep));
             }
         };
 
-        let name = parse_component_name_from_file_path(&file_path, &self.reporter)?;
+        let name = parse_comp_name_from_file_path(&file_path, &self.rep)?;
         let mut dependencies = HashMap::default();
 
         if !no_core {
@@ -293,7 +291,7 @@ impl BuildQueue {
                     Spanned::bare(core_package_name),
                     None,
                     Box::new(|| {
-                        Diagnostic::error()
+                        Diag::error()
                             .message(format!("could not load the package ‘{CORE_PACKAGE_NAME}’"))
                             .path(core_manifest_path.0.to_path_buf())
                     }),
@@ -309,13 +307,13 @@ impl BuildQueue {
             dependencies.insert(core_package_name, library);
         }
 
-        self.components.insert_with(|index| {
+        self.comps.insert_with(|index| {
             BuildUnit {
                 name,
                 index,
                 // @Task don't use bare
                 path: Spanned::bare(file_path),
-                type_,
+                ty,
                 dependencies,
             }
         });
@@ -328,7 +326,7 @@ impl BuildQueue {
         dependent_component_name: Word,
         dependent_path: ManifestPath,
         dependencies: Option<&Spanned<Record<Word, Spanned<DependencyDeclaration>>>>,
-    ) -> Result<HashMap<Word, ComponentIndex>, error::DependencyResolutionError> {
+    ) -> Result<HashMap<Word, CompIdx>, error::DependencyResolutionError> {
         let Some(dependencies) = dependencies else {
             return Ok(HashMap::default());
         };
@@ -363,7 +361,7 @@ impl BuildQueue {
         dependent_path: ManifestPath,
         component_exonym: WeaklySpanned<Word>,
         declaration: &Spanned<DependencyDeclaration>,
-    ) -> Result<ComponentIndex, error::DependencyResolutionError> {
+    ) -> Result<CompIdx, error::DependencyResolutionError> {
         let dependency = match self.resolve_dependency_declaration(
             declaration,
             component_exonym.bare,
@@ -375,19 +373,19 @@ impl BuildQueue {
 
         // @Task add a UI test
         if let Some(version) = &declaration.bare.version {
-            return Err(Diagnostic::error()
+            return Err(Diag::error()
                 .message("version requirements are not supported yet")
                 .unlabeled_span(version)
-                .report(&self.reporter)
+                .report(&self.rep)
                 .into());
         }
 
         // @Task add a UI test
         if let Some(public) = &declaration.bare.public {
-            return Err(Diagnostic::error()
+            return Err(Diag::error()
                 .message("setting the dependency exposure is not supported yet")
                 .unlabeled_span(public)
-                .report(&self.reporter)
+                .report(&self.rep)
                 .into());
         }
 
@@ -404,18 +402,16 @@ impl BuildQueue {
                 let package = &self[dependent_path];
 
                 return match package.components.get(&component_endonym.bare) {
-                    Some(&Resolved(component))
-                        if self[component].type_ == ComponentType::Library =>
-                    {
+                    Some(&Resolved(component)) if self[component].ty == CompTy::Library => {
                         Ok(component)
                     }
                     // @Task add a UI test for this
                     Some(&Resolved(component)) => Err(error::non_library_dependency_error(
                         component_endonym,
-                        self[component].type_,
+                        self[component].ty,
                         package.name,
                     )
-                    .report(&self.reporter)
+                    .report(&self.rep)
                     .into()),
                     Some(Unresolved) => {
                         Err(error::DependencyResolutionError::UnresolvedLocalComponent(
@@ -424,7 +420,7 @@ impl BuildQueue {
                     }
                     None => Err(
                         error::undefined_component_error(component_endonym, package.name)
-                            .report(&self.reporter)
+                            .report(&self.rep)
                             .into(),
                     ),
                 };
@@ -436,7 +432,7 @@ impl BuildQueue {
 
         // Deduplicate packages by absolute path and check for circular components.
         if let Ok(manifest_path) = manifest_path
-            && let Some(package) = self.packages.get(&manifest_path)
+            && let Some(package) = self.pkgs.get(&manifest_path)
         {
             // @Beacon @Task add a diag note for size-one cycles of the form `{ path: "." }` (etc) and
             //               recommend the dep-provider `package` (…)
@@ -445,37 +441,37 @@ impl BuildQueue {
             // if so, consider not throwing a cycle error (here / unconditionally)
             // @Beacon @Task handle component privacy here
             return match package.components.get(&component_endonym.bare) {
-                Some(&Resolved(component)) if self[component].type_ == ComponentType::Library => {
+                Some(&Resolved(component)) if self[component].ty == CompTy::Library => {
                     Ok(component)
                 }
                 // @Bug this does not fire when we want to since the it is apparently unresolved at this stage for some reason
                 // @Task test this, is this reachable?
                 Some(&Resolved(component)) => Err(error::non_library_dependency_error(
                     component_endonym,
-                    self[component].type_,
+                    self[component].ty,
                     package.name,
                 )
-                .report(&self.reporter)
+                .report(&self.rep)
                 .into()),
                 Some(Unresolved) => {
                     // @Temporary
                     // @Note this does not scale to more complex cycles (e.g. a cycle of three components)
                     // @Task provide more context for transitive dependencies of the root component
                     Err(error::DependencyResolutionError::ErasedFatal(
-                        Diagnostic::error()
+                        Diag::error()
                             .message(format!(
                                 "the components ‘{dependent_component_name}’ and ‘{component_endonym}’ are circular",
                             ))
                             // @Task add the span of "the" counterpart component
                             .unlabeled_span(component_exonym)
-                            .report(&self.reporter),
+                            .report(&self.rep),
                     ))
                     // @Task this should definitely not be fatal fatal since we wanna catch separate cycles (eg. {{a,b,c}, {a,sep}})
                     // Err(error::DependencyResolutionError::Cycle(Spanned::bare(dependent_component_name.clone())))
                 }
                 None => Err(
                     error::undefined_component_error(component_endonym, package.name)
-                        .report(&self.reporter)
+                        .report(&self.rep)
                         .into(),
                 ),
             };
@@ -486,7 +482,7 @@ impl BuildQueue {
             component_endonym,
             declaration.bare.package,
             Box::new(|| {
-                Diagnostic::error()
+                Diag::error()
                     .message(format!(
                         "could not load the dependency ‘{component_exonym}’",
                     ))
@@ -504,8 +500,8 @@ impl BuildQueue {
         manifest_path: std::io::Result<ManifestPath>,
         component_endonym: Spanned<Word>,
         declared_package_name: Option<Spanned<Word>>,
-        load_error: Box<dyn FnOnce() -> Diagnostic + '_>,
-    ) -> Result<ComponentIndex, error::DependencyResolutionError> {
+        load_error: Box<dyn FnOnce() -> Diag + '_>,
+    ) -> Result<CompIdx, error::DependencyResolutionError> {
         let manifest =
             manifest_path.and_then(|path| Ok((path, self.map().read((*path.0).clone(), None)?)));
         let (manifest_path, manifest) = match manifest {
@@ -520,10 +516,7 @@ impl BuildQueue {
                 // @Question code?
                 // @Task provide more information when provider==distribution
                 // @Question use endonym here instead? or use both?
-                return Err(load_error()
-                    .note(error.format())
-                    .report(&self.reporter)
-                    .into());
+                return Err(load_error().note(error.format()).report(&self.rep).into());
             }
         };
 
@@ -533,10 +526,10 @@ impl BuildQueue {
             && package_name.bare != manifest.profile.name.bare
         {
             // @Task message, @Task add UI test
-            return Err(Diagnostic::error()
+            return Err(Diag::error()
                 .message("declared package name does not match actual one")
                 .unlabeled_span(package_name)
-                .report(&self.reporter)
+                .report(&self.rep)
                 .into());
         }
 
@@ -544,7 +537,7 @@ impl BuildQueue {
 
         let package = Package::from_manifest(manifest.profile, manifest_path);
         let package_name = package.name;
-        self.packages.insert(manifest_path, package);
+        self.pkgs.insert(manifest_path, package);
 
         // @Task handle component privacy
         let library = match manifest
@@ -552,22 +545,20 @@ impl BuildQueue {
             .as_ref()
             .and_then(|components| components.bare.get(&component_endonym.weak()))
         {
-            Some(component) if component.bare.type_.bare == ComponentType::Library => {
-                &component.bare
-            }
+            Some(component) if component.bare.ty.bare == CompTy::Library => &component.bare,
             Some(component) => {
                 return Err(error::non_library_dependency_error(
                     component_endonym,
-                    component.bare.type_.bare,
+                    component.bare.ty.bare,
                     package_name,
                 )
-                .report(&self.reporter)
+                .report(&self.rep)
                 .into())
             }
             None => {
                 return Err(
                     error::undefined_component_error(component_endonym, package_name)
-                        .report(&self.reporter)
+                        .report(&self.rep)
                         .into(),
                 )
             }
@@ -587,11 +578,11 @@ impl BuildQueue {
         let dependencies =
             self.resolve_dependencies(name, manifest_path, library.dependencies.as_ref())?;
 
-        let library = self.components.insert_with(|index| BuildUnit {
+        let library = self.comps.insert_with(|index| BuildUnit {
             name,
             index,
             path: library_component_path,
-            type_: library.type_.bare,
+            ty: library.ty.bare,
             dependencies,
         });
 
@@ -604,10 +595,10 @@ impl BuildQueue {
         &mut self,
         package: ManifestPath,
         name: Word,
-        component: ComponentIndex,
+        component: CompIdx,
     ) {
         self[package].components.insert(name, Resolved(component));
-        self.component_packages.insert(component, package);
+        self.comp_pkgs.insert(component, package);
     }
 
     fn resolve_dependency_declaration(
@@ -638,13 +629,13 @@ impl BuildQueue {
         {
             // @Beacon @Task report an error that those things are incompatible
             // @Task add test
-            return Err(Diagnostic::error()
+            return Err(Diag::error()
                 .message("@Task")
                 .with(|ot| match declaration.provider {
                     Some(provider) => ot.unlabeled_span(provider),
                     None => ot,
                 })
-                .report(&self.reporter));
+                .report(&self.rep));
         }
 
         if provider != DependencyProvider::Filesystem
@@ -654,14 +645,14 @@ impl BuildQueue {
             // @Task add test
             // @Task add a 2nd *primary* span that highlights the provider (if available otherwise do sth. else)
             // @Question can we point at the field/key `path` instead of its value?
-            return Err(Diagnostic::error()
+            return Err(Diag::error()
                 .message("@Task")
                 .unlabeled_span(path)
                 .with(|it| match declaration.provider {
                     Some(provider) => it.unlabeled_span(provider),
                     None => it,
                 })
-                .report(&self.reporter));
+                .report(&self.rep));
         }
 
         match provider {
@@ -670,7 +661,7 @@ impl BuildQueue {
                     manifest_path.folder().join(&path.bare),
                 )),
                 // @Task improve message
-                None => Err(Diagnostic::error()
+                None => Err(Diag::error()
                     .message("dependency declaration does not have entry ‘path’")
                     .unlabeled_span(span)
                     .with(|it| match declaration.provider.as_ref() {
@@ -678,7 +669,7 @@ impl BuildQueue {
                         Some(provider) => it.label(provider, "required by this"),
                         None => it,
                     })
-                    .report(&self.reporter)),
+                    .report(&self.rep)),
             },
             DependencyProvider::Distribution => {
                 let component = declaration
@@ -689,7 +680,7 @@ impl BuildQueue {
                 Ok(Dependency::ForeignPackage(path))
             }
             DependencyProvider::Package => Ok(Dependency::LocalComponent),
-            DependencyProvider::Git | DependencyProvider::Registry => Err(Diagnostic::error()
+            DependencyProvider::Git | DependencyProvider::Registry => Err(Diag::error()
                 .message(format!(
                     "the dependency provider ‘{provider}’ is not supported yet",
                 ))
@@ -698,24 +689,24 @@ impl BuildQueue {
                     Some(provider) => it.unlabeled_span(provider),
                     None => it.span(span, format!("implies provider ‘{provider}’")),
                 })
-                .report(&self.reporter)),
+                .report(&self.rep)),
         }
     }
 
-    fn finalize(self) -> (IndexMap<ComponentIndex, BuildUnit>, Context) {
+    fn finalize(self) -> (IndexMap<CompIdx, BuildUnit>, Context) {
         // @Task Support the existence of more than one root component
         //       dependending on a component filter provided by the user
-        let root = self.components.last().unwrap();
+        let root = self.comps.last().unwrap();
 
         let context = Context::new(
-            self.packages,
-            self.component_packages,
+            self.pkgs,
+            self.comp_pkgs,
             root.outline(),
             &self.map,
-            self.reporter,
+            self.rep,
         );
 
-        (self.components, context)
+        (self.comps, context)
     }
 
     fn shared_map(&self) -> RwLockReadGuard<'_, SourceMap> {
@@ -730,7 +721,7 @@ impl BuildQueue {
 #[derive(Default)]
 pub struct ComponentFilter {
     pub names: Vec<Word>,
-    pub types: Vec<ComponentType>,
+    pub types: Vec<CompTy>,
 }
 
 impl ComponentFilter {
@@ -739,13 +730,13 @@ impl ComponentFilter {
     }
 }
 
-fn parse_component_name_from_file_path(path: &Path, reporter: &Reporter) -> Result<Word> {
+fn parse_comp_name_from_file_path(path: &Path, rep: &Reporter) -> Result<Word> {
     if !utility::has_file_extension(path, FILE_EXTENSION) {
-        Diagnostic::warning()
+        Diag::warning()
             .message(format!(
                 "the source file does not have the file extension ‘{FILE_EXTENSION}’"
             ))
-            .report(reporter);
+            .report(rep);
     }
 
     // @Question can the file stem ever be empty in our case?
@@ -757,24 +748,24 @@ fn parse_component_name_from_file_path(path: &Path, reporter: &Reporter) -> Resu
         // @Task DRY @Question is the common code justified?
         // @Question isn't this function used in such a way that it's
         //     "component and package name"?
-        Diagnostic::error()
+        Diag::error()
             .code(ErrorCode::E036)
             .message(format!("the component name ‘{name}’ is not a valid word"))
-            .report(reporter)
+            .report(rep)
     })
 }
 
-impl Index<ComponentIndex> for BuildQueue {
+impl Index<CompIdx> for BuildQueue {
     type Output = BuildUnit;
 
-    fn index(&self, index: ComponentIndex) -> &Self::Output {
-        &self.components[index]
+    fn index(&self, index: CompIdx) -> &Self::Output {
+        &self.comps[index]
     }
 }
 
-impl IndexMut<ComponentIndex> for BuildQueue {
-    fn index_mut(&mut self, index: ComponentIndex) -> &mut Self::Output {
-        &mut self.components[index]
+impl IndexMut<CompIdx> for BuildQueue {
+    fn index_mut(&mut self, index: CompIdx) -> &mut Self::Output {
+        &mut self.comps[index]
     }
 }
 
@@ -782,13 +773,13 @@ impl Index<ManifestPath> for BuildQueue {
     type Output = Package;
 
     fn index(&self, path: ManifestPath) -> &Self::Output {
-        &self.packages[&path]
+        &self.pkgs[&path]
     }
 }
 
 impl IndexMut<ManifestPath> for BuildQueue {
     fn index_mut(&mut self, path: ManifestPath) -> &mut Self::Output {
-        self.packages.get_mut(&path).unwrap()
+        self.pkgs.get_mut(&path).unwrap()
     }
 }
 

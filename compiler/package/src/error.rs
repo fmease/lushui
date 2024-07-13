@@ -1,6 +1,6 @@
-use diagnostics::{reporter::ErasedReportedError, Diagnostic};
+use diagnostics::{reporter::ErasedReportedError, Diag};
 use lexer::word::Word;
-use session::unit::ComponentType;
+use session::unit::CompTy;
 use span::Spanned;
 
 pub(crate) enum DependencyResolutionError {
@@ -18,25 +18,21 @@ impl From<ErasedReportedError> for DependencyResolutionError {
     }
 }
 
-pub(crate) fn undefined_component_error(name: Spanned<Word>, package: Word) -> Diagnostic {
+pub(crate) fn undefined_component_error(name: Spanned<Word>, package: Word) -> Diag {
     // @Question should we special-case component name = package name?
 
-    Diagnostic::error()
+    Diag::error()
         .message(format!(
             "the package ‘{package}’ does not contain a component called ‘{name}’"
         ))
         .unlabeled_span(name)
 }
 
-pub(crate) fn non_library_dependency_error(
-    name: Spanned<Word>,
-    type_: ComponentType,
-    package: Word,
-) -> Diagnostic {
-    Diagnostic::error()
+pub(crate) fn non_library_dependency_error(name: Spanned<Word>, ty: CompTy, package: Word) -> Diag {
+    Diag::error()
         .message(format!(
             "the component ‘{name}’ in package ‘{package}’ is not a library",
         ))
         .unlabeled_span(name)
-        .note(format!("one cannot depend on {type_} components"))
+        .note(format!("one cannot depend on {ty} components"))
 }

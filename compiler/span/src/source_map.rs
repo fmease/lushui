@@ -1,23 +1,23 @@
-use super::{ByteIndex, LocalByteIndex, LocalSpan, Span, Spanning};
+use super::{ByteIdx, LocalByteIdx, LocalSpan, Span, Spanning};
 use index_map::IndexMap;
 use std::{io, ops::Range, path::Path, sync::Arc};
 use unicode_width::UnicodeWidthStr;
 use utility::{
     default, obtain,
     path::{CanonicalPath, CanonicalPathBuf},
-    ComponentIndex,
+    CompIdx,
 };
 
 #[cfg(test)]
 mod test;
 
-// @Beacon @Task if possible, get rid of dependency on `ComponentIndex`
+// @Beacon @Task if possible, get rid of dependency on `CompIdx`
 //               (it's was recently added for the LSP server)
 
-/// A mapping from [index](SourceFileIndex) to [source file](SourceFile).
+/// A mapping from [index](SrcFileIdx) to [source file](SourceFile).
 ///
 /// Most prominently, the index – an offset and obtained by adding a source file to this map –
-/// is the key component to define [`Span`] (via [`ByteIndex`]).
+/// is the key component to define [`Span`] (via [`ByteIdx`]).
 ///
 /// The source files are laid out next to each other and padded on their left (at their start)
 /// by one byte (in the sense of `Span::length(_) == 1`) to reserve space for _end of input_
@@ -39,11 +39,11 @@ mod test;
 /// ```
 #[derive(Default)]
 pub struct SourceMap {
-    files: IndexMap<SourceFileIndex, SourceFile>,
+    files: IndexMap<SrcFileIdx, SourceFile>,
 }
 
 impl SourceMap {
-    fn next_offset(&self) -> ByteIndex {
+    fn next_offset(&self) -> ByteIdx {
         const PADDING: u32 = 1;
 
         self.files
@@ -54,11 +54,7 @@ impl SourceMap {
     }
 
     /// Open a file given its path and add it as a [`SourceFile`] to the map.
-    pub fn load(
-        &mut self,
-        path: &Path,
-        component: Option<ComponentIndex>,
-    ) -> io::Result<SourceFileIndex> {
+    pub fn load(&mut self, path: &Path, component: Option<CompIdx>) -> io::Result<SrcFileIdx> {
         let path = CanonicalPathBuf::new(path)?;
         let source = std::fs::read_to_string(&path)?;
         Ok(self.add(path, Arc::new(source), component))
@@ -68,8 +64,8 @@ impl SourceMap {
     pub fn read(
         &mut self,
         path: CanonicalPathBuf,
-        component: Option<ComponentIndex>,
-    ) -> io::Result<SourceFileIndex> {
+        component: Option<CompIdx>,
+    ) -> io::Result<SrcFileIdx> {
         let source = std::fs::read_to_string(&path)?;
         Ok(self.add(path, Arc::new(source), component))
     }
@@ -79,13 +75,13 @@ impl SourceMap {
         &mut self,
         name: impl Into<FileName>,
         source: Arc<String>,
-        component: Option<ComponentIndex>,
-    ) -> SourceFileIndex {
+        component: Option<CompIdx>,
+    ) -> SrcFileIdx {
         self.files
             .insert(SourceFile::new(name, source, self.next_offset(), component))
     }
 
-    pub fn add_str(&mut self, name: impl Into<FileName>, source: &str) -> SourceFileIndex {
+    pub fn add_str(&mut self, name: impl Into<FileName>, source: &str) -> SrcFileIdx {
         self.add(name, Arc::new(source.to_owned()), None)
     }
 
@@ -225,8 +221,8 @@ impl SourceMap {
         struct InterimLine {
             /// One-indexed line number.
             number: u32,
-            start: Option<LocalByteIndex>,
-            end: Option<LocalByteIndex>,
+            start: Option<LocalByteIdx>,
+            end: Option<LocalByteIdx>,
             highlight: Option<InterimHighlight>,
         }
 
@@ -274,8 +270,8 @@ impl SourceMap {
         }
 
         struct InterimHighlight {
-            start: LocalByteIndex,
-            end: Option<LocalByteIndex>,
+            start: LocalByteIdx,
+            end: Option<LocalByteIdx>,
         }
 
         LinesWithHighlight {
@@ -286,16 +282,16 @@ impl SourceMap {
     }
 }
 
-impl std::ops::Index<SourceFileIndex> for SourceMap {
+impl std::ops::Index<SrcFileIdx> for SourceMap {
     type Output = SourceFile;
 
-    fn index(&self, index: SourceFileIndex) -> &Self::Output {
+    fn index(&self, index: SrcFileIdx) -> &Self::Output {
         &self.files[index]
     }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, index_map::Index)]
-pub struct SourceFileIndex(usize);
+pub struct SrcFileIdx(usize);
 
 #[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
@@ -340,18 +336,18 @@ pub struct SourceFile {
     span: Span,
     // @Task rename to owner & maybe make this a dyn* Any?
     #[cfg_attr(not(feature = "lsp"), allow(dead_code))]
-    component: Option<ComponentIndex>,
+    component: Option<CompIdx>,
 }
 
 impl SourceFile {
     /// Create a new source file.
     ///
-    /// The [byte index](ByteIndex) `start` locates the file in a [source map](SourceMap).
+    /// The [byte index](ByteIdx) `start` locates the file in a [source map](SourceMap).
     fn new(
         name: impl Into<FileName>,
         content: Arc<String>,
-        start: ByteIndex,
-        component: Option<ComponentIndex>,
+        start: ByteIdx,
+        component: Option<CompIdx>,
     ) -> Self {
         Self {
             span: Span::with_length(start, content.len().try_into().unwrap()),
@@ -365,7 +361,7 @@ impl SourceFile {
         &self.name
     }
 
-    pub fn component(&self) -> Option<ComponentIndex> {
+    pub fn component(&self) -> Option<CompIdx> {
         self.component
     }
 
@@ -394,7 +390,9 @@ impl std::ops::Index<LocalSpan> for SourceFile {
 
 #[derive(PartialEq, Eq, Debug)]
 pub enum FileName {
-    Anonymous,
+    /// Anonymous.
+    Anon,
+    /// Standard input stream STDIN.
     Stdin,
     Path(CanonicalPathBuf),
     Virtual(&'static str),

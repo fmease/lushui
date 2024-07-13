@@ -1,4 +1,4 @@
-#![feature(const_option, lazy_cell, let_chains, str_split_remainder, extract_if)]
+#![feature(const_option, let_chains, str_split_remainder, extract_if)]
 
 use configuration::{Configuration, Mode, TestTag, Timeout};
 use failure::{FailedTest, Failure};
@@ -352,7 +352,7 @@ fn handle_test_folder_entry(
         return;
     }
 
-    let Ok(type_) = classify_test(path) else {
+    let Ok(ty) = classify_test(path) else {
         print_file_status(path, Status::Invalid, None).unwrap();
         failed_tests.push(FailedTest::new(
             path.to_owned(),
@@ -382,7 +382,7 @@ fn handle_test_folder_entry(
 
     // parse the test configuration
     let file = map.load(&path::shorten(path), None).unwrap();
-    let configuration = match Configuration::parse(&map[file], type_, map) {
+    let configuration = match Configuration::parse(&map[file], ty, map) {
         Ok(configuration) => configuration,
         Err(error) => {
             failed_tests.push(FailedTest::new(
@@ -419,7 +419,7 @@ fn handle_test_folder_entry(
     let output = compile(
         path,
         &configuration,
-        type_,
+        ty,
         arguments.timeout,
         arguments.compiler_build_mode,
     );
@@ -654,7 +654,7 @@ fn validate_auxiliary_file(
 fn compile(
     path: &Path,
     configuration: &Configuration<'_>,
-    type_: TestType,
+    ty: TestType,
     timeout: Option<Duration>,
     mode: CompilerBuildMode,
 ) -> std::process::Output {
@@ -684,7 +684,7 @@ fn compile(
 
     command.arg("--quiet");
 
-    if type_ == TestType::SourceFile {
+    if ty == TestType::SourceFile {
         command.arg("file");
     }
 
@@ -695,7 +695,7 @@ fn compile(
     {
         use TestType::*;
 
-        command.arg(match (type_, mode) {
+        command.arg(match (ty, mode) {
             (SourceFile | Package, Mode::Check) => "check",
             (SourceFile | Package, Mode::Build) => "build",
             (SourceFile | Package, Mode::Run) => "run",
@@ -709,7 +709,7 @@ fn compile(
     // which do not want to run anything. So let's overwrite it unless the test configuration wants to `run` the code
     // or manually supplied a component type. Keep in mind, this is only a simple heuristic.
     // @Task find a more principled approach
-    if type_ == TestType::SourceFile
+    if ty == TestType::SourceFile
         && mode != Mode::Run
         && configuration
             .compiler_args
@@ -722,7 +722,7 @@ fn compile(
     command.args(&configuration.compiler_args);
     command.envs(&configuration.compiler_env_vars);
 
-    match type_ {
+    match ty {
         TestType::SourceFile | TestType::RecnotSourceFile => {
             command.arg(path);
         }

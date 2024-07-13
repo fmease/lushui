@@ -12,8 +12,8 @@ impl<'a> Node<'a> {
 
     fn render(self, output: &mut String) {
         match self.0 {
-            NodeKind::Element(element) => element.render(output),
-            NodeKind::VoidElement(element) => element.render(output),
+            NodeKind::Elem(elem) => elem.render(output),
+            NodeKind::VoidElem(elem) => elem.render(output),
             NodeKind::Text(text) => {
                 html_escape::encode_text_to_string(text, output);
             }
@@ -22,15 +22,15 @@ impl<'a> Node<'a> {
     }
 }
 
-impl<'a> From<Element<'a>> for Node<'a> {
-    fn from(element: Element<'a>) -> Self {
-        Self(NodeKind::Element(element))
+impl<'a> From<Elem<'a>> for Node<'a> {
+    fn from(elem: Elem<'a>) -> Self {
+        Self(NodeKind::Elem(elem))
     }
 }
 
-impl<'a> From<VoidElement<'a>> for Node<'a> {
-    fn from(element: VoidElement<'a>) -> Self {
-        Self(NodeKind::VoidElement(element))
+impl<'a> From<VoidElem<'a>> for Node<'a> {
+    fn from(elem: VoidElem<'a>) -> Self {
+        Self(NodeKind::VoidElem(elem))
     }
 }
 
@@ -41,8 +41,8 @@ impl<'a, S: Into<Cow<'a, str>>> From<S> for Node<'a> {
 }
 
 enum NodeKind<'a> {
-    Element(Element<'a>),
-    VoidElement(VoidElement<'a>),
+    Elem(Elem<'a>),
+    VoidElem(VoidElem<'a>),
     Text(Cow<'a, str>),
     Verbatim(Cow<'a, str>),
 }
@@ -70,24 +70,24 @@ impl<'a> Document<'a> {
     }
 }
 
-pub(crate) struct Element<'a> {
+pub(crate) struct Elem<'a> {
     tag: Cow<'a, str>,
-    attributes: Attributes<'a>,
+    attrs: Attrs<'a>,
     children: NodeList<'a>,
 }
 
-impl<'a> Element<'a> {
+impl<'a> Elem<'a> {
     pub(crate) fn new(tag: impl Into<Cow<'a, str>>) -> Self {
         Self {
             tag: tag.into(),
-            attributes: Attributes::default(),
+            attrs: Attrs::default(),
             children: NodeList::default(),
         }
     }
 
     pub(crate) fn anchor(href: impl Into<Cow<'a, str>>, child: impl Into<Node<'a>>) -> Self {
-        fn anchor<'s>(href: Cow<'s, str>, child: Node<'s>) -> Element<'s> {
-            Element::new("a").attribute("href", href).child(child)
+        fn anchor<'s>(href: Cow<'s, str>, child: Node<'s>) -> Elem<'s> {
+            Elem::new("a").attr("href", href).child(child)
         }
 
         anchor(href.into(), child.into())
@@ -113,7 +113,7 @@ impl<'a> Element<'a> {
     pub(crate) fn render(self, output: &mut String) {
         *output += "<";
         *output += &self.tag;
-        self.attributes.render(output);
+        self.attrs.render(output);
         *output += ">";
 
         self.children.render(output);
@@ -124,36 +124,36 @@ impl<'a> Element<'a> {
     }
 }
 
-impl<'a> Attributable<'a> for Element<'a> {
-    fn attributes(&mut self) -> &mut Attributes<'a> {
-        &mut self.attributes
+impl<'a> Attributable<'a> for Elem<'a> {
+    fn attrs(&mut self) -> &mut Attrs<'a> {
+        &mut self.attrs
     }
 }
 
-pub(crate) struct VoidElement<'a> {
+pub(crate) struct VoidElem<'a> {
     tag: Cow<'a, str>,
-    attributes: Attributes<'a>,
+    attrs: Attrs<'a>,
 }
 
-impl<'a> VoidElement<'a> {
+impl<'a> VoidElem<'a> {
     pub(crate) fn new(tag: impl Into<Cow<'a, str>>) -> Self {
         Self {
             tag: tag.into(),
-            attributes: Attributes::default(),
+            attrs: Attrs::default(),
         }
     }
 
     fn render(self, output: &mut String) {
         *output += "<";
         *output += &self.tag;
-        self.attributes.render(output);
+        self.attrs.render(output);
         *output += ">";
     }
 }
 
-impl<'a> Attributable<'a> for VoidElement<'a> {
-    fn attributes(&mut self) -> &mut Attributes<'a> {
-        &mut self.attributes
+impl<'a> Attributable<'a> for VoidElem<'a> {
+    fn attrs(&mut self) -> &mut Attrs<'a> {
+        &mut self.attrs
     }
 }
 
@@ -169,12 +169,12 @@ impl NodeList<'_> {
 }
 
 #[derive(Default)]
-pub(crate) struct Attributes<'a> {
+pub(crate) struct Attrs<'a> {
     key_value: BTreeMap<Cow<'a, str>, Cow<'a, str>>,
     boolean: BTreeSet<Cow<'a, str>>,
 }
 
-impl Attributes<'_> {
+impl Attrs<'_> {
     fn render(self, output: &mut String) {
         for (name, value) in self.key_value {
             *output += " ";
@@ -192,25 +192,23 @@ impl Attributes<'_> {
 }
 
 pub(crate) trait Attributable<'a>: Sized {
-    fn attributes(&mut self) -> &mut Attributes<'a>;
+    fn attrs(&mut self) -> &mut Attrs<'a>;
 
-    fn add_attribute(&mut self, name: &'a str, value: impl Into<Cow<'a, str>>) {
-        self.attributes()
-            .key_value
-            .insert(name.into(), value.into());
+    fn add_attr(&mut self, name: &'a str, value: impl Into<Cow<'a, str>>) {
+        self.attrs().key_value.insert(name.into(), value.into());
     }
 
-    fn add_boolean_attribute(&mut self, name: &'a str) {
-        self.attributes().boolean.insert(name.into());
+    fn add_bool_attr(&mut self, name: &'a str) {
+        self.attrs().boolean.insert(name.into());
     }
 
-    fn attribute(mut self, name: &'a str, value: impl Into<Cow<'a, str>>) -> Self {
-        self.add_attribute(name, value);
+    fn attr(mut self, name: &'a str, value: impl Into<Cow<'a, str>>) -> Self {
+        self.add_attr(name, value);
         self
     }
 
-    fn boolean_attribute(mut self, name: &'a str) -> Self {
-        self.add_boolean_attribute(name);
+    fn bool_attr(mut self, name: &'a str) -> Self {
+        self.add_bool_attr(name);
         self
     }
 
@@ -220,7 +218,7 @@ pub(crate) trait Attributable<'a>: Sized {
     }
 
     fn add_class(&mut self, name: &'a str) {
-        let key_value = &mut self.attributes().key_value;
+        let key_value = &mut self.attrs().key_value;
 
         let classes = key_value.entry("class".into()).or_default().to_mut();
 

@@ -4,7 +4,7 @@ use syn::{Error, Fields};
 
 pub(crate) fn derive(input: TokenStream1) -> Result<TokenStream2, Error> {
     let input: syn::ItemEnum = syn::parse(input)?;
-    let type_ = input.ident;
+    let ty = input.ident;
     let length = input.variants.len();
 
     let mut variants = Vec::with_capacity(length);
@@ -30,7 +30,7 @@ pub(crate) fn derive(input: TokenStream1) -> Result<TokenStream2, Error> {
 
     Ok(quote! {
         // @Task make `::derivation` hygienic
-        impl #impl_generics ::derivation::Elements for #type_ #type_generics #where_clause {
+        impl #impl_generics ::derivation::Elements for #ty #type_generics #where_clause {
             type Iter = ::core::array::IntoIter<Self, #length>;
 
             fn elements() -> Self::Iter {

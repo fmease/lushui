@@ -1,4 +1,4 @@
-use crate::{Expression, Path};
+use crate::{Expr, Path};
 use lexer::{word::Word, CharExt};
 use span::{Span, Spanned, Spanning};
 use std::hash::Hash;
@@ -28,9 +28,9 @@ use utility::Atom;
 /// The default span (signifying no location at all) is of course an option
 /// albeit a discouraged one.
 #[derive(Clone, Copy, Debug)]
-pub struct Identifier(Spanned<Atom>);
+pub struct Ident(Spanned<Atom>);
 
-impl Identifier {
+impl Ident {
     /// Create a new identifier without checking for its validity.
     ///
     /// See [identifier](Self) for the preconditions.
@@ -66,50 +66,50 @@ impl Identifier {
     }
 }
 
-impl From<Identifier> for Expression {
-    fn from(identifier: Identifier) -> Self {
-        Expression::common(identifier.span(), Path::from(identifier).into())
+impl From<Ident> for Expr {
+    fn from(ident: Ident) -> Self {
+        Expr::common(ident.span(), Path::from(ident).into())
     }
 }
 
-impl From<Spanned<Word>> for Identifier {
+impl From<Spanned<Word>> for Ident {
     fn from(name: Spanned<Word>) -> Self {
         Self::new_unchecked(name.span, name.bare.into_inner())
     }
 }
 
-impl TryFrom<Identifier> for Spanned<Word> {
+impl TryFrom<Ident> for Spanned<Word> {
     type Error = ();
 
-    fn try_from(identifier: Identifier) -> Result<Self, Self::Error> {
-        identifier
+    fn try_from(ident: Ident) -> Result<Self, Self::Error> {
+        ident
             .is_word()
-            .then(|| Self::new(identifier.span(), Word::new_unchecked(identifier.bare())))
+            .then(|| Self::new(ident.span(), Word::new_unchecked(ident.bare())))
             .ok_or(())
     }
 }
 
-impl Spanning for Identifier {
+impl Spanning for Ident {
     fn span(&self) -> Span {
         self.0.span
     }
 }
 
-impl span::binder::Binder for Identifier {
+impl span::binder::Binder for Ident {
     fn to_str(self) -> &'static str {
         self.to_str()
     }
 }
 
-impl PartialEq for Identifier {
+impl PartialEq for Ident {
     fn eq(&self, other: &Self) -> bool {
         self.bare() == other.bare()
     }
 }
 
-impl Eq for Identifier {}
+impl Eq for Ident {}
 
-impl Hash for Identifier {
+impl Hash for Ident {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.bare().hash(state);
     }

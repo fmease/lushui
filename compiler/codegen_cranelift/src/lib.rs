@@ -9,7 +9,7 @@ use cranelift::{
 };
 use cranelift_module::{Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule};
-use diagnostics::{error::Result, Diagnostic};
+use diagnostics::{error::Result, Diag};
 use session::{Session, OUTPUT_FOLDER_NAME};
 use std::{
     path::{Path, PathBuf},
@@ -17,17 +17,13 @@ use std::{
 };
 use utility::PROGRAM_ENTRY;
 
-pub fn compile_and_link(
-    options: Options,
-    component_root: &hir::Declaration,
-    session: &Session<'_>,
-) -> Result {
-    if options.emit_clif || options.verify_clif {
+pub fn compile_and_link(opts: Options, comp_root: &hir::Decl, sess: &Session<'_>) -> Result {
+    if opts.emit_clif || opts.verify_clif {
         todo!(); //@Temporary
     }
 
-    let path = compile(options, component_root, session);
-    link(&path, session)
+    let path = compile(opts, comp_root, sess);
+    link(&path, sess)
 }
 
 #[derive(Clone, Copy, Default)]
@@ -36,11 +32,7 @@ pub struct Options {
     pub verify_clif: bool,
 }
 
-fn compile(
-    _options: Options,
-    _component_root: &hir::Declaration,
-    session: &Session<'_>,
-) -> PathBuf {
+fn compile(_opts: Options, _comp_root: &hir::Decl, sess: &Session<'_>) -> PathBuf {
     let program_entry_name = PROGRAM_ENTRY.to_str();
 
     let isa = cranelift_native::builder()
@@ -56,9 +48,9 @@ fn compile(
         )
         .unwrap(),
     );
-    let mut context = module.make_context();
+    let mut cx = module.make_context();
 
-    context.func.signature = Signature {
+    cx.func.signature = Signature {
         params: Vec::new(),
         returns: vec![AbiParam::new(types::I64)],
         call_conv: CallConv::Fast,
@@ -67,7 +59,7 @@ fn compile(
     // @Beacon @Temporary
     // @Task actually compile `component_root`!
     let mut builder_context = FunctionBuilderContext::new();
-    let mut builder = FunctionBuilder::new(&mut context.func, &mut builder_context);
+    let mut builder = FunctionBuilder::new(&mut cx.func, &mut builder_context);
     let entry_block = builder.create_block();
     builder.seal_block(entry_block);
     builder.switch_to_block(entry_block);
@@ -76,29 +68,28 @@ fn compile(
     builder.finalize();
 
     // @Task do this for every function with `options.verify_clif`
-    // context
-    //         .verify(FlagsOrIsa {
+    // cx.verify(FlagsOrIsa {
     //             flags: &Flags::new(settings::builder()),
     //             isa: Some(module.isa()),
     //         })
     //         .unwrap();
 
     // @Task do this for every function with `options.emit_clif`
-    // println!("{}", context.func.display());
+    // println!("{}", cx.func.display());
 
-    let function_id = module
-        .declare_function(program_entry_name, Linkage::Export, &context.func.signature)
+    let func_id = module
+        .declare_function(program_entry_name, Linkage::Export, &cx.func.signature)
         .unwrap();
-    module.define_function(function_id, &mut context).unwrap();
+    module.define_function(func_id, &mut cx).unwrap();
 
     let product = module.finish();
 
-    let name = session.component().name().to_str();
+    let name = sess.comp().name().to_str();
 
-    let path = match session.root_package() {
+    let path = match sess.root_pkg() {
         // @Task ensure that the build folder exists
         Some(package) => {
-            let mut path = session[package].folder().join(OUTPUT_FOLDER_NAME);
+            let mut path = sess[package].folder().join(OUTPUT_FOLDER_NAME);
             path.push(name);
             path.set_extension("o");
             path
@@ -113,16 +104,16 @@ fn compile(
 
 // @Task support linkers other than clang
 //       (e.g. "`cc`", `gcc` (requires us to manually link to `libc` I think))
-fn link(path: &Path, session: &Session<'_>) -> Result {
-    let name = session.component().name().to_str();
+fn link(path: &Path, sess: &Session<'_>) -> Result {
+    let name = sess.comp().name().to_str();
 
     // @Task error handling!
     let output = Command::new("clang")
         .arg(path)
         .arg("-o")
-        .arg(match session.root_package() {
+        .arg(match sess.root_pkg() {
             Some(package) => {
-                let mut path = session[package].folder().join(OUTPUT_FOLDER_NAME);
+                let mut path = sess[package].folder().join(OUTPUT_FOLDER_NAME);
                 path.push(name);
                 path
             }
@@ -133,9 +124,9 @@ fn link(path: &Path, session: &Session<'_>) -> Result {
 
     if !output.status.success() {
         // @Beacon @Task smh print output.{stdout,stderr} here
-        return Err(Diagnostic::error()
+        return Err(Diag::error()
             .message("failed to link object files")
-            .report(session.reporter()));
+            .report(sess.rep()));
     }
 
     Ok(())

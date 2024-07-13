@@ -4,17 +4,15 @@
 
 use self::diagnostics::DiagnosticExt;
 use self::span::{FromPositionExt, ToLocationExt};
-use ::diagnostics::{
-    error::Result, reporter::Buffer, Diagnostic, ErrorCode, Reporter, UntaggedDiagnostic,
-};
-use ::span::{ByteIndex, SourceMap, Spanning};
+use ::diagnostics::{error::Result, reporter::Buffer, Diag, ErrorCode, Reporter, UntaggedDiag};
+use ::span::{ByteIdx, SourceMap, Spanning};
 use index_map::IndexMap;
 use package::resolve_file;
 use resolver::ProgramEntryExt;
 use session::Context;
 use session::{
-    component::Component,
-    unit::{BuildUnit, ComponentType},
+    component::Comp,
+    unit::{BuildUnit, CompTy},
     Session,
 };
 use std::{
@@ -33,7 +31,7 @@ use tower_lsp::{
     },
     Client,
 };
-use utility::{default, path::CanonicalPath, ComponentIndex, FormatError, HashMap, PROGRAM_ENTRY};
+use utility::{default, path::CanonicalPath, CompIdx, FormatError, HashMap, PROGRAM_ENTRY};
 
 mod diagnostics;
 mod span;
@@ -89,35 +87,30 @@ impl Server {
         }
 
         let path = Path::new(uri.path());
-        let diagnostics = Buffer::default();
+        let diags = Buffer::default();
 
         self.reset_source_map();
 
-        _ = check_file(
-            path,
-            content,
-            &self.map,
-            Reporter::buffer(diagnostics.clone()),
-        );
+        _ = check_file(path, content, &self.map, Reporter::buffer(diags.clone()));
 
-        let diagnostics = mem::take(&mut *diagnostics.lock().unwrap());
-        self.report(diagnostics, uri, version).await;
+        let diags = mem::take(&mut *diags.lock().unwrap());
+        self.report(diags, uri, version).await;
     }
 
-    async fn report(&self, diagnostics: BTreeSet<UntaggedDiagnostic>, uri: Url, version: i32) {
-        let mut lsp_diagnostics = Vec::new();
+    async fn report(&self, diags: BTreeSet<UntaggedDiag>, uri: Url, version: i32) {
+        let mut lsp_diags = Vec::new();
 
-        for diagnostic in diagnostics {
-            let diagnostic = diagnostic.into_lsp_type(&self.map.read().unwrap());
+        for diag in diags {
+            let diagnostic = diag.into_lsp_ty(&self.map.read().unwrap());
             match diagnostic {
-                OneOf::Left(diagnostic) => lsp_diagnostics.push(diagnostic),
-                OneOf::Right((type_, message)) => self.client.show_message(type_, message).await,
+                OneOf::Left(diagnostic) => lsp_diags.push(diagnostic),
+                OneOf::Right((ty, message)) => self.client.show_message(ty, message).await,
             }
         }
 
         // @Bug incorrect URI + version in general!
         self.client
-            .publish_diagnostics(uri, lsp_diagnostics, Some(version))
+            .publish_diagnostics(uri, lsp_diags, Some(version))
             .await;
     }
 }
@@ -158,49 +151,49 @@ impl tower_lsp::LanguageServer for Server {
         Ok(())
     }
 
-    async fn did_open(&self, parameters: DidOpenTextDocumentParams) {
-        let content = Arc::new(parameters.text_document.text);
+    async fn did_open(&self, params: DidOpenTextDocumentParams) {
+        let content = Arc::new(params.text_document.text);
 
         self.documents
             .write()
             .unwrap()
-            .insert(parameters.text_document.uri.clone(), content.clone());
+            .insert(params.text_document.uri.clone(), content.clone());
 
         // @Question version??
-        self.validate_file(parameters.text_document.uri.clone(), 0, content)
+        self.validate_file(params.text_document.uri.clone(), 0, content)
             .await;
     }
 
-    async fn did_change(&self, mut parameters: DidChangeTextDocumentParams) {
+    async fn did_change(&self, mut params: DidChangeTextDocumentParams) {
         // @Bug incredibly fragile!
-        let content = Arc::new(parameters.content_changes.swap_remove(0).text);
+        let content = Arc::new(params.content_changes.swap_remove(0).text);
 
         self.documents
             .write()
             .unwrap()
-            .insert(parameters.text_document.uri.clone(), content.clone());
+            .insert(params.text_document.uri.clone(), content.clone());
 
         self.validate_file(
-            parameters.text_document.uri.clone(),
-            parameters.text_document.version,
+            params.text_document.uri.clone(),
+            params.text_document.version,
             content,
         )
         .await;
     }
 
-    async fn did_close(&self, parameters: DidCloseTextDocumentParams) {
+    async fn did_close(&self, params: DidCloseTextDocumentParams) {
         // @Task unless it's a workspace(?) (a package), get rid of any diagnostics
         self.client
-            .publish_diagnostics(parameters.text_document.uri, Vec::new(), None)
+            .publish_diagnostics(params.text_document.uri, Vec::new(), None)
             .await;
     }
 
     async fn goto_definition(
         &self,
-        parameters: GotoDefinitionParams,
+        params: GotoDefinitionParams,
     ) -> jsonrpc::Result<Option<GotoDefinitionResponse>> {
         Ok((|| {
-            let uri = parameters.text_document_position_params.text_document.uri;
+            let uri = params.text_document_position_params.text_document.uri;
 
             let path = CanonicalPath::new_unchecked(uri.path());
             // @Task error on unsupported URI scheme!
@@ -209,14 +202,14 @@ impl tower_lsp::LanguageServer for Server {
             self.reset_source_map();
 
             // @Task keep going even with errors!
-            let (context, component_roots) =
+            let (cx, component_roots) =
                 check_file(path, content, &self.map, Reporter::silent()).ok()?;
 
-            let position = parameters.text_document_position_params.position;
-            let byte_index = ByteIndex::from_position(position, path, &self.map.read().unwrap());
+            let position = params.text_document_position_params.position;
+            let byte_index = ByteIdx::from_position(position, path, &self.map.read().unwrap());
 
-            // @Task just get the SourceFileIndex with the URL from the SourceMap in the future
-            let component = self
+            // @Task just get the SrcFileIdx with the URL from the SourceMap in the future
+            let comp = self
                 .map
                 .read()
                 .unwrap()
@@ -224,57 +217,47 @@ impl tower_lsp::LanguageServer for Server {
                 .unwrap()
                 .component()
                 .unwrap();
-            let component_root = &component_roots[&component];
+            let comp_root = &component_roots[&comp];
 
-            let binding = component_root.find_binding(byte_index);
+            let binding = comp_root.find_binding(byte_index);
             let binding = binding?;
 
-            let hir::Index::Declaration(index) = binding.index else {
+            let hir::Index::Decl(idx) = binding.idx else {
                 // @Task handle parameter & pattern bindings
                 return None;
             };
 
             Some(GotoDefinitionResponse::Scalar(
-                context[index]
-                    .source
-                    .span()
-                    .to_location(&self.map.read().unwrap()),
+                cx[idx].src.span().to_location(&self.map.read().unwrap()),
             ))
         })())
     }
 }
 
-// @Beacon @Task instead of a path and the content, take a SourceFileIndex!!!
+// @Beacon @Task instead of a path and the content, take a SrcFileIdx!!!
 // @Task keep going even with errors!
 fn check_file(
     path: &Path,
     content: Arc<String>,
     map: &Arc<RwLock<SourceMap>>,
-    reporter: Reporter,
-) -> Result<(Context, HashMap<ComponentIndex, hir::Declaration>)> {
-    let (units, mut context) = resolve_file(
-        path,
-        Some(content),
-        ComponentType::Executable,
-        false,
-        map,
-        reporter,
-    )?;
+    rep: Reporter,
+) -> Result<(Context, HashMap<CompIdx, hir::Decl>)> {
+    let (units, mut cx) = resolve_file(path, Some(content), CompTy::Executable, false, map, rep)?;
 
-    let mut component_roots = HashMap::default();
+    let mut comp_roots = HashMap::default();
 
     for unit in units.into_values() {
         let index = unit.index;
-        let root = context.at(unit, build_unit)?;
-        component_roots.insert(index, root);
+        let root = cx.at(unit, build_unit)?;
+        comp_roots.insert(index, root);
     }
 
-    Ok((context, component_roots))
+    Ok((cx, comp_roots))
 }
 
 // @Task keep going even with errors!
 #[allow(clippy::needless_pass_by_value)] // by design
-fn build_unit(unit: BuildUnit, session: &mut Session<'_>) -> Result<hir::Declaration> {
+fn build_unit(unit: BuildUnit, sess: &mut Session<'_>) -> Result<hir::Decl> {
     // let content = component.content.take();
     // @Beacon @Beacon @Beacon @Temporary
     let content = Some(std::sync::Arc::new(String::new()));
@@ -283,128 +266,123 @@ fn build_unit(unit: BuildUnit, session: &mut Session<'_>) -> Result<hir::Declara
     // @Beacon @Task this shouldm't need to be that ugly!!!
 
     let file = match content {
-        Some(content) => session
+        Some(content) => sess
             .map()
             .add(path.bare.to_owned(), content, Some(unit.index)),
         None => {
-            session
-                .map()
+            sess.map()
                 .load(path.bare, Some(unit.index))
                 .map_err(|error| {
                     use std::fmt::Write;
 
-                    let mut message = format!(
-                        "could not load the {} component ‘{}’",
-                        unit.type_, unit.name
-                    );
+                    let mut message =
+                        format!("could not load the {} component ‘{}’", unit.ty, unit.name);
 
-                    if let Some(package) = session.package() {
-                        write!(message, " in package ‘{}’", session[package].name).unwrap();
+                    if let Some(package) = sess.pkg() {
+                        write!(message, " in package ‘{}’", sess[package].name).unwrap();
                     }
 
                     // @Bug this is duplication with main.rs!!
-                    Diagnostic::error()
+                    Diag::error()
                         .message(message)
                         .path(path.bare.into())
                         .unlabeled_span(path)
                         .note(error.format())
-                        .report(session.reporter())
+                        .report(sess.rep())
                 })?
         }
     };
 
-    let tokens = syntax::lex(file, session);
-    let component_root = syntax::parse_root_module_file(tokens, file, session)?;
+    let tokens = syntax::lex(file, sess);
+    let comp_root = syntax::parse_root_module_file(tokens, file, sess)?;
 
-    let component_root = lowerer::lower_file(
-        component_root,
+    let comp_root = lowerer::lower_file(
+        comp_root,
         lowerer::Options {
-            internal_features_enabled: unit.is_core_library(session),
-            keep_documentation_comments: false,
+            internal_features_enabled: unit.is_core_lib(sess),
+            keep_doc_comments: false,
         },
-        session,
+        sess,
     )?;
 
-    let component_root = resolver::resolve_declarations(component_root, session)?;
+    let comp_root = resolver::resolve_decls(comp_root, sess)?;
 
-    typer::check(&component_root, session)?;
+    typer::check(&comp_root, sess)?;
 
     // @Bug this is duplication with main.rs!!
-    if unit.type_ == ComponentType::Executable && session.look_up_program_entry().is_none() {
-        return Err(Diagnostic::error()
+    if unit.ty == CompTy::Executable && sess.look_up_program_entry().is_none() {
+        return Err(Diag::error()
             .code(ErrorCode::E050)
             .message(format!(
                 "the component ‘{}’ does not contain a ‘{PROGRAM_ENTRY}’ function in its root module",
                 unit.name,
             ))
-            .unlabeled_span(&session.shared_map()[file])
-            .report(session.reporter()));
+            .unlabeled_span(&sess.shared_map()[file])
+            .report(sess.rep()));
     }
 
-    Ok(component_root)
+    Ok(comp_root)
 }
 
 trait FindBinding {
-    fn find_binding(&self, byte_index: ByteIndex) -> Option<hir::Identifier>;
+    fn find_binding(&self, byte_index: ByteIdx) -> Option<hir::Ident>;
 }
 
 #[allow(clippy::match_same_arms)] // @Temporary
-impl FindBinding for hir::Declaration {
-    fn find_binding(&self, byte_index: ByteIndex) -> Option<hir::Identifier> {
-        use hir::BareDeclaration::*;
+impl FindBinding for hir::Decl {
+    fn find_binding(&self, byte_idx: ByteIdx) -> Option<hir::Ident> {
+        use hir::BareDecl::*;
 
         // @Question do we need this check?
-        if !self.span.contains(byte_index) {
+        if !self.span.contains(byte_idx) {
             return None;
         }
 
         match &self.bare {
-            Function(function) => {
-                if function.type_.span.contains(byte_index) {
-                    function.type_.find_binding(byte_index)
-                } else if let Some(expression) = &function.body
-                    && expression.span.contains(byte_index)
+            Func(func) => {
+                if func.ty.span.contains(byte_idx) {
+                    func.ty.find_binding(byte_idx)
+                } else if let Some(expression) = &func.body
+                    && expression.span.contains(byte_idx)
                 {
-                    expression.find_binding(byte_index)
+                    expression.find_binding(byte_idx)
                 } else {
                     None
                 }
             }
-            Data(type_) => {
-                if type_.type_.span.contains(byte_index) {
-                    type_.type_.find_binding(byte_index)
-                } else if let Some(constructors) = &type_.constructors {
+            DataTy(ty) => {
+                if ty.ty.span.contains(byte_idx) {
+                    ty.ty.find_binding(byte_idx)
+                } else if let Some(constructors) = &ty.ctors {
                     let index = constructors
-                        .binary_search_by(|constructor| {
-                            byte_index.relate(constructor.span).reverse()
-                        })
+                        .binary_search_by(|ctor| byte_idx.relate(ctor.span).reverse())
                         .ok()?;
-                    constructors[index].find_binding(byte_index)
+                    constructors[index].find_binding(byte_idx)
                 } else {
                     None
                 }
             }
-            Constructor(constructor) => {
-                if constructor.type_.span.contains(byte_index) {
-                    constructor.type_.find_binding(byte_index)
+            Ctor(ctor) => {
+                if ctor.ty.span.contains(byte_idx) {
+                    ctor.ty.find_binding(byte_idx)
                 } else {
                     None
                 }
             }
             Module(module) => {
                 let index = module
-                    .declarations
-                    .binary_search_by(|declaration| byte_index.relate(declaration.span).reverse())
+                    .decls
+                    .binary_search_by(|decl| byte_idx.relate(decl.span).reverse())
                     .ok()?;
-                module.declarations[index].find_binding(byte_index)
+                module.decls[index].find_binding(byte_idx)
             }
             Use(use_) => {
                 // @Question I wonder if that actually works ^^
                 // @Note I assume this won't work if we click on path segments that aren't the last segment
-                if use_.target.span().contains(byte_index) {
+                if use_.target.span().contains(byte_idx) {
                     Some(use_.target)
                 } else if let Some(binder) = use_.binder
-                    && binder.span().contains(byte_index)
+                    && binder.span().contains(byte_idx)
                 {
                     Some(binder)
                 } else {
@@ -417,11 +395,11 @@ impl FindBinding for hir::Declaration {
 }
 
 #[allow(clippy::match_same_arms)] // @Temporary
-impl FindBinding for hir::Expression {
+impl FindBinding for hir::Expr {
     // @Task don't use contains but a function that returns an Ordering!! so we can
     // know if we should jump to the next thingy
-    fn find_binding(&self, byte_index: ByteIndex) -> Option<hir::Identifier> {
-        use hir::BareExpression::*;
+    fn find_binding(&self, byte_index: ByteIdx) -> Option<hir::Ident> {
+        use hir::BareExpr::*;
 
         // @Question do we need this check?
         if !self.span.contains(byte_index) {
@@ -429,26 +407,26 @@ impl FindBinding for hir::Expression {
         }
 
         match &self.bare {
-            PiType(pi) => {
-                if pi.domain.span.contains(byte_index) {
-                    pi.domain.find_binding(byte_index)
-                } else if pi.codomain.span.contains(byte_index) {
-                    pi.codomain.find_binding(byte_index)
+            PiTy(pi_ty) => {
+                if pi_ty.domain.span.contains(byte_index) {
+                    pi_ty.domain.find_binding(byte_index)
+                } else if pi_ty.codomain.span.contains(byte_index) {
+                    pi_ty.codomain.find_binding(byte_index)
                 } else {
                     None
                 }
             }
-            Application(application) => {
-                if application.callee.span.contains(byte_index) {
-                    application.callee.find_binding(byte_index)
-                } else if application.argument.span.contains(byte_index) {
-                    application.argument.find_binding(byte_index)
+            App(app) => {
+                if app.callee.span.contains(byte_index) {
+                    app.callee.find_binding(byte_index)
+                } else if app.arg.span.contains(byte_index) {
+                    app.arg.find_binding(byte_index)
                 } else {
                     None
                 }
             }
-            Number(_) => None, // @Task
-            Text(_) => None,   // @Task
+            NumLit(_) => None,  // @Task
+            TextLit(_) => None, // @Task
             Binding(binding) => {
                 if binding.0.span().contains(byte_index) {
                     Some(binding.0)
@@ -456,7 +434,7 @@ impl FindBinding for hir::Expression {
                     None
                 }
             }
-            Lambda(lambda) => {
+            LamLit(lambda) => {
                 if let Some(type_annotation) = &lambda.domain
                     && type_annotation.span.contains(byte_index)
                 {
@@ -479,12 +457,12 @@ impl FindBinding for hir::Expression {
                     None
                 }
             }
-            Substituted(_) => None,          // @Task
-            IntrinsicApplication(_) => None, // @Task
-            Projection(_) => None,           // @Task
-            Record(_) => None,               // @Task
-            IO(_) => None,                   // @Task
-            Error(_) => None,                // @Task
+            Substed(_) => None, // @Task
+            IntrApp(_) => None, // @Task
+            Proj(_) => None,    // @Task
+            RecLit(_) => None,  // @Task
+            IO(_) => None,      // @Task
+            Error(_) => None,   // @Task
         }
     }
 }

@@ -14,7 +14,7 @@ fn parse(source: &str) -> Result<Value> {
     let file = map
         .write()
         .unwrap()
-        .add(FileName::Anonymous, Arc::new(source.to_owned()), None);
+        .add(FileName::Anon, Arc::new(source.to_owned()), None);
     let reporter = Reporter::stderr(ColorChoice::Auto).with_map(map.clone());
     super::super::parse(file, &map, &reporter)
 }

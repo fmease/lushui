@@ -26,14 +26,14 @@ pub mod reporter;
 /// A complex diagnostic message, optionally with source locations.
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 #[must_use]
-pub struct Diagnostic<const S: Severity = { Severity::Error }> {
-    untagged: UntaggedDiagnostic,
+pub struct Diag<const S: Severity = { Severity::Error }> {
+    untagged: UntaggedDiag,
 }
 
-impl<const S: Severity> Diagnostic<S> {
+impl<const S: Severity> Diag<S> {
     fn new() -> Self {
         Self {
-            untagged: Box::new(UnboxedUntaggedDiagnostic::new(S)),
+            untagged: Box::new(UnboxedUntaggedDiag::new(S)),
         }
     }
 
@@ -117,7 +117,7 @@ impl<const S: Severity> Diagnostic<S> {
     fn subdiagnostic(mut self, severity: Subseverity, message: Str) -> Self {
         self.untagged
             .subdiagnostics
-            .push(Subdiagnostic { severity, message });
+            .push(Subdiag { severity, message });
         self
     }
 
@@ -180,22 +180,22 @@ impl<const S: Severity> Diagnostic<S> {
     }
 
     /// Report the diagnostic.
-    pub fn report(self, reporter: &Reporter) -> <Diagnostic<S> as Report>::Output
+    pub fn report(self, rep: &Reporter) -> <Diag<S> as Report>::Output
     where
-        Diagnostic<S>: Report,
+        Diag<S>: Report,
     {
-        reporter.report(self)
+        rep.report(self)
     }
 }
 
-impl Diagnostic<{ Severity::Bug }> {
+impl Diag<{ Severity::Bug }> {
     /// Create a diagnostic for an internal compiler error (ICE).
     pub fn bug() -> Self {
         Self::new()
     }
 }
 
-impl Diagnostic {
+impl Diag {
     /// Create a diagnostic for a user error.
     pub fn error() -> Self {
         Self::new()
@@ -215,7 +215,7 @@ impl Diagnostic {
     }
 }
 
-impl Diagnostic<{ Severity::Warning }> {
+impl Diag<{ Severity::Warning }> {
     /// Create a diagnostic for a warning.
     pub fn warning() -> Self {
         Self::new()
@@ -227,15 +227,15 @@ impl Diagnostic<{ Severity::Warning }> {
     }
 }
 
-impl Diagnostic<{ Severity::Debug }> {
+impl Diag<{ Severity::Debug }> {
     /// Create a diagnostic for an internal debugging message.
     pub fn debug() -> Self {
         Self::new()
     }
 }
 
-impl<const S: Severity> Deref for Diagnostic<S> {
-    type Target = UnboxedUntaggedDiagnostic;
+impl<const S: Severity> Deref for Diag<S> {
+    type Target = UnboxedUntaggedDiag;
 
     fn deref(&self) -> &Self::Target {
         &self.untagged
@@ -243,13 +243,13 @@ impl<const S: Severity> Deref for Diagnostic<S> {
 }
 
 // This impl would allow users to retag a diagnostic.
-impl<const S: Severity> !DerefMut for Diagnostic<S> {}
+impl<const S: Severity> !DerefMut for Diag<S> {}
 
-pub type UntaggedDiagnostic = Box<UnboxedUntaggedDiagnostic>;
+pub type UntaggedDiag = Box<UnboxedUntaggedDiag>;
 
 // @Task rethink ordering: message should be higher I guess
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
-pub struct UnboxedUntaggedDiagnostic {
+pub struct UnboxedUntaggedDiag {
     pub path: Option<PathBuf>,
     // @Task update comment
     // Highlights come first since they should have the highest priority when ordering.
@@ -257,14 +257,14 @@ pub struct UnboxedUntaggedDiagnostic {
     // Diagnostics for locations higher up in the file come first or “above” (in the
     // terminal for example), those lower down in the source also come last in the output.
     pub highlights: BTreeSet<Highlight>,
-    pub subdiagnostics: Vec<Subdiagnostic>,
+    pub subdiagnostics: Vec<Subdiag>,
     pub suggestions: Vec<Suggestion>,
     pub code: Option<Code>,
     pub message: Option<Str>,
     pub severity: Severity,
 }
 
-impl UnboxedUntaggedDiagnostic {
+impl UnboxedUntaggedDiag {
     fn new(severity: Severity) -> Self {
         Self {
             path: None,
@@ -297,7 +297,7 @@ pub enum Role {
 
 /// Part of a [complex error message](Diagnostic) providing extra text messages.
 #[derive(PartialEq, Eq, Clone, PartialOrd, Ord)]
-pub struct Subdiagnostic {
+pub struct Subdiag {
     pub severity: Subseverity,
     pub message: Str,
 }

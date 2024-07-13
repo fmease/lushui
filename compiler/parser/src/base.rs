@@ -1,26 +1,26 @@
-use diagnostics::{error::Result, Diagnostic, ErrorCode, Reporter};
+use diagnostics::{error::Result, Diag, ErrorCode, Reporter};
 use lexer::token::{BareToken, Token};
-use span::{SourceFileIndex, SourceMap, Span};
+use span::{SourceMap, Span, SrcFileIdx};
 use std::{fmt, mem};
 use utility::{Atom, Conjunction, ListingExt};
 
 /// The parser.
 pub(crate) struct Parser<'a> {
     tokens: Vec<Token>,
-    pub(crate) file: SourceFileIndex,
+    pub(crate) file: SrcFileIdx,
     index: usize,
     expectations: Vec<Expectation>,
     annotations: Vec<Annotation>,
     pub(crate) map: &'a SourceMap,
-    pub(crate) reporter: &'a Reporter,
+    pub(crate) rep: &'a Reporter,
 }
 
 impl<'a> Parser<'a> {
     pub(crate) fn new(
         tokens: Vec<Token>,
-        file: SourceFileIndex,
+        file: SrcFileIdx,
         map: &'a SourceMap,
-        reporter: &'a Reporter,
+        rep: &'a Reporter,
     ) -> Self {
         Self {
             tokens,
@@ -29,7 +29,7 @@ impl<'a> Parser<'a> {
             expectations: Vec::new(),
             annotations: Vec::new(),
             map,
-            reporter,
+            rep,
         }
     }
 
@@ -37,8 +37,8 @@ impl<'a> Parser<'a> {
         let expectations = mem::take(&mut self.expectations);
         let annotations = mem::take(&mut self.annotations);
 
-        let error = error::unexpected_token(self.current(), &expectations, annotations)
-            .report(self.reporter);
+        let error =
+            error::unexpected_token(self.current(), &expectations, annotations).report(self.rep);
 
         Err(error)
     }
@@ -158,11 +158,11 @@ impl<'a> Parser<'a> {
 
 pub(crate) enum Expectation {
     Token(BareToken),
-    Declaration,
-    Expression,
+    Decl,
+    Expr,
     Statement,
-    Pattern,
-    Parameter,
+    Pat,
+    Param,
     Argument,
     Word,
     Identifier,
@@ -181,11 +181,11 @@ impl fmt::Display for Expectation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Self::Token(token) => return token.fmt(f),
-            Self::Declaration => "declaration",
-            Self::Expression => "expression",
+            Self::Decl => "declaration",
+            Self::Expr => "expression",
             Self::Statement => "statement",
-            Self::Pattern => "pattern",
-            Self::Parameter => "parameter",
+            Self::Pat => "pattern",
+            Self::Param => "parameter",
             Self::Argument => "argument",
             Self::Word => "word",
             Self::Identifier => "identifier",
@@ -205,7 +205,7 @@ pub(crate) enum Annotation {
 }
 
 impl Annotation {
-    fn annotate(self, it: Diagnostic) -> Diagnostic {
+    fn annotate(self, it: Diag) -> Diag {
         match self {
             Self::LabelWhileParsing { span, name } => {
                 it.label(span, format!("while parsing this {name} starting here"))
@@ -251,13 +251,13 @@ mod error {
         token: Token,
         expectations: &[Expectation],
         annotations: Vec<Annotation>,
-    ) -> Diagnostic {
+    ) -> Diag {
         assert!(!expectations.is_empty());
 
         // @Task for the actual token, also print its token "category", e.g.
         // print `keyword ‘case’` instead of just `‘case’`. NB: Don't do that
         // for token expectations!
-        Diagnostic::error()
+        Diag::error()
             .code(ErrorCode::E010)
             .message(format!(
                 "found {token} but expected {}",

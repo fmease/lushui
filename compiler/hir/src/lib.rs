@@ -3,266 +3,278 @@
 
 use diagnostics::{error::PossiblyErroneous, reporter::ErasedReportedError};
 use joinery::JoinableIterator;
-use span::{SourceFileIndex, Spanned};
-use special::NumericType;
+use span::{Spanned, SrcFileIdx};
+use special::NumTy;
 use std::{
     fmt,
     sync::{Arc, Mutex},
 };
 use utility::{obtain, Int, Nat};
 
-pub use ast::ParameterKind;
+pub use ast::ParamKind;
 pub use entity::{Entity, EntityKind};
-pub use identifier::{DeBruijnIndex, DeclarationIndex, Identifier, Index, LocalDeclarationIndex};
-pub use lo_ast::{attribute, Attribute, AttributeName, Attributes, BareAttribute, Item};
+pub use ident::{DeBruijnIdx, DeclIdx, Ident, Index, LocalDeclIdx};
+pub use lo_ast::{attr, Attr, AttrName, Attrs, BareAttr, Item};
 
 mod entity;
-mod identifier;
+mod ident;
 
 // @Task get rid of this smh.
 pub mod interfaceable;
 pub mod special;
 
-pub type Declaration = Item<BareDeclaration>;
+/// A declaration.
+pub type Decl = Item<BareDecl>;
 
-pub enum BareDeclaration {
-    Function(Box<Function>),
-    Data(Box<Data>),
-    Constructor(Box<Constructor>),
+/// A location-less declaration.
+pub enum BareDecl {
+    Func(Box<Func>),
+    DataTy(Box<DataTy>),
+    Ctor(Box<Ctor>),
     Module(Box<Module>),
     Use(Box<Use>),
     Error(ErasedReportedError),
 }
 
-impl BareDeclaration {
+impl BareDecl {
     // @Task impl as TryFrom if possible
-    pub fn constructor(&self) -> Option<&Constructor> {
-        obtain!(self, BareDeclaration::Constructor(constructor) => constructor)
+    pub fn ctor(&self) -> Option<&Ctor> {
+        obtain!(self, BareDecl::Ctor(ctor) => ctor)
     }
 }
 
-impl PossiblyErroneous for BareDeclaration {
+impl PossiblyErroneous for BareDecl {
     fn error(error: ErasedReportedError) -> Self {
         Self::Error(error)
     }
 }
 
-pub struct Function {
-    pub binder: Identifier,
-    pub type_: Expression,
-    pub body: Option<Expression>,
+/// A function.
+pub struct Func {
+    pub binder: Ident,
+    pub ty: Expr,
+    pub body: Option<Expr>,
 }
 
-impl From<Function> for BareDeclaration {
-    fn from(function: Function) -> Self {
-        Self::Function(Box::new(function))
+impl From<Func> for BareDecl {
+    fn from(func: Func) -> Self {
+        Self::Func(Box::new(func))
     }
 }
 
-pub struct Data {
-    pub binder: Identifier,
-    pub type_: Expression,
-    pub constructors: Option<Vec<Declaration>>,
+/// A data type
+pub struct DataTy {
+    pub binder: Ident,
+    pub ty: Expr,
+    pub ctors: Option<Vec<Decl>>,
 }
 
-impl From<Data> for BareDeclaration {
-    fn from(type_: Data) -> Self {
-        Self::Data(Box::new(type_))
+impl From<DataTy> for BareDecl {
+    fn from(ty: DataTy) -> Self {
+        Self::DataTy(Box::new(ty))
     }
 }
 
-pub struct Constructor {
-    pub binder: Identifier,
-    pub type_: Expression,
+pub struct Ctor {
+    pub binder: Ident,
+    pub ty: Expr,
 }
 
-impl From<Constructor> for BareDeclaration {
-    fn from(constructor: Constructor) -> Self {
-        Self::Constructor(Box::new(constructor))
+impl From<Ctor> for BareDecl {
+    fn from(ctor: Ctor) -> Self {
+        Self::Ctor(Box::new(ctor))
     }
 }
 
 pub struct Module {
-    pub binder: Identifier,
-    pub file: SourceFileIndex,
-    pub declarations: Vec<Declaration>,
+    pub binder: Ident,
+    pub file: SrcFileIdx,
+    pub decls: Vec<Decl>,
 }
 
-impl From<Module> for BareDeclaration {
+impl From<Module> for BareDecl {
     fn from(module: Module) -> Self {
         Self::Module(Box::new(module))
     }
 }
 
 pub struct Use {
-    pub binder: Option<Identifier>,
-    pub target: Identifier,
+    pub binder: Option<Ident>,
+    pub target: Ident,
 }
 
-impl From<Use> for BareDeclaration {
+impl From<Use> for BareDecl {
     fn from(use_: Use) -> Self {
         Self::Use(Box::new(use_))
     }
 }
 
-pub type Expression = Item<BareExpression>;
+/// An expression.
+pub type Expr = Item<BareExpr>;
 
+/// A location-less expression.
 #[derive(Clone)]
-pub enum BareExpression {
-    Number(Box<Number>),
-    Text(Box<Text>),
+pub enum BareExpr {
+    NumLit(Box<NumLit>),
+    TextLit(Box<TextLit>),
     Binding(Box<Binding>),
-    Application(Box<Application<Expression>>),
-    IntrinsicApplication(Box<IntrinsicApplication>),
-    Record(Box<Record>),
-    Projection(Box<Projection>),
-    PiType(Box<PiType>),
-    Lambda(Box<Lambda>),
+    App(Box<App<Expr>>),
+    IntrApp(Box<IntrApp>),
+    RecLit(Box<RecLit>),
+    Proj(Box<Proj>),
+    PiTy(Box<PiTy>),
+    LamLit(Box<LamLit>),
     IO(Box<IO>),
     CaseAnalysis(Box<CaseAnalysis>),
-    Substituted(Box<Substituted>),
+    Substed(Box<Substed>),
     Error(ErasedReportedError),
 }
 
-impl PossiblyErroneous for BareExpression {
+impl PossiblyErroneous for BareExpr {
     fn error(error: ErasedReportedError) -> Self {
         Self::Error(error)
     }
 }
 
 #[derive(Clone)]
-pub struct PiType {
-    pub kind: ParameterKind,
-    pub binder: Option<Identifier>,
-    pub domain: Expression,
-    pub codomain: Expression,
+pub struct PiTy {
+    pub kind: ParamKind,
+    pub binder: Option<Ident>,
+    pub domain: Expr,
+    pub codomain: Expr,
 }
 
-impl From<PiType> for BareExpression {
-    fn from(pi: PiType) -> Self {
-        Self::PiType(Box::new(pi))
+impl From<PiTy> for BareExpr {
+    fn from(pi: PiTy) -> Self {
+        Self::PiTy(Box::new(pi))
     }
 }
 
-impl From<Application<Expression>> for BareExpression {
-    fn from(application: Application<Expression>) -> Self {
-        Self::Application(Box::new(application))
+impl From<App<Expr>> for BareExpr {
+    fn from(app: App<Expr>) -> Self {
+        Self::App(Box::new(app))
     }
 }
 
-impl From<Number> for BareExpression {
-    fn from(number: Number) -> Self {
-        Self::Number(Box::new(number))
+impl From<NumLit> for BareExpr {
+    fn from(num: NumLit) -> Self {
+        Self::NumLit(Box::new(num))
     }
 }
 
-impl From<Text> for BareExpression {
-    fn from(text: Text) -> Self {
-        Self::Text(Box::new(text))
+impl From<TextLit> for BareExpr {
+    fn from(text: TextLit) -> Self {
+        Self::TextLit(Box::new(text))
     }
 }
 
-impl From<Binding> for BareExpression {
+impl From<Binding> for BareExpr {
     fn from(binding: Binding) -> Self {
         Self::Binding(Box::new(binding))
     }
 }
 
+/// A lambda literal.
 #[derive(Clone)]
-pub struct Lambda {
-    pub kind: ParameterKind,
-    pub binder: Option<Identifier>,
-    pub domain: Option<Expression>,
-    pub codomain: Option<Expression>,
-    pub body: Expression,
+pub struct LamLit {
+    pub kind: ParamKind,
+    pub binder: Option<Ident>,
+    pub domain: Option<Expr>,
+    pub codomain: Option<Expr>,
+    pub body: Expr,
 }
 
-impl From<Lambda> for BareExpression {
-    fn from(lambda: Lambda) -> Self {
-        Self::Lambda(Box::new(lambda))
+impl From<LamLit> for BareExpr {
+    fn from(lambda: LamLit) -> Self {
+        Self::LamLit(Box::new(lambda))
     }
 }
 
 #[derive(Clone)]
 pub struct CaseAnalysis {
-    pub scrutinee: Expression,
+    pub scrutinee: Expr,
     pub cases: Vec<Case>,
 }
 
-impl From<CaseAnalysis> for BareExpression {
+impl From<CaseAnalysis> for BareExpr {
     fn from(analysis: CaseAnalysis) -> Self {
         Self::CaseAnalysis(Box::new(analysis))
     }
 }
 
+/// A substituted expression.
 #[derive(Clone)]
-pub struct Substituted {
-    pub substitution: Substitution,
-    pub expression: Expression,
+pub struct Substed {
+    pub subst: Subst,
+    pub expr: Expr,
 }
 
-impl From<Substituted> for BareExpression {
-    fn from(substitution: Substituted) -> Self {
-        Self::Substituted(Box::new(substitution))
+impl From<Substed> for BareExpr {
+    fn from(substed: Substed) -> Self {
+        Self::Substed(Box::new(substed))
     }
 }
 
+/// A substitution.
 #[derive(Clone)]
-pub enum Substitution {
+pub enum Subst {
     Shift(usize),
-    Use(Box<Substitution>, Expression),
+    Use(Box<Subst>, Expr),
 }
 
+/// An intrinstic application.
 #[derive(Clone)]
-pub struct IntrinsicApplication {
-    pub callee: Identifier,
-    pub arguments: Vec<Expression>,
+pub struct IntrApp {
+    pub callee: Ident,
+    pub args: Vec<Expr>,
 }
 
-impl From<IntrinsicApplication> for BareExpression {
-    fn from(application: IntrinsicApplication) -> Self {
-        Self::IntrinsicApplication(Box::new(application))
+impl From<IntrApp> for BareExpr {
+    fn from(app: IntrApp) -> Self {
+        Self::IntrApp(Box::new(app))
     }
 }
 
+/// A record literal.
 #[derive(Clone)]
-pub struct Record {
-    pub type_: Spanned<DeclarationIndex>,
+pub struct RecLit {
+    pub ty: Spanned<DeclIdx>,
     pub fields: Vec<Field>,
 }
 
-impl From<Record> for BareExpression {
-    fn from(record: Record) -> Self {
-        Self::Record(Box::new(record))
+impl From<RecLit> for BareExpr {
+    fn from(record: RecLit) -> Self {
+        Self::RecLit(Box::new(record))
     }
 }
 
 #[derive(Clone)]
 pub struct Field {
-    pub binder: ast::Identifier,
-    pub body: Expression,
+    pub binder: ast::Ident,
+    pub body: Expr,
 }
 
 #[derive(Clone)]
-pub struct Projection {
-    pub basis: Expression,
-    pub field: ast::Identifier,
+/// A record field projection.
+pub struct Proj {
+    pub basis: Expr,
+    pub field: ast::Ident,
 }
 
-impl From<Projection> for BareExpression {
-    fn from(projection: Projection) -> Self {
-        Self::Projection(Box::new(projection))
+impl From<Proj> for BareExpr {
+    fn from(proj: Proj) -> Self {
+        Self::Proj(Box::new(proj))
     }
 }
 
 #[derive(Clone)]
 pub struct IO {
     pub index: usize, // @Task IOIndex
-    pub arguments: Vec<Expression>,
-    // @Task continuation: Option<Expression>
+    pub args: Vec<Expr>,
+    // @Task continuation: Option<Expr>
 }
 
-impl From<IO> for BareExpression {
+impl From<IO> for BareExpr {
     fn from(io: IO) -> Self {
         Self::IO(Box::new(io))
     }
@@ -270,73 +282,76 @@ impl From<IO> for BareExpression {
 
 #[derive(Clone)]
 pub struct Case {
-    pub pattern: Pattern,
-    pub body: Expression,
+    pub pat: Pat,
+    pub body: Expr,
 }
 
-pub type Pattern = Item<BarePattern>;
+/// A pattern.
+pub type Pat = Item<BarePat>;
 
 #[derive(Clone)]
 #[allow(clippy::box_collection)]
-pub enum BarePattern {
-    Number(Box<Number>),
-    Text(Box<Text>),
+pub enum BarePat {
+    NumLit(Box<NumLit>),
+    TextLit(Box<TextLit>),
     // @Task rename Binding & LetBinding in a way that makes it understandable which
     // one of the two *defines* and which one *references*.
     Binding(Binding),
     LetBinding(LocalBinder),
-    Application(Box<Application<Pattern>>),
+    App(Box<App<Pat>>),
     Error(ErasedReportedError),
 }
 
-impl PossiblyErroneous for BarePattern {
+impl PossiblyErroneous for BarePat {
     fn error(error: ErasedReportedError) -> Self {
         Self::Error(error)
     }
 }
 
-impl From<Number> for BarePattern {
-    fn from(number: Number) -> Self {
-        Self::Number(Box::new(number))
+impl From<NumLit> for BarePat {
+    fn from(num: NumLit) -> Self {
+        Self::NumLit(Box::new(num))
     }
 }
 
-impl From<Text> for BarePattern {
-    fn from(text: Text) -> Self {
-        Self::Text(Box::new(text))
+impl From<TextLit> for BarePat {
+    fn from(text: TextLit) -> Self {
+        Self::TextLit(Box::new(text))
     }
 }
 
-impl From<Binding> for BarePattern {
+impl From<Binding> for BarePat {
     fn from(binding: Binding) -> Self {
         Self::Binding(binding)
     }
 }
 
-impl From<LocalBinder> for BarePattern {
+impl From<LocalBinder> for BarePat {
     fn from(binder: LocalBinder) -> Self {
         Self::LetBinding(binder)
     }
 }
 
-impl From<Application<Pattern>> for BarePattern {
-    fn from(application: Application<Pattern>) -> Self {
-        Self::Application(Box::new(application))
+impl From<App<Pat>> for BarePat {
+    fn from(app: App<Pat>) -> Self {
+        Self::App(Box::new(app))
     }
 }
 
 #[derive(Clone)]
-pub struct Binding(pub Identifier); // @Task rename 0 -> binder again
+pub struct Binding(pub Ident); // @Task rename 0 -> binder again
 
+/// A function application.
 #[derive(Clone)]
-pub struct Application<T> {
-    pub kind: ParameterKind,
+pub struct App<T> {
+    pub kind: ParamKind,
     pub callee: T,
-    pub argument: T,
+    pub arg: T,
 }
 
+/// A number literal.
 #[derive(Clone, PartialEq, Eq)]
-pub enum Number {
+pub enum NumLit {
     Nat(Nat),
     Nat32(u32),
     Nat64(u64),
@@ -345,11 +360,11 @@ pub enum Number {
     Int64(i64),
 }
 
-impl Number {
-    pub fn parse(source: &str, type_: NumericType) -> Result<Self, ()> {
-        use special::NumericType::*;
+impl NumLit {
+    pub fn parse(source: &str, ty: NumTy) -> Result<Self, ()> {
+        use special::NumTy::*;
 
-        match type_ {
+        match ty {
             Nat => source.parse().map(Self::Nat).map_err(drop),
             Nat32 => source.parse().map(Self::Nat32).map_err(drop),
             Nat64 => source.parse().map(Self::Nat64).map_err(drop),
@@ -360,9 +375,9 @@ impl Number {
     }
 }
 
-impl Number {
-    pub fn type_(&self) -> NumericType {
-        use special::NumericType::*;
+impl NumLit {
+    pub fn ty(&self) -> NumTy {
+        use special::NumTy::*;
 
         match self {
             Self::Nat(_) => Nat,
@@ -375,7 +390,7 @@ impl Number {
     }
 }
 
-impl fmt::Display for Number {
+impl fmt::Display for NumLit {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Nat(value) => write!(f, "{value}"),
@@ -388,12 +403,13 @@ impl fmt::Display for Number {
     }
 }
 
+/// A text literal.
 #[derive(Clone, PartialEq, Eq)]
-pub enum Text {
+pub enum TextLit {
     Text(String),
 }
 
-impl fmt::Display for Text {
+impl fmt::Display for TextLit {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             // @Task don't use Rust's Debug impl for str!
@@ -402,11 +418,11 @@ impl fmt::Display for Text {
     }
 }
 
-pub type LocalBinder = span::binder::LocalBinder<Identifier>;
+pub type LocalBinder = span::binder::LocalBinder<Ident>;
 
 #[derive(Clone, Default)]
 pub struct Namespace {
-    pub binders: Vec<DeclarationIndex>,
+    pub binders: Vec<DeclIdx>,
 }
 
 impl fmt::Debug for Namespace {
@@ -460,7 +476,7 @@ impl fmt::Debug for Exposure {
 /// How far up binding exposure _reaches_ in the tree of namespaces given by a path.
 #[derive(Clone, PartialEq, Eq)]
 pub enum ExposureReach {
-    Resolved(LocalDeclarationIndex),
+    Resolved(LocalDeclIdx),
     PartiallyResolved(PartiallyResolvedPath),
 }
 
@@ -476,7 +492,7 @@ impl fmt::Debug for ExposureReach {
 #[derive(Clone, PartialEq, Eq)]
 pub struct PartiallyResolvedPath {
     /// The resolved part.
-    pub namespace: LocalDeclarationIndex,
+    pub namespace: LocalDeclIdx,
     /// The unresolved part.
     pub path: ast::Path,
 }
@@ -490,7 +506,7 @@ impl fmt::Debug for PartiallyResolvedPath {
 // @Task find out if we can get rid of this type by letting `ModuleScope::lookup_value` resolve to the Binder
 // if it's neutral
 pub enum ValueView {
-    Reducible(Expression),
+    Reducible(Expr),
     Neutral,
 }
 
