@@ -582,7 +582,7 @@ impl CompilationOptions {
         matches: &ArgMatches,
         unstable_options: Vec<unstable::CompilationOption>,
     ) -> Self {
-        #[allow(unused_mut, clippy::needless_update)]
+        #[allow(unused_mut, clippy::needless_update)] // cfg-dependent
         let mut options = Self {
             // @Task instead of unwrap_or_default use clap's way sth sth default_value
             backend: matches
@@ -592,8 +592,9 @@ impl CompilationOptions {
             ..default()
         };
 
+        #[allow(unreachable_patterns, clippy::never_loop)] // cfg-dependent
         for unstable_option in unstable_options {
-            #[allow(unused_imports)]
+            #[allow(unused_imports)] // cfg-dependent
             use unstable::CompilationOption::*;
 
             match unstable_option {

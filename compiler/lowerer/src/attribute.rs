@@ -203,9 +203,8 @@ impl BareAttributeExt for lo_ast::BareAttribute {
         fn optional_argument<'a>(
             arguments: &mut &'a [ast::AttributeArgument],
         ) -> Option<&'a ast::AttributeArgument> {
-            arguments.first().map(|argument| {
+            arguments.first().inspect(|_| {
                 *arguments = &arguments[1..];
-                argument
             })
         }
 

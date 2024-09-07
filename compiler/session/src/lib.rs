@@ -1,4 +1,4 @@
-#![feature(decl_macro, lazy_cell)]
+#![feature(decl_macro)]
 
 use component::{Component, DeclarationIndexExt};
 use diagnostics::{error::Result, Diagnostic, Reporter};

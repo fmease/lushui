@@ -1,7 +1,6 @@
 //! Utility functionality and definitions.
 #![feature(
     decl_macro,
-    lazy_cell,
     macro_metavar_expr,
     negative_impls,
     never_type_fallback,
