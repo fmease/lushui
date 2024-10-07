@@ -1,19 +1,17 @@
 ;;; @Task more cases
 
-use extern.core.type.Type
-
 module grotto of
     @public
     module deeper-end of
-        @(public super) data Icicle: topmost.Type of
+        @(public super) data Icicle of
 
         @(public topmost)
         module rock-face of
             @(public topmost.grotto)
-            data Ingrown-Stalactite: topmost.Type of
+            data Ingrown-Stalactite of
 
 use grotto.deeper-end.(self as cave, Icicle as I)
-J: Type = cave.Icicle
+J = cave.Icicle
 
 module mod of
     use super.cave.rock-face.Ingrown-Stalactite as St

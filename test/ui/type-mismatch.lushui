@@ -7,13 +7,11 @@
 ;;; it goes from 4 to 3 errors putting `module core` between the `take` and `t`
 ;;; declaration: the type error in `take 44` is not shown in this case
 
-use extern.core.type.Type
-
-data X: Type of
+data X of
     x: X
 
-a: X = Type
-b: Type = X.x
+a: X = extern.core.type.Type
+b = X.x
 
 use extern.core.bool.(Bool, false, true)
 

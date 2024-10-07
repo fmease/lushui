@@ -1,8 +1,6 @@
 ;;; TEST pass check
 
-use extern.core.type.Type
-
-Alpha: Type = Alpha
+Alpha = Alpha
 
 module realm of
     Alpha: super.Beta = topmost.Alpha
@@ -18,9 +16,9 @@ module parallel-realm of
     use super.Unit.unit
 
 @(public self)
-Beta: Type = Type
+Beta = extern.core.type.Type
 
-data Unit: Type of
+data Unit of
     unit: Unit
 
 ;;; [Description]

@@ -1,12 +1,12 @@
 error[E020]: ‘Alpha’ is defined multiple times in this scope
   ┌─ ${TEST_FOLDER}/name-resolution/duplicate-bindings.lushui:3:6
   │
-3 │ data Alpha: Type of
+3 │ data Alpha of
   │      ═════ conflicting definition
   │
   ├─ ${TEST_FOLDER}/name-resolution/duplicate-bindings.lushui:6:1
   │
-6 │ Alpha: Type = Type
+6 │ Alpha = Type
   │ ═════ conflicting definition
 
 error[E020]: ‘beta’ is defined multiple times in this scope
@@ -39,7 +39,7 @@ error[E020]: ‘Nat’ is defined multiple times in this scope
    │
    ├─ ${TEST_FOLDER}/name-resolution/duplicate-bindings.lushui:13:10
    │
-13 │     data Nat: Type of
+13 │     data Nat of
    │          ═══ conflicting definition
 
 error[E020]: ‘zero’ is defined multiple times in this scope

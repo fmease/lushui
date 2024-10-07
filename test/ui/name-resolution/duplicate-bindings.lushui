@@ -1,16 +1,16 @@
 use extern.core.nat.Nat
 
-data Alpha: Type of
+data Alpha of
     alpha (beta: Alpha): Alpha
 
-Alpha: Type = Type
+Alpha = Type
 
 beta: Nat = 1000
 
 module pod of
     use super.Nat
 
-    data Nat: Type of
+    data Nat of
         zero: Nat
         successor: Nat -> Nat
 
@@ -18,7 +18,7 @@ beta (x: Nat) (y: Nat): Nat = y
 
 pod: Nat = beta
 
-data ALIKE: Type of
+data ALIKE of
     ALIKE: ALIKE
 
 zero: Nat = 0

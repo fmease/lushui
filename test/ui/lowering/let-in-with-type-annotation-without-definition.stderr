@@ -1,26 +1,14 @@
-error[E015]: the function ‘foo’ does not have a type annotation
-  ┌─ ${TEST_FOLDER}/lowering/let-in-with-type-annotation-without-definition.lushui:1:4
-  │
-1 │ foo = let x: Int in 0
-  │   ⟫⟪ missing required type annotation
-  │
- help: annotate the declaration with a type
-  ┌─ ${TEST_FOLDER}/lowering/let-in-with-type-annotation-without-definition.lushui:1:4
-  │
-1 │ foo: Type = let x: Int in 0
-  │    ~~~~~~
-
 error[E012]: the let-binding ‘x’ does not have a body
   ┌─ ${TEST_FOLDER}/lowering/let-in-with-type-annotation-without-definition.lushui:1:17
   │
-1 │ foo = let x: Int in 0
+1 │ var = let x: Int in 0
   │                ⟫⟪ missing definition
   │
  help: provide a definition for the let-binding
   ┌─ ${TEST_FOLDER}/lowering/let-in-with-type-annotation-without-definition.lushui:1:17
   │
-1 │ foo = let x: Int = value in 0
+1 │ var = let x: Int = value in 0
   │                 ~~~~~~~~
 
-error: aborting due to 2 previous errors
+error: aborting due to previous error
 

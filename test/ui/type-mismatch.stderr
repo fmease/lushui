@@ -1,49 +1,49 @@
 error[E032]: type mismatch
-   ┌─ ${TEST_FOLDER}/type-mismatch.lushui:15:4
+   ┌─ ${TEST_FOLDER}/type-mismatch.lushui:13:4
    │
-15 │ a: X = Type
+13 │ a: X = extern.core.type.Type
    │    ─ expected due to this
    │
-   ├─ ${TEST_FOLDER}/type-mismatch.lushui:15:8
+   ├─ ${TEST_FOLDER}/type-mismatch.lushui:13:8
    │
-15 │ a: X = Type
-   │        ════ has the wrong type
+13 │ a: X = extern.core.type.Type
+   │        ═════════════════════ has the wrong type
    │
   note: expected type ‘topmost.X’
          but got type ‘extern.core.type.Type’
 
 error[E032]: type mismatch
-   ┌─ ${TEST_FOLDER}/type-mismatch.lushui:16:4
+   ┌─ ${TEST_FOLDER}/type-mismatch.lushui:14:2
    │
-16 │ b: Type = X.x
-   │    ──── expected due to this
+14 │ b = X.x
+   │ ⟩⟨ expected due to this
    │
-   ├─ ${TEST_FOLDER}/type-mismatch.lushui:16:11
+   ├─ ${TEST_FOLDER}/type-mismatch.lushui:14:5
    │
-16 │ b: Type = X.x
-   │           ═══ has the wrong type
+14 │ b = X.x
+   │     ═══ has the wrong type
    │
   note: expected type ‘extern.core.type.Type’
          but got type ‘topmost.X’
 
 error[E032]: type mismatch
-   ┌─ ${TEST_FOLDER}/type-mismatch.lushui:20:4
+   ┌─ ${TEST_FOLDER}/type-mismatch.lushui:18:4
    │
-20 │ x: false = false
+18 │ x: false = false
    │    ═════ has the wrong type
    │
   note: expected type ‘extern.core.type.Type’
          but got type ‘extern.core.bool.Bool’
 
 error[E032]: type mismatch
-   ┌─ ${TEST_FOLDER}/type-mismatch.lushui:22:10
+   ┌─ ${TEST_FOLDER}/type-mismatch.lushui:20:10
    │
-22 │ take (b: Bool): Bool = true
+20 │ take (b: Bool): Bool = true
    │          ──── expected due to this
    │
-   ├─ ${TEST_FOLDER}/type-mismatch.lushui:24:16
+   ├─ ${TEST_FOLDER}/type-mismatch.lushui:22:16
    │
-24 │ t: Bool = take 44
+22 │ t: Bool = take 44
    │                ══ has the wrong type
    │
   note: expected type ‘extern.core.bool.Bool’

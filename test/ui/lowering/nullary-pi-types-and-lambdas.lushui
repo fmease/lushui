@@ -4,7 +4,7 @@ use extern.core.(type.Type, nat.Nat)
 
 nullary-lambda: Nat = for => 0
 
-Nullary-Pi: Type = For -> Nat
+Nullary-Pi = For -> Nat
 
 double-check: Nullary-Pi = nullary-lambda
 

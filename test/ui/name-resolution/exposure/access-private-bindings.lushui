@@ -1,5 +1,3 @@
-use extern.core.type.Type
-
 use S.structure as s
 
 use outer.(south.Structure as S, north.Structure as N)
@@ -7,18 +5,18 @@ use outer.south
 
 module outer of
 
-    It: topmost.Type = north.Structure
+    It = north.Structure
 
     @public
     module north of
-        data Structure: topmost.Type of
+        data Structure of
             structure: Structure
 
     module south of
-        data Structure: topmost.Type of
+        data Structure of
 
 
-Struct: Type = outer.south
+Struct = outer.south
 
 ;;; [Description]
 ;;; Bindings not marked `@public` should be considered private to the module the binding is defined in.

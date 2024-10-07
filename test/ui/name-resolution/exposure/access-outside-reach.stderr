@@ -1,19 +1,19 @@
 error[E029]: binding ‘topmost.grotto.deeper-end.Icicle’ is private
-   ┌─ ${TEST_FOLDER}/name-resolution/exposure/access-outside-reach.lushui:15:38
+   ┌─ ${TEST_FOLDER}/name-resolution/exposure/access-outside-reach.lushui:13:38
    │
-15 │ use grotto.deeper-end.(self as cave, Icicle as I)
+13 │ use grotto.deeper-end.(self as cave, Icicle as I)
    │                                      ══════
 
 error[E029]: binding ‘topmost.grotto.deeper-end.Icicle’ is private
-   ┌─ ${TEST_FOLDER}/name-resolution/exposure/access-outside-reach.lushui:16:16
+   ┌─ ${TEST_FOLDER}/name-resolution/exposure/access-outside-reach.lushui:14:10
    │
-16 │ J: Type = cave.Icicle
-   │                ══════
+14 │ J = cave.Icicle
+   │          ══════
 
 error[E029]: binding ‘topmost.grotto.deeper-end.rock-face.Ingrown-Stalactite’ is private
-   ┌─ ${TEST_FOLDER}/name-resolution/exposure/access-outside-reach.lushui:19:30
+   ┌─ ${TEST_FOLDER}/name-resolution/exposure/access-outside-reach.lushui:17:30
    │
-19 │     use super.cave.rock-face.Ingrown-Stalactite as St
+17 │     use super.cave.rock-face.Ingrown-Stalactite as St
    │                              ══════════════════
 
 error: aborting due to 3 previous errors

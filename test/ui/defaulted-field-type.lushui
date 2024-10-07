@@ -1,0 +1,23 @@
+;;; TEST pass check
+;;; TEST compiler-args -Zresolve-only
+;;; FIXME: Also type-checl this once we've implemented projections!
+
+use extern.core.option.Option
+
+trait Iterator Self of
+    Item
+    next (zelf: Self): Option Item
+
+record Pair of
+    First
+    second: First
+
+;;; [Description]
+;;; If a record/trait field does not have a type annotation, its "result type"[^1] will default to ‘Type’.
+;;; We used to reject this. Maybe we should reject them again inside *record* declarations (continuing to
+;;; allowing them inside trait declarations) similar to how we reject parameters on record fields but
+;;; obviously not on trait fields.
+;;; Motivation for this defaulting logic: Convenience (no need to import ‘Type’), "beauty" and
+;;; emulalation of "similar features" in other languages (data/type families in Hs, associated types in Rs,
+;;; type aliases in Hs/Rs). However, it could be considered footgunny.
+;;; [^1]: Parameters "add" extra pi types.

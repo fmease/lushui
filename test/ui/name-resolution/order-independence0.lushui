@@ -1,7 +1,5 @@
 ;;; TEST pass check
 
-use extern.core.type.Type
-
 module first of
     use alpha.alias
 
@@ -11,12 +9,12 @@ module first of
 
         module beta of
             @public
-            alias: topmost.Type = topmost.Type
+            alias = extern.core.type.Type
 
 module second of
-    X: topmost.Type = Alpha
+    X = Alpha
 
-    data Alpha: topmost.Type of
+    data Alpha of
         alpha: Alpha
 
     module foo of
@@ -24,9 +22,9 @@ module second of
         use super.Alpha.alpha
         what-every: Alpha = alpha
         use super.Void
-        V: topmost.Type = Void
+        V = Void
 
-    data Void: topmost.Type of
+    data Void of
 
 use alpha.Void
 
@@ -34,11 +32,11 @@ module alpha of
     use super.V
 
     module xoo of
-        W: topmost.Type = super.V
+        W = super.V
 
     @public
-    data Void: topmost.Type of
+    data Void of
 
-V: Type = Void
+V = Void
 
-Self: Type = Self
+Self = Self

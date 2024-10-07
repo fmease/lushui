@@ -51,8 +51,6 @@ pub enum ErrorCode {
     E013,
     /// Mutually exclusive attributes.
     E014,
-    /// Missing required type annotations.
-    E015,
     /// Unable to load out-of-line module.
     E016,
     /// Attempt to access subbinding of non-namespace.

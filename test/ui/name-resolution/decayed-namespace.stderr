@@ -1,12 +1,12 @@
 error[E017]: binding ‘Decayed-Alpha’ is not a namespace
-   ┌─ ${TEST_FOLDER}/name-resolution/decayed-namespace.lushui:12:12
+   ┌─ ${TEST_FOLDER}/name-resolution/decayed-namespace.lushui:10:12
    │
-12 │ y: Alpha = Decayed-Alpha.alpha
+10 │ y: Alpha = Decayed-Alpha.alpha
    │            ═════════════ not a namespace but a function
    │
-   ├─ ${TEST_FOLDER}/name-resolution/decayed-namespace.lushui:12:25
+   ├─ ${TEST_FOLDER}/name-resolution/decayed-namespace.lushui:10:25
    │
-12 │ y: Alpha = Decayed-Alpha.alpha
+10 │ y: Alpha = Decayed-Alpha.alpha
    │                         ────── denotes a reference to a binding inside of a namespace
    │
   help: use ‘::’ to reference a field of a record

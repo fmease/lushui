@@ -1,9 +1,0 @@
-data Alpha of
-    alpha a
-
-data Beta A of
-    beta A: Beta A
-
-number = 0
-
-apply f x (y) = f x

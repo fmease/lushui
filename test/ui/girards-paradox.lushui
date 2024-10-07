@@ -1,40 +1,39 @@
 ;;; TEST pass check
 ;;; TEST compiler-args -Zparse-only
+;;; FIXME: Turn this into an actual test somehow maybe.
 
-False: Type =
-    For (P: Type) -> P
+use extern.core.type.Type
 
-negate (Phi: Type): Type =
-    Phi -> False
-power (S: Type): Type =
-    S -> Type
+False =
+    For P -> P
 
-U: Type =
-    For (X: Type) ->
+negate Phi = Phi -> False
+power S = S -> Type
+
+U =
+    For X ->
     (power (power X) -> X) ->
     power (power X)
 
-data HOLE: Type of ;;; @Temporary
-
 tau
     (t: power (power U))
-    (X: Type)
+    X
     (f: power (power X) -> X)
-    (p: power X): HOLE
+    (p: power X): _
     =
     t (for (x: U) => p (f (x X f)))
 
-sigma (s: U): HOLE =
+sigma (s: U): _ =
     s U (for (t: power (power U)) => tau t)
 
-Delta (y: U): Type =
+Delta (y: U) =
     negate (For (p: power U) -> sigma y p -> p (tau (sigma y)))
-Omega: Type =
+Omega =
     tau (for (p: power U) => For (x: U) -> sigma x p -> p x)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-main: HOLE =
+main: _ =
     (for (zero: For (p: power U) -> (For (x: U) -> sigma x p -> p x) -> p Omega) =>
         (zero Delta (for (x: U) (two: sigma x Delta) (three: For (p: power U) -> sigma x p -> p (tau (sigma x))) =>
             three Delta two (for (p: power U) => three (for (y: U) => p (tau (sigma y))))))(for (p: power U) => zero (for (y: U) =>

@@ -1,7 +1,5 @@
-use extern.core.type.Type
-
 @(public who-am-i)
-Foo: Who-Am-I = Type
+Foo: Who-Am-I = extern.core.type.Type
 
 @(public namespaced.who-am-i)
 Bar: Unit = Unit.unit
@@ -9,9 +7,9 @@ Bar: Unit = Unit.unit
 module namespaced of
 
 @(public indir2.void)
-Y: Type = Unit
+Y = Unit
 
-data Unit: Type of
+data Unit of
     unit: Unit
 
 use topmost.(
@@ -21,4 +19,4 @@ use topmost.(
 )
 
 @(public self.indir2.emptiness)
-X: Type = Unit
+X = Unit

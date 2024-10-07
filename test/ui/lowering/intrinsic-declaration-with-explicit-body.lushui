@@ -1,15 +1,16 @@
 ;;; TEST compiler-args -Z internals --no-core
 
 @intrinsic
-data Void: Type of
+data Void of
 
 @intrinsic
-data Unit: Type of
+data Unit of
     unit: Unit
 
 @intrinsic
-data Bool: Type of
+data Bool of
     false: Bool
     true: Bool
 
-@intrinsic thing = 0
+@intrinsic
+thing: Nat = 0

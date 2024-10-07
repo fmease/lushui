@@ -12,10 +12,10 @@ use something.substantial.(root0, root1)
 binding: Binding =
     @intrinsic make-binding @(public super) resource
 
-data Manifest: Type of
+data Manifest of
     @public manifest
 
-Platform: Type =
+Platform =
     case x of
         @static box => it
         let _ => unboxed

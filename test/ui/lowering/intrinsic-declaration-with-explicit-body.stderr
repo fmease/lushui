@@ -4,11 +4,11 @@ error[E042]: intrinsic declarations may not have a body
 3 │ @intrinsic
   │ ────────── marks the declaration as being defined outside of the language
   │
-  ├─ ${TEST_FOLDER}/lowering/intrinsic-declaration-with-explicit-body.lushui:4:17
+  ├─ ${TEST_FOLDER}/lowering/intrinsic-declaration-with-explicit-body.lushui:4:11
   │
-4 │ data Void: Type of
-  │                 ══ the body specifying that the data type has no constructors and is therefore uninhabited
-  │                             conflicting with the attribute
+4 │ data Void of
+  │           ══ the body specifying that the data type has no constructors and is therefore uninhabited
+  │                       conflicting with the attribute
 
 error[E042]: intrinsic declarations may not have a body
   ┌─ ${TEST_FOLDER}/lowering/intrinsic-declaration-with-explicit-body.lushui:6:1
@@ -16,10 +16,10 @@ error[E042]: intrinsic declarations may not have a body
 6 │ @intrinsic
   │ ────────── marks the declaration as being defined outside of the language
   │
-  ├─ ${TEST_FOLDER}/lowering/intrinsic-declaration-with-explicit-body.lushui:7:17
+  ├─ ${TEST_FOLDER}/lowering/intrinsic-declaration-with-explicit-body.lushui:7:11
   │
-7 │   data Unit: Type of
-  │ ╔═════════════════╝
+7 │   data Unit of
+  │ ╔═══════════╝
 8 │ ║     unit: Unit
   │ ╚══════════════╝ the body containing a set of constructors
   │                           conflicting with the attribute
@@ -30,10 +30,10 @@ error[E042]: intrinsic declarations may not have a body
 10 │ @intrinsic
    │ ────────── marks the declaration as being defined outside of the language
    │
-   ├─ ${TEST_FOLDER}/lowering/intrinsic-declaration-with-explicit-body.lushui:11:17
+   ├─ ${TEST_FOLDER}/lowering/intrinsic-declaration-with-explicit-body.lushui:11:11
    │
-11 │   data Bool: Type of
-   · ╔═════════════════╝
+11 │   data Bool of
+   · ╔═══════════╝
 13 │ ║     true: Bool
    │ ╚══════════════╝ the body containing a set of constructors
    │                           conflicting with the attribute
@@ -41,25 +41,13 @@ error[E042]: intrinsic declarations may not have a body
 error[E042]: intrinsic declarations may not have a body
    ┌─ ${TEST_FOLDER}/lowering/intrinsic-declaration-with-explicit-body.lushui:15:1
    │
-15 │ @intrinsic thing = 0
+15 │ @intrinsic
    │ ────────── marks the declaration as being defined outside of the language
    │
-   ├─ ${TEST_FOLDER}/lowering/intrinsic-declaration-with-explicit-body.lushui:15:18
+   ├─ ${TEST_FOLDER}/lowering/intrinsic-declaration-with-explicit-body.lushui:16:12
    │
-15 │ @intrinsic thing = 0
-   │                  ═══ the body conflicting with the attribute
+16 │ thing: Nat = 0
+   │            ═══ the body conflicting with the attribute
 
-error[E015]: the function ‘thing’ does not have a type annotation
-   ┌─ ${TEST_FOLDER}/lowering/intrinsic-declaration-with-explicit-body.lushui:15:17
-   │
-15 │ @intrinsic thing = 0
-   │                ⟫⟪ missing required type annotation
-   │
-  help: annotate the declaration with a type
-   ┌─ ${TEST_FOLDER}/lowering/intrinsic-declaration-with-explicit-body.lushui:15:17
-   │
-15 │ @intrinsic thing: Type = 0
-   │                 ~~~~~~
-
-error: aborting due to 5 previous errors
+error: aborting due to 4 previous errors
 

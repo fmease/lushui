@@ -1,12 +1,10 @@
-use extern.core.type.Type
-
-data Alpha: Type of
+data Alpha of
     alpha: Alpha
 
 use Alpha as A
 
 x: Alpha = A.alpha
 
-Decayed-Alpha: Type = Alpha
+Decayed-Alpha = Alpha
 
 y: Alpha = Decayed-Alpha.alpha

@@ -22,7 +22,7 @@ module boundary of
 
 use boundary.(T, Th, inner.D)
 
-D_: Type = D
+D_ = D
 
 ;;; [Description]
 ;;; Bindings marked with a plain `@public` are exposed/public

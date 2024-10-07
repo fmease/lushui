@@ -1,0 +1,16 @@
+error[E032]: type mismatch
+  ┌─ ${TEST_FOLDER}/type-mismatch-defaulted-declaration-type.lushui:4:3
+  │
+4 │ Ty = 0
+  │  ⟩⟨ expected due to this
+  │
+  ├─ ${TEST_FOLDER}/type-mismatch-defaulted-declaration-type.lushui:4:6
+  │
+4 │ Ty = 0
+  │      ═ has the wrong type
+  │
+ note: expected type ‘extern.core.type.Type’
+        but got type ‘extern.core.nat.Nat’
+
+error: aborting due to previous error
+

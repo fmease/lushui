@@ -2,9 +2,9 @@
 
 use extern.core.type.Type
 
-data Set: Type of
+data Set of
     type: Type -> Set
 
-data U: Type of
+data U of
 
 Clash: Type = Set.type U

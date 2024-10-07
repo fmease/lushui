@@ -1,14 +1,12 @@
 ;;; TEST pass check
 
-use extern.core.type.Type
+@deprecated
+data Foo of
 
 @deprecated
-data Foo: Type of
-
-@deprecated
-Bar: Type = Foo
+Bar = Foo
 
 @(deprecated (reason "it was not the right thing"))
-Baz: Type -> Type = for (A: Type) => Type
+Baz A = extern.core.type.Type
 
-X: Type = Baz Bar
+X = Baz Bar

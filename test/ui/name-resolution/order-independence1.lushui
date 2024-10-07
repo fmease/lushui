@@ -2,7 +2,7 @@
 
 use extern.core.type.Type
 
-Ty: Type = Type
+Ty = Type
 
 data Beta: m0.T of
     beta: Beta
@@ -13,7 +13,7 @@ alpha: Beta = Beta.beta
 
 g: Gamma = Gamma.gamma
 
-data Gamma: Type of
+data Gamma of
     gamma: Gamma-Alias
 
 Gamma-Alias: Ty = Gamma

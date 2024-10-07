@@ -62,12 +62,10 @@ impl Lowerer<'_> {
 
         let type_ = match function.type_ {
             Some(type_) => self.lower_expression(type_),
-            None => error::missing_type_annotation(
-                "function",
-                function.binder,
+            None => lo_ast::Expression::common(
                 function.binder.span().fit_end(&function.parameters).end(),
-            )
-            .embed(&mut *self),
+                lo_ast::BareExpression::Type,
+            ),
         };
 
         let body = function.body.map(|body| {
@@ -323,12 +321,10 @@ the body containing a set of constructors
 
             let domain = match field.type_ {
                 Some(type_) => self.lower_expression(type_),
-                None => error::missing_type_annotation(
-                    &format!("{} field", kind.name()),
-                    field.binder,
+                None => lo_ast::Expression::common(
                     field.binder.span().fit_end(&field.parameters).end(),
-                )
-                .embed(&mut *self),
+                    lo_ast::BareExpression::Type,
+                ),
             };
 
             let domain = self.lower_parameters_to_pi_type(field.parameters, domain);
@@ -376,11 +372,16 @@ the body containing a set of constructors
                 };
 
                 let type_ = {
-                    let type_ = field.type_.clone()?;
-
                     // @Beacon @Task don't lower the field type twice (here & in lower_fields)!
                     // (this is why we currently need to clone here)
-                    let type_ = self.lower_expression(type_);
+                    let type_ = match &field.type_ {
+                        Some(type_) => self.lower_expression(type_.clone()),
+                        None => lo_ast::Expression::common(
+                            field.binder.span().fit_end(&field.parameters),
+                            lo_ast::BareExpression::Type,
+                        ),
+                    };
+
                     let type_ = self.lower_parameters_to_pi_type(field.parameters.clone(), type_);
 
                     let span = type_.span;
@@ -441,17 +442,15 @@ the body containing a set of constructors
 
                     // @Beacon @Task don't re-lower type_constructor params! (here, in lower_fields & in lower_data)
                     for parameter in type_constructor_parameters.clone().into_iter().rev() {
-                        let domain = self.lower_parameter_type_with_default(
-                            parameter.bare.type_,
-                            parameter.bare.kind,
-                            parameter.span,
-                        );
+                        let binder = parameter.bare.binder.and_then(ast::LocalBinder::name);
+                        let kind = parameter.bare.kind.adjust_for_child();
+                        let domain = self.lower_parameter_type(parameter);
 
                         body = lo_ast::Expression::common(
                             span,
                             lo_ast::Lambda {
-                                kind: parameter.bare.kind.adjust_for_child(),
-                                binder: parameter.bare.binder.and_then(ast::LocalBinder::name),
+                                kind,
+                                binder,
                                 domain: Some(domain),
                                 codomain: None,
                                 body,
@@ -492,12 +491,10 @@ the body containing a set of constructors
 
         let type_ = match given.type_ {
             Some(type_) => self.lower_expression(type_),
-            None => error::missing_type_annotation(
-                "given",
-                given.binder,
+            None => lo_ast::Expression::common(
                 given.binder.span().fit_end(&given.parameters).end(),
-            )
-            .embed(&mut *self),
+                lo_ast::BareExpression::Type,
+            ),
         };
 
         // @Task if there's no body, check if `@intrinsic` or `@derive` (tba) is present,
@@ -781,12 +778,6 @@ the body containing a set of constructors
     ) -> lo_ast::Expression {
         // @Task don't type_ctor_params twice (1st here, 2nd in lower_data)
         for parameter in parameters.into_iter().rev() {
-            let domain = self.lower_parameter_type_with_default(
-                parameter.bare.type_,
-                parameter.bare.kind,
-                parameter.span,
-            );
-
             // @Task clean up this comment a bit more
             // Even though the parameter might be unnameable by the user due to the use of an
             // underscore or due to the omission of a binder as is possible with context parameters,
@@ -798,16 +789,12 @@ the body containing a set of constructors
                 Some(ast::LocalBinder::Named(binder)) => binder.respan(type_.span),
                 _ => ast::Identifier::new_unchecked(type_.span, Atom::UNDERSCORE),
             };
+            let kind = parameter.bare.kind.adjust_for_child();
+            let domain = self.lower_parameter_type(parameter);
 
             type_ = lo_ast::Expression::common(
                 type_.span,
-                lo_ast::PiType {
-                    kind: parameter.bare.kind.adjust_for_child(),
-                    binder: Some(binder),
-                    domain,
-                    codomain: type_,
-                }
-                .into(),
+                lo_ast::PiType { kind, binder: Some(binder), domain, codomain: type_ }.into(),
             );
         }
 
@@ -820,21 +807,13 @@ the body containing a set of constructors
         mut type_: lo_ast::Expression,
     ) -> lo_ast::Expression {
         for parameter in parameters.into_iter().rev() {
-            let domain = self.lower_parameter_type_with_default(
-                parameter.bare.type_,
-                parameter.bare.kind,
-                parameter.span,
-            );
+            let binder = parameter.bare.binder.and_then(ast::LocalBinder::name);
+            let kind = parameter.bare.kind;
+            let domain = self.lower_parameter_type(parameter);
 
             type_ = lo_ast::Expression::common(
                 type_.span,
-                lo_ast::PiType {
-                    kind: parameter.bare.kind,
-                    binder: parameter.bare.binder.and_then(ast::LocalBinder::name),
-                    domain,
-                    codomain: type_,
-                }
-                .into(),
+                lo_ast::PiType { kind, binder, domain, codomain: type_ }.into(),
             );
         }
 
@@ -850,22 +829,15 @@ the body containing a set of constructors
         let mut type_ = type_.into_iter();
 
         for parameter in parameters.into_iter().rev() {
-            let domain = self.lower_parameter_type_with_default(
-                parameter.bare.type_,
-                parameter.bare.kind,
-                parameter.span,
-            );
+            let binder = parameter.bare.binder.and_then(LocalBinder::name);
+            let kind = parameter.bare.kind;
+            let span = parameter.span;
+            let domain = self.lower_parameter_type(parameter);
 
             body = lo_ast::Expression::common(
-                parameter.span,
-                lo_ast::Lambda {
-                    kind: parameter.bare.kind,
-                    binder: parameter.bare.binder.and_then(LocalBinder::name),
-                    domain: Some(domain),
-                    codomain: type_.next(),
-                    body,
-                }
-                .into(),
+                span,
+                lo_ast::Lambda { kind, binder, domain: Some(domain), codomain: type_.next(), body }
+                    .into(),
             );
         }
 
@@ -1030,22 +1002,6 @@ mod error {
                 span,
                 "provide a definition for the declaration",
                 Substitution::from(" = ").placeholder("body"),
-            )
-    }
-
-    pub(super) fn missing_type_annotation(
-        kind: &str,
-        binder: ast::Identifier,
-        span: Span,
-    ) -> Diagnostic {
-        Diagnostic::error()
-            .code(ErrorCode::E015)
-            .message(format!("the {kind} ‘{binder}’ does not have a type annotation"))
-            .span(span, "missing required type annotation")
-            .suggest(
-                span,
-                "annotate the declaration with a type",
-                Substitution::from(": ").placeholder("Type"),
             )
     }
 

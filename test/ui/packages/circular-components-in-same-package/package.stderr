@@ -31,7 +31,7 @@ error: the library components ‘cycle2component1’ and ‘cycle2component0’ 
 43 │         dependencies: { cycle2component0: {}, unrelated: {} },
    │                         ════════════════
 
-error: the library components ‘snake1’ and ‘snake0’ are circular
+error: the library components ‘snake0’ and ‘snake1’ are circular
    ┌─ ${TEST_FOLDER}/packages/circular-components-in-same-package/package.recnot:53:58
    │
 53 │     snake0: { type: library, path: "s0", dependencies: { snake1: {} } },

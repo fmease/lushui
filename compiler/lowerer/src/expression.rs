@@ -126,21 +126,13 @@ impl Lowerer<'_> {
                 let mut codomain = self.lower_expression(type_.codomain);
 
                 for parameter in type_.parameters.into_iter().rev() {
-                    let domain = self.lower_parameter_type_with_default(
-                        parameter.bare.type_,
-                        parameter.bare.kind,
-                        parameter.span,
-                    );
+                    let binder = parameter.bare.binder.and_then(LocalBinder::name);
+                    let kind = parameter.bare.kind;
+                    let domain = self.lower_parameter_type(parameter);
 
                     codomain = lo_ast::Expression::common(
                         span,
-                        lo_ast::PiType {
-                            kind: parameter.bare.kind,
-                            binder: parameter.bare.binder.and_then(LocalBinder::name),
-                            domain,
-                            codomain,
-                        }
-                        .into(),
+                        lo_ast::PiType { kind, binder, domain, codomain }.into(),
                     );
                 }
 
@@ -256,18 +248,13 @@ impl Lowerer<'_> {
         )
     }
 
-    pub(crate) fn lower_parameter_type_with_default(
-        &mut self,
-        type_: Option<ast::Expression>,
-        kind: ast::ParameterKind,
-        span: Span,
-    ) -> lo_ast::Expression {
+    pub(crate) fn lower_parameter_type(&mut self, parameter: ast::Parameter) -> lo_ast::Expression {
         // @Temporary get rid of this constant entirely once we support bidirectional type-inference
         const BIDIR_TYCK: bool = false;
 
-        match type_ {
+        match parameter.bare.type_ {
             Some(type_) => self.lower_expression(type_),
-            None => lo_ast::Expression::common(span, match kind {
+            None => lo_ast::Expression::common(parameter.span.end(), match parameter.bare.kind {
                 ast::ParameterKind::Implicit if BIDIR_TYCK => ast::Wildcard::Silent.into(),
                 _ => lo_ast::BareExpression::Type,
             }),
