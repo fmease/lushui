@@ -1,0 +1,15 @@
+;;; TEST pass check
+
+use extern.core.(type.Type, nat.Nat)
+
+nullary-lambda: Nat = for => 0
+
+Nullary-Pi: Type = For -> Nat
+
+double-check: Nullary-Pi = nullary-lambda
+
+;;; [Description]
+;;; ‘For -> ...’ is equivalent to ‘...’ and ‘for => ...’ is equivalent to ‘...’.
+;;; This is a natural consequence of the way we parse and lower parameters.
+;;; It's not useful at the time of writing (it's probably nice for code generators).
+;;; It might be considered harmful -- we could introduce a warn-by-default lint for these.
