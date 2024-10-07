@@ -3,9 +3,9 @@ use crate::{
     synonym::Terminator,
 };
 use ast::{Attributes, Declaration, Identifier};
-use diagnostics::error::Result;
+use diagnostics::{error::Result, Diagnostic};
 use lexer::token::BareToken::*;
-use span::{Span, Spanning};
+use span::{PossiblySpanning, Span, Spanning};
 
 impl Parser<'_> {
     /// Parse the *top level*, i.e. the body of a module file.
@@ -179,8 +179,8 @@ impl Parser<'_> {
 
                 Some(declarations)
             }
-            name @ Terminator!() => {
-                if name == LineBreak {
+            terminator @ Terminator!() => {
+                if terminator == LineBreak {
                     self.advance();
                 }
                 None
@@ -244,11 +244,13 @@ impl Parser<'_> {
 
         let binder = span.merging(self.parse_word()?);
 
+        self.recover_from_module_parameters()?;
+
         match self.token() {
             // Out-of-line module declaration.
             // @Task abstract over this (used above as well), good idea?
-            name @ Terminator!() => {
-                if name == LineBreak {
+            terminator @ Terminator!() => {
+                if terminator == LineBreak {
                     self.advance();
                 }
 
@@ -291,6 +293,18 @@ impl Parser<'_> {
                 self.error()
             }
         }
+    }
+
+    fn recover_from_module_parameters(&mut self) -> Result {
+        if let Some(parameters) = self.parse_parameters()?.possible_span() {
+            // FIXME: Don't actually abort parsing (still taint tho), actually *recover* (i.e., continue).
+            //        Requires adding "health" to the parser state.
+            return Err(Diagnostic::error()
+                .message("modules may not have parameters")
+                .unlabeled_span(parameters)
+                .report(self.reporter));
+        };
+        Ok(())
     }
 
     /// Finish parsing a [use-declaration] given the span of the already parsed leading `use` keyword.
@@ -357,8 +371,8 @@ impl Parser<'_> {
 
                 Some(ast::Body::Block { fields })
             }
-            name @ Terminator!() => {
-                if name == LineBreak {
+            terminator @ Terminator!() => {
+                if terminator == LineBreak {
                     self.advance();
                 }
                 None

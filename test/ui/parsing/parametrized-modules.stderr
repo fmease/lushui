@@ -1,0 +1,8 @@
+error: modules may not have parameters
+  ┌─ ${TEST_FOLDER}/parsing/parametrized-modules.lushui:3:16
+  │
+3 │ module generic 'A [Schema A] (knob: Nat) (dial: Nat) of
+  │                ═════════════════════════════════════
+
+error: aborting due to previous error
+

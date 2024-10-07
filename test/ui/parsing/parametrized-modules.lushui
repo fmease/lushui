@@ -1,0 +1,5 @@
+;;; FIXME: Report two parse errors here instead of just one.
+
+module generic 'A [Schema A] (knob: Nat) (dial: Nat) of
+
+module external (configuration: Configuration)
