@@ -551,21 +551,14 @@ mod spanned {
         }
     }
 
-    impl<Bare: PartialEq> PartialEq for Spanned<Bare> {
+    impl<Bare: PartialEq, const AFFINITY: Affinity> PartialEq for Spanned<Bare, AFFINITY> {
         fn eq(&self, other: &Self) -> bool {
-            self.span == other.span && self.bare == other.bare
+            (matches!(AFFINITY, Affinity::Weak) || self.span == other.span)
+                && self.bare == other.bare
         }
     }
 
-    impl<Bare: PartialEq> PartialEq for Spanned<Bare, { Affinity::Weak }> {
-        fn eq(&self, other: &Self) -> bool {
-            self.bare == other.bare
-        }
-    }
-
-    impl<Bare: Eq> Eq for Spanned<Bare> {}
-
-    impl<Bare: Eq> Eq for Spanned<Bare, { Affinity::Weak }> {}
+    impl<Bare: Eq, const AFFINITY: Affinity> Eq for Spanned<Bare, AFFINITY> {}
 
     impl<Bare: PartialOrd> PartialOrd for Spanned<Bare> {
         fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
@@ -596,15 +589,11 @@ mod spanned {
         }
     }
 
-    impl<Bare: Hash> Hash for Spanned<Bare> {
+    impl<Bare: Hash, const AFFINITY: Affinity> Hash for Spanned<Bare, AFFINITY> {
         fn hash<H: Hasher>(&self, state: &mut H) {
-            self.span.hash(state);
-            self.bare.hash(state);
-        }
-    }
-
-    impl<Bare: Hash> Hash for Spanned<Bare, { Affinity::Weak }> {
-        fn hash<H: Hasher>(&self, state: &mut H) {
+            if let Affinity::Strong = AFFINITY {
+                self.span.hash(state);
+            }
             self.bare.hash(state);
         }
     }
@@ -628,7 +617,7 @@ mod spanned {
         }
     }
 
-    #[derive(PartialEq, Eq, ConstParamTy)]
+    #[derive(PartialEq, Eq, Clone, Copy, ConstParamTy)]
     pub enum Affinity {
         Strong,
         Weak,
