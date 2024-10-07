@@ -4,7 +4,8 @@
     macro_metavar_expr,
     negative_impls,
     never_type_fallback,
-    never_type
+    never_type,
+    os_string_pathbuf_leak
 )]
 
 use difference::Difference;

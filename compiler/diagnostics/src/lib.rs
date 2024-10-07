@@ -6,11 +6,12 @@ use derivation::Str;
 use reporter::Report;
 use span::{Span, Spanning};
 use std::{
+    borrow::Cow,
     collections::BTreeSet,
     fmt::Debug,
     marker::ConstParamTy,
     ops::{Deref, DerefMut},
-    path::PathBuf,
+    path::Path,
 };
 use utility::Str;
 
@@ -170,8 +171,8 @@ impl<const S: Severity> Diagnostic<S> {
     ///
     /// [source map]: span::SourceMap
     /// [file span]: span::SourceFile::span
-    pub fn path(mut self, path: PathBuf) -> Self {
-        self.untagged.path = Some(path);
+    pub fn path(mut self, path: impl Into<Cow<'static, Path>>) -> Self {
+        self.untagged.path = Some(path.into());
         self
     }
 
@@ -250,7 +251,7 @@ pub type UntaggedDiagnostic = Box<UnboxedUntaggedDiagnostic>;
 // @Task rethink ordering: message should be higher I guess
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 pub struct UnboxedUntaggedDiagnostic {
-    pub path: Option<PathBuf>,
+    pub path: Option<Cow<'static, Path>>,
     // @Task update comment
     // Highlights come first since they should have the highest priority when ordering.
     // This places diagnostics close to “source order” (with buffered reporters):

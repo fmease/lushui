@@ -15,10 +15,12 @@ impl CanonicalPath {
     where
         P: ?Sized + AsRef<Path>,
     {
-        unsafe { &*(ptr::from_ref(path.as_ref()) as *const Self) }
+        let path = ptr::from_ref(path.as_ref()) as *const Self;
+        // FIXME: Safety comment.
+        unsafe { &*path }
     }
 
-    pub fn as_path(&self) -> &Path {
+    pub fn as_inner(&self) -> &Path {
         self
     }
 
@@ -61,6 +63,14 @@ impl fmt::Debug for CanonicalPath {
     }
 }
 
+impl From<&CanonicalPath> for Box<CanonicalPath> {
+    fn from(path: &CanonicalPath) -> Self {
+        let path = Box::into_raw(Box::<Path>::from(path.as_inner())) as *mut CanonicalPath;
+        // FIXME: Safety comment.
+        unsafe { Box::from_raw(path) }
+    }
+}
+
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
 pub struct CanonicalPathBuf(PathBuf);
 
@@ -80,8 +90,12 @@ impl CanonicalPathBuf {
         self.0
     }
 
-    pub fn as_path(&self) -> &Path {
+    pub fn as_inner(&self) -> &Path {
         self
+    }
+
+    pub fn leak(self) -> &'static CanonicalPath {
+        CanonicalPath::new_unchecked(PathBuf::leak(self.0))
     }
 }
 

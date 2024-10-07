@@ -646,7 +646,7 @@ the body containing a set of constructors
                     .name()
                     .path()
                     .unwrap()
-                    .as_path()
+                    .as_inner()
                     .parent()
                     .unwrap()
                     .to_owned();

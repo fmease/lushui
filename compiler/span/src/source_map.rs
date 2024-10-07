@@ -396,6 +396,7 @@ impl std::ops::Index<LocalSpan> for SourceFile {
 pub enum FileName {
     Anonymous,
     Stdin,
+    // FIXME: Should we use the interned version?
     Path(CanonicalPathBuf),
     Virtual(&'static str),
 }

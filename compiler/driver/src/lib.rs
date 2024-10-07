@@ -290,7 +290,7 @@ fn build_unit(
             // @Task improve message, add label
             Diagnostic::error()
                 .message(message)
-                .path(path.bare.into())
+                .path(path.bare.to_path_buf())
                 .unlabeled_span(path)
                 .note(error.format())
                 .report(session.reporter())
@@ -496,7 +496,7 @@ fn check_recnot_file(path: &Path, map: &Arc<RwLock<SourceMap>>, reporter: &Repor
     let file = map.write().unwrap().load(path, None).map_err(|error| {
         Diagnostic::error()
             .message("could not load the file")
-            .path(path.into())
+            .path(path.to_owned())
             .note(error.format())
             .report(reporter)
     })?;

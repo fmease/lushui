@@ -32,6 +32,11 @@ impl FailedTest {
         map: &SourceMap,
         painter: &mut Painter,
     ) -> io::Result<()> {
+        // FIXME(diag_infra): In crate `diagnostic` we could expose a lifetime-generic `Diagnostic` type
+        //                    which would allow us to avoid the `to_path_buf` calls (& pot. more).
+        //                    Contrary to the compiler which uses a `Reporter` that buffers diagnostics
+        //                    (and thus lends itself to "`'static`" fields) we `render` them immediately.
+
         match &self.failure {
             Failure::UnexpectedExitStatus(status) => {
                 // @Task if it's an unexpected pass and if no test tag was specified (smh. get that info),
@@ -47,7 +52,7 @@ impl FailedTest {
                     false => ("unsuccessfully", "‘pass’ (succeed)", "failure"),
                 };
 
-                let diagnostic = Diagnostic::error().path(shorten(&self.path).into())
+                let diagnostic = Diagnostic::error().path(shorten(&self.path).to_path_buf())
                     .message(format!("the compiler unexpectedly exited {adverb}"))
                     .note(format!(
                         "expected the compiler to {verb} but it exited with {code} indicating {noun}",
@@ -61,7 +66,7 @@ impl FailedTest {
                 stream,
             } => {
                 let diagnostic = Diagnostic::error()
-                    .path(shorten(&self.path).into())
+                    .path(shorten(&self.path).to_path_buf())
                     .message(format!(
                         "the {stream} output of the compiler differs from the expected one"
                     ));
@@ -97,7 +102,7 @@ impl FailedTest {
                 span,
             } => {
                 let diagnostic = Diagnostic::error()
-                    .path(shorten(&self.path).into())
+                    .path(shorten(&self.path).to_path_buf())
                     .message(message.clone())
                     .with(|it| match note {
                         Some(note) => it.note(note.clone()),
@@ -135,7 +140,7 @@ impl FailedTest {
                 };
 
                 let diagnostic = Diagnostic::error()
-                    .path(shorten(&self.path).into())
+                    .path(shorten(&self.path).to_path_buf())
                     .message("the test ran longer than the specified timeout")
                     .note(format!(
                         "the timeout is {timeout} {} ({issuer})",

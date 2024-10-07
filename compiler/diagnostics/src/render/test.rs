@@ -1,6 +1,6 @@
 use crate::{Diagnostic, ErrorCode, LintCode, UnboxedUntaggedDiagnostic};
 use span::{span, FileName::Anonymous, SourceMap};
-use std::sync::Arc;
+use std::{path::Path, sync::Arc};
 use utility::{
     paint::{epaint, paint_to_string, ColorChoice},
     Changeset, ChangesetExt,
@@ -730,7 +730,7 @@ warning[permanently-unassigned]: no man's land",
 fn format_path_no_highlights() {
     let diagnostic = Diagnostic::error()
         .message("there is something wrong with this file")
-        .path("path/to/file.ext".into());
+        .path(Path::new("path/to/file.ext"));
 
     assert_format(
         &diagnostic,
@@ -748,7 +748,7 @@ fn format_path_together_with_highlight() {
 
     let diagnostic = Diagnostic::error()
         .message("this file is not acceptable")
-        .path("problematic.txt".into())
+        .path(Path::new("problematic.txt"))
         .span(span(20, 25), "because you set this");
 
     assert_format(
@@ -769,7 +769,7 @@ error: this file is not acceptable
 fn format_path_together_with_subdiagnostic() {
     let diagnostic = Diagnostic::warning()
         .message("this file looks spooky")
-        .path("scary.exe".into())
+        .path(Path::new("scary.exe"))
         .help("better delete it");
 
     assert_format(

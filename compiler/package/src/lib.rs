@@ -275,7 +275,7 @@ impl BuildQueue {
                 // @Task better message
                 return Err(Diagnostic::error()
                     .message("could not load the file")
-                    .path(file_path.into())
+                    .path(file_path.to_owned())
                     .note(error.format())
                     .report(&self.reporter));
             }
@@ -295,7 +295,7 @@ impl BuildQueue {
                     Box::new(|| {
                         Diagnostic::error()
                             .message(format!("could not load the package ‘{CORE_PACKAGE_NAME}’"))
-                            .path(core_manifest_path.0.to_path_buf())
+                            .path(core_manifest_path.to_path().as_inner())
                     }),
                 )
                 .map_err(|error| {
@@ -506,8 +506,8 @@ impl BuildQueue {
         declared_package_name: Option<Spanned<Word>>,
         load_error: Box<dyn FnOnce() -> Diagnostic + '_>,
     ) -> Result<ComponentIndex, error::DependencyResolutionError> {
-        let manifest =
-            manifest_path.and_then(|path| Ok((path, self.map().read((*path.0).clone(), None)?)));
+        let manifest = manifest_path
+            .and_then(|path| Ok((path, self.map().read(path.to_path().to_owned(), None)?)));
         let (manifest_path, manifest) = match manifest {
             Ok(manifest) => manifest,
             Err(error) => {

@@ -10,16 +10,20 @@ use std::{
 pub struct Atom(u32);
 
 impl Atom {
-    pub fn new(value: &str) -> Self {
-        Interner::the().lock().unwrap().intern(value)
-    }
-
-    pub fn from_owned(value: String) -> Self {
-        Interner::the().lock().unwrap().intern_owned(value)
-    }
-
     pub fn to_str(self) -> &'static str {
         Interner::the().lock().unwrap().get(self)
+    }
+}
+
+impl From<&str> for Atom {
+    fn from(value: &str) -> Self {
+        Interner::the().lock().unwrap().intern_borrowed(value)
+    }
+}
+
+impl From<String> for Atom {
+    fn from(value: String) -> Self {
+        Interner::the().lock().unwrap().intern_owned(value)
     }
 }
 
@@ -42,18 +46,6 @@ impl fmt::Debug for Atom {
 impl fmt::Display for Atom {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.to_str())
-    }
-}
-
-impl From<&str> for Atom {
-    fn from(value: &str) -> Self {
-        Self::new(value)
-    }
-}
-
-impl From<String> for Atom {
-    fn from(value: String) -> Self {
-        Self::from_owned(value)
     }
 }
 
@@ -87,7 +79,7 @@ impl Interner {
         }
     }
 
-    fn intern(&mut self, value: &str) -> Atom {
+    fn intern_borrowed(&mut self, value: &str) -> Atom {
         if let Some(&atom) = self.atoms.get(value) {
             return atom;
         }

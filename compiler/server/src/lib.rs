@@ -305,7 +305,7 @@ fn build_unit(unit: BuildUnit, session: &mut Session<'_>) -> Result<hir::Declara
                     // @Bug this is duplication with main.rs!!
                     Diagnostic::error()
                         .message(message)
-                        .path(path.bare.into())
+                        .path(path.bare.to_path_buf())
                         .unlabeled_span(path)
                         .note(error.format())
                         .report(session.reporter())
