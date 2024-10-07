@@ -7,10 +7,7 @@ pub type Attribute = Spanned<BareAttribute>;
 
 #[derive(Clone, PartialEq, Eq)]
 pub enum BareAttribute {
-    Regular {
-        binder: Identifier,
-        arguments: SmallVec<AttributeArgument, 1>,
-    },
+    Regular { binder: Identifier, arguments: SmallVec<AttributeArgument, 1> },
     Documentation,
 }
 

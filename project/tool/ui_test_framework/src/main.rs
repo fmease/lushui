@@ -86,9 +86,8 @@ fn try_main() -> Result<(), ()> {
     drop(stdout);
     drop(stderr);
 
-    let test_folder_entries = Arc::new(Mutex::new(
-        walkdir::WalkDir::new(path::test_folder()).into_iter(),
-    ));
+    let test_folder_entries =
+        Arc::new(Mutex::new(walkdir::WalkDir::new(path::test_folder()).into_iter()));
     let number_test_threads = arguments.number_test_threads.into();
     let diff_view = arguments.diff_view;
     let arguments = arguments.into();
@@ -140,10 +139,8 @@ fn try_main() -> Result<(), ()> {
         })
         .collect();
 
-    let thread_local_data: Vec<_> = handles
-        .into_iter()
-        .map(|handle| handle.join().unwrap())
-        .collect();
+    let thread_local_data: Vec<_> =
+        handles.into_iter().map(|handle| handle.join().unwrap()).collect();
 
     let duration = suite_time.elapsed();
     let mut statistics = TestSuiteStatistics::default();
@@ -177,10 +174,8 @@ fn try_main() -> Result<(), ()> {
             .map(|test| test.path)
             .collect();
 
-        let failed_tests: BTreeSet<_> = failed_tests
-            .into_iter()
-            .map(|failure| failure.path)
-            .collect();
+        let failed_tests: BTreeSet<_> =
+            failed_tests.into_iter().map(|failure| failure.path).collect();
 
         if !failed_tests.is_empty() {
             writeln!(stdout, "{}", section_header("FAILED TESTS")).unwrap();
@@ -202,11 +197,7 @@ fn try_main() -> Result<(), ()> {
         }
     }
 
-    let summary = TestSuiteSummary {
-        statistics,
-        gilding: arguments.gilding,
-        duration,
-    };
+    let summary = TestSuiteSummary { statistics, gilding: arguments.gilding, duration };
 
     if summary.statistics.total_amount() == 0 {
         // No additional separator necessary if no tests were run.
@@ -234,10 +225,7 @@ fn try_main() -> Result<(), ()> {
 fn confirm_gilding(painter: &mut Painter) -> io::Result<bool> {
     title("prompt", AnsiColor::Yellow, painter)?;
 
-    write!(
-        painter,
-        "would you really like to gild all valid failing tests? ["
-    )?;
+    write!(painter, "would you really like to gild all valid failing tests? [")?;
     painter.set(AnsiColor::Green)?;
     write!(painter, "y")?;
     painter.unset()?;
@@ -309,14 +297,11 @@ fn handle_test_folder_entry(
     // disallow symbolic links for now
     if entry.file_type().is_symlink() {
         print_file_status(path, Status::Invalid, None).unwrap();
-        failed_tests.push(FailedTest::new(
-            path.to_owned(),
-            Failure::InvalidTest {
-                message: "symbolic links are not allowed".into(),
-                note: None,
-                span: None,
-            },
-        ));
+        failed_tests.push(FailedTest::new(path.to_owned(), Failure::InvalidTest {
+            message: "symbolic links are not allowed".into(),
+            note: None,
+            span: None,
+        }));
         statistics.invalid += 1;
         return;
     }
@@ -338,14 +323,11 @@ fn handle_test_folder_entry(
             && !path.with_extension("recnot").exists()
         {
             print_file_status(path, Status::Invalid, None).unwrap();
-            failed_tests.push(FailedTest::new(
-                path.to_owned(),
-                Failure::InvalidTest {
-                    message: "the golden file does not have a corresponding test file".into(),
-                    note: None,
-                    span: None,
-                },
-            ));
+            failed_tests.push(FailedTest::new(path.to_owned(), Failure::InvalidTest {
+                message: "the golden file does not have a corresponding test file".into(),
+                note: None,
+                span: None,
+            }));
             statistics.invalid += 1;
         }
 
@@ -354,27 +336,20 @@ fn handle_test_folder_entry(
 
     let Ok(type_) = classify_test(path) else {
         print_file_status(path, Status::Invalid, None).unwrap();
-        failed_tests.push(FailedTest::new(
-            path.to_owned(),
-            Failure::InvalidTest {
-                message: "the file extension is not supported".into(),
-                note: Some(
-                    "the file extension has to be one of \
+        failed_tests.push(FailedTest::new(path.to_owned(), Failure::InvalidTest {
+            message: "the file extension is not supported".into(),
+            note: Some(
+                "the file extension has to be one of \
                      ‘lushui’, ‘recnot’, ‘stderr’ or ‘stdout’"
-                        .into(),
-                ),
-                span: None,
-            },
-        ));
+                    .into(),
+            ),
+            span: None,
+        }));
         statistics.invalid += 1;
         return;
     };
 
-    if !arguments.paths.is_empty()
-        && !arguments
-            .paths
-            .iter()
-            .any(|filter| path.starts_with(filter))
+    if !arguments.paths.is_empty() && !arguments.paths.iter().any(|filter| path.starts_with(filter))
     {
         statistics.skipped += 1;
         return;
@@ -385,10 +360,8 @@ fn handle_test_folder_entry(
     let configuration = match Configuration::parse(&map[file], type_, map) {
         Ok(configuration) => configuration,
         Err(error) => {
-            failed_tests.push(FailedTest::new(
-                path.to_owned(),
-                Failure::InvalidConfiguration(error),
-            ));
+            failed_tests
+                .push(FailedTest::new(path.to_owned(), Failure::InvalidConfiguration(error)));
             print_file_status(path, Status::Invalid, None).unwrap();
             statistics.invalid += 1;
             return;
@@ -416,13 +389,8 @@ fn handle_test_folder_entry(
     }
 
     let time = Instant::now();
-    let output = compile(
-        path,
-        &configuration,
-        type_,
-        arguments.timeout,
-        arguments.compiler_build_mode,
-    );
+    let output =
+        compile(path, &configuration, type_, arguments.timeout, arguments.compiler_build_mode);
     let duration = time.elapsed();
 
     let mut failed = false;
@@ -430,16 +398,13 @@ fn handle_test_folder_entry(
     const TIMEOUT_EXIT_STATUS: i32 = 124;
 
     if let Some(TIMEOUT_EXIT_STATUS) = output.status.code() {
-        failed_tests.push(FailedTest::new(
-            path.to_owned(),
-            Failure::Timeout {
-                global: arguments.timeout,
-                local: match configuration.timeout {
-                    Timeout::Inherited => None,
-                    Timeout::Overwritten(duration) => Some(duration.unwrap()),
-                },
+        failed_tests.push(FailedTest::new(path.to_owned(), Failure::Timeout {
+            global: arguments.timeout,
+            local: match configuration.timeout {
+                Timeout::Inherited => None,
+                Timeout::Overwritten(duration) => Some(duration.unwrap()),
             },
-        ));
+        }));
         failed = true;
     } else {
         match (configuration.tag, output.status.success()) {
@@ -575,11 +540,7 @@ fn classify_test(path: &Path) -> Result<TestType, ()> {
     if extension == "lushui" {
         Ok(TestType::SourceFile)
     } else if extension == "recnot" {
-        if path
-            .strip_prefix(path::test_folder())
-            .unwrap()
-            .starts_with(RECNOT_TEST_SUITE_NAME)
-        {
+        if path.strip_prefix(path::test_folder()).unwrap().starts_with(RECNOT_TEST_SUITE_NAME) {
             Ok(TestType::RecnotSourceFile)
         } else {
             Ok(TestType::Package)
@@ -597,14 +558,11 @@ fn validate_auxiliary_file(
     // @Beacon @Task make the list of users compulsively non-empty in
     //               crate::configuration
     if users.is_empty() {
-        failures.push(FailedTest::new(
-            path.to_owned(),
-            Failure::InvalidTest {
-                message: "the auxiliary file does not declare its users".into(),
-                note: None,
-                span: None,
-            },
-        ));
+        failures.push(FailedTest::new(path.to_owned(), Failure::InvalidTest {
+            message: "the auxiliary file does not declare its users".into(),
+            note: None,
+            span: None,
+        }));
         return Err(());
     }
     // @Note validation not (yet) that sophisticated
@@ -626,24 +584,18 @@ fn validate_auxiliary_file(
     if !invalid_users.is_empty() {
         let user_count = invalid_users.len();
 
-        failures.push(FailedTest::new(
-            path.to_owned(),
-            Failure::InvalidTest {
-                message: format!(
-                    "the alleged {} {} of the auxiliary file {} not exist",
-                    pluralize!(user_count, "user"),
-                    invalid_users
-                        .into_iter()
-                        .map(|user| format!("‘{user}’"))
-                        .join_with(", "),
-                    pluralize!(user_count, "does", "do"),
-                )
-                .into(),
-                note: None,
-                // @Task actually point to the undefined user
-                span: None,
-            },
-        ));
+        failures.push(FailedTest::new(path.to_owned(), Failure::InvalidTest {
+            message: format!(
+                "the alleged {} {} of the auxiliary file {} not exist",
+                pluralize!(user_count, "user"),
+                invalid_users.into_iter().map(|user| format!("‘{user}’")).join_with(", "),
+                pluralize!(user_count, "does", "do"),
+            )
+            .into(),
+            note: None,
+            // @Task actually point to the undefined user
+            span: None,
+        }));
 
         return Err(());
     }
@@ -751,11 +703,7 @@ fn check_against_golden_file(
 
     if actual != golden {
         if gilding == Gilding::No {
-            Err(Failure::GoldenFileMismatch {
-                golden,
-                actual,
-                stream,
-            })
+            Err(Failure::GoldenFileMismatch { golden, actual, stream })
         } else {
             let actual = stream.preprocess_before_generating(actual);
             fs::write(golden_file_path, actual).unwrap();
@@ -784,10 +732,7 @@ impl Stream {
             //       * simultaneous replacement
             Self::Stderr => stream
                 .replace(Self::TEST_FOLDER_PATH_VARIABLE, path::test_folder())
-                .replace(
-                    Self::DISTRIBUTED_LIBRARIES_PATH_VARIABLE,
-                    path::distributed_libraries(),
-                ),
+                .replace(Self::DISTRIBUTED_LIBRARIES_PATH_VARIABLE, path::distributed_libraries()),
         }
     }
 
@@ -799,10 +744,7 @@ impl Stream {
             //       * simultaneous replacement
             Self::Stderr => stream
                 .replace(path::test_folder(), Self::TEST_FOLDER_PATH_VARIABLE)
-                .replace(
-                    path::distributed_libraries(),
-                    Self::DISTRIBUTED_LIBRARIES_PATH_VARIABLE,
-                ),
+                .replace(path::distributed_libraries(), Self::DISTRIBUTED_LIBRARIES_PATH_VARIABLE),
         }
     }
 }

@@ -72,9 +72,7 @@ impl Interner {
 
     fn with(values: Vec<&'static str>) -> Self {
         Self {
-            atoms: zip(&values, 0..)
-                .map(|(&string, atom)| (string, Atom(atom)))
-                .collect(),
+            atoms: zip(&values, 0..).map(|(&string, atom)| (string, Atom(atom))).collect(),
             strings: IndexMap::bare(values),
         }
     }

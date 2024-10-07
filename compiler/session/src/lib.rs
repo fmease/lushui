@@ -1,10 +1,10 @@
 #![feature(decl_macro)]
 
 use component::{Component, DeclarationIndexExt};
-use diagnostics::{error::Result, Diagnostic, Reporter};
+use diagnostics::{Diagnostic, Reporter, error::Result};
 use hir::{
-    special::{self, Bindings},
     DeclarationIndex, LocalDeclarationIndex,
+    special::{self, Bindings},
 };
 use lexer::word::Word;
 use package::{ManifestPath, Package};
@@ -13,7 +13,7 @@ use std::{
     ops::{Index, IndexMut},
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
-use utility::{default, ComponentIndex, HashMap};
+use utility::{ComponentIndex, HashMap, default};
 
 pub mod component;
 pub mod interfaceable;
@@ -49,8 +49,7 @@ impl<'ctx> Session<'ctx> {
     }
 
     pub fn in_root_package(&self, component: ComponentIndex) -> bool {
-        self.package_of(component)
-            .map_or(false, |package| self.root_package() == Some(package))
+        self.package_of(component).map_or(false, |package| self.root_package() == Some(package))
     }
 
     pub fn define(&mut self, entity: hir::Entity) -> LocalDeclarationIndex {
@@ -58,10 +57,7 @@ impl<'ctx> Session<'ctx> {
     }
 
     pub fn parent_of(&self, index: DeclarationIndex) -> Option<DeclarationIndex> {
-        Some(DeclarationIndex::new(
-            index.component(),
-            self[index].parent?,
-        ))
+        Some(DeclarationIndex::new(index.component(), self[index].parent?))
     }
 
     // @Task make this an Index::index fn again
@@ -233,20 +229,13 @@ impl Context {
         mut unit: unit::BuildUnit,
         handler: impl FnOnce(unit::BuildUnit, &mut Session<'_>) -> T,
     ) -> T {
-        let component = Component::new(
-            unit.name,
-            unit.index,
-            None,
-            std::mem::take(&mut unit.dependencies),
-        );
+        let component =
+            Component::new(unit.name, unit.index, None, std::mem::take(&mut unit.dependencies));
         let mut session = Session::new(component, self);
 
         let result = handler(unit, &mut session);
 
-        session
-            .context
-            .components
-            .insert(session.component.index(), session.component);
+        session.context.components.insert(session.component.index(), session.component);
 
         result
     }

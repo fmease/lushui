@@ -1,4 +1,4 @@
-use diagnostics::{error::Result, Diagnostic, ErrorCode, Reporter};
+use diagnostics::{Diagnostic, ErrorCode, Reporter, error::Result};
 use lexer::token::{BareToken, Token};
 use span::{SourceFileIndex, SourceMap, Span};
 use std::{fmt, mem};
@@ -210,15 +210,12 @@ impl Annotation {
             Self::LabelWhileParsing { span, name } => {
                 it.label(span, format!("while parsing this {name} starting here"))
             }
-            Self::LabelApostrophe { span } => it.label(
-                span,
-                "this apostrophe marks the start of an implicit argument",
-            ),
-            Self::SuggestWideArrow { span } => it.suggest(
-                span,
-                "consider replacing the thin arrow with a wide one",
-                "=>",
-            ),
+            Self::LabelApostrophe { span } => {
+                it.label(span, "this apostrophe marks the start of an implicit argument")
+            }
+            Self::SuggestWideArrow { span } => {
+                it.suggest(span, "consider replacing the thin arrow with a wide one", "=>")
+            }
             Self::SuggestThinArrowForPiType { span } => it.suggest(
                 span,
                 "consider replacing the wide arrow with a \
@@ -263,11 +260,7 @@ mod error {
                 "found {token} but expected {}",
                 expectations.iter().list(Conjunction::Or),
             ))
-            .with(|it| {
-                annotations
-                    .into_iter()
-                    .fold(it, |it, annotation| annotation.annotate(it))
-            })
+            .with(|it| annotations.into_iter().fold(it, |it, annotation| annotation.annotate(it)))
             .span(token, "unexpected token")
     }
 }

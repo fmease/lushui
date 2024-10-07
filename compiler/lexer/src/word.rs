@@ -1,6 +1,6 @@
-use crate::{lex_string, token::BareToken, Outcome};
+use crate::{Outcome, lex_string, token::BareToken};
 use std::fmt;
-use utility::{obtain, Atom};
+use utility::{Atom, obtain};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Word(Atom);

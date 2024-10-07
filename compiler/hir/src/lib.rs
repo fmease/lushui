@@ -9,12 +9,12 @@ use std::{
     fmt,
     sync::{Arc, Mutex},
 };
-use utility::{obtain, Int, Nat};
+use utility::{Int, Nat, obtain};
 
 pub use ast::ParameterKind;
 pub use entity::{Entity, EntityKind};
 pub use identifier::{DeBruijnIndex, DeclarationIndex, Identifier, Index, LocalDeclarationIndex};
-pub use lo_ast::{attribute, Attribute, AttributeName, Attributes, BareAttribute, Item};
+pub use lo_ast::{Attribute, AttributeName, Attributes, BareAttribute, Item, attribute};
 
 mod entity;
 mod identifier;
@@ -411,11 +411,7 @@ pub struct Namespace {
 
 impl fmt::Debug for Namespace {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let binders = self
-            .binders
-            .iter()
-            .map(|binder| format!("{binder:?}"))
-            .join_with(' ');
+        let binders = self.binders.iter().map(|binder| format!("{binder:?}")).join_with(' ');
 
         write!(f, "{binders}")
     }

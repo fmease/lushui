@@ -15,32 +15,33 @@
 
 use ast::ParameterKind::Explicit;
 use diagnostics::{
+    Diagnostic, ErrorCode, LintCode,
     error::{Handler, Health, Outcome, PossiblyErroneous, Result, Stain},
     reporter::ErasedReportedError,
-    Diagnostic, ErrorCode, LintCode,
 };
 use hir::{
-    special::{self, NumericType, SequentialType, Type},
     AttributeName, Attributes, DeBruijnIndex, DeclarationIndex, Entity, EntityKind, Exposure,
     ExposureReach, Identifier, Index, LocalDeclarationIndex, PartiallyResolvedPath,
+    special::{self, NumericType, SequentialType, Type},
 };
 use hir_format::{Display, SessionExt};
 use lexer::word::Word;
 use lo_ast::DeBruijnLevel;
 use session::{
-    component::{Component, DeclarationIndexExt, IdentifierExt, LocalDeclarationIndexExt},
     Session,
+    component::{Component, DeclarationIndexExt, IdentifierExt, LocalDeclarationIndexExt},
 };
 use span::{Span, Spanned, Spanning};
 use std::{cmp::Ordering, fmt, io, mem, sync::Mutex};
 use unicode_width::UnicodeWidthStr;
 use utility::{
+    Atom, ChangesetExt, Conjunction, HashMap, ListingExt,
+    OwnedOrBorrowed::*,
+    PROGRAM_ENTRY, QuoteExt, SmallVec,
     cycle::find_cycles,
     default, displayed, obtain,
-    paint::{paint_to_string, ColorChoice, Effects, Painter},
-    pluralize, smallvec, Atom, ChangesetExt, Conjunction, HashMap, ListingExt,
-    OwnedOrBorrowed::*,
-    QuoteExt, SmallVec, PROGRAM_ENTRY,
+    paint::{ColorChoice, Effects, Painter, paint_to_string},
+    pluralize, smallvec,
 };
 
 /// Resolve the names of a declaration.
@@ -76,9 +77,7 @@ pub fn resolve_declarations(
     resolver.resolve_use_bindings();
     resolver.resolve_exposure_reaches();
 
-    let declaration = resolver
-        .finish_resolve_declaration(root_module, None, default())
-        .unwrap();
+    let declaration = resolver.finish_resolve_declaration(root_module, None, default()).unwrap();
 
     Outcome::new(declaration, resolver.health).into()
 }
@@ -120,9 +119,7 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
     }
 
     fn as_ref(&self) -> Resolver<'_> {
-        Resolver {
-            session: self.session,
-        }
+        Resolver { session: self.session }
     }
 
     /// Partially resolve a declaration merely registering declarations.
@@ -184,9 +181,7 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
                         binder,
                         match &intrinsic.bare.name {
                             Some(name) => special::DefinitionStyle::Explicit { name },
-                            None => special::DefinitionStyle::Implicit {
-                                namespace: Some(module),
-                            },
+                            None => special::DefinitionStyle::Implicit { namespace: Some(module) },
                         },
                         intrinsic.span,
                     )
@@ -270,11 +265,7 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
             Constructor(constructor) => {
                 // there is always a root module
                 let module = module.unwrap();
-                let Context::DataDeclaration {
-                    index: namespace,
-                    transparency,
-                    known,
-                } = context
+                let Context::DataDeclaration { index: namespace, transparency, known } = context
                 else {
                     unreachable!()
                 };
@@ -300,9 +291,7 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
                     && let Err(error) = self.session.define_special(
                         special::Kind::Known,
                         binder,
-                        special::DefinitionStyle::Implicit {
-                            namespace: Some(namespace),
-                        },
+                        special::DefinitionStyle::Implicit { namespace: Some(namespace) },
                         known,
                     )
                 {
@@ -410,11 +399,7 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
 
         if let Some(namespace) = namespace {
             let index = index.global(self.session);
-            self.session[namespace]
-                .namespace_mut()
-                .unwrap()
-                .binders
-                .push(index);
+            self.session[namespace].namespace_mut().unwrap().binders.push(index);
         }
 
         Ok(index)
@@ -457,12 +442,7 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
                 Some(hir::Declaration::new(
                     declaration.attributes,
                     declaration.span,
-                    hir::Function {
-                        binder,
-                        type_: type_annotation,
-                        body: expression,
-                    }
-                    .into(),
+                    hir::Function { binder, type_: type_annotation, body: expression }.into(),
                 ))
             }
             Data(type_) => {
@@ -500,20 +480,12 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
                 Some(hir::Declaration::new(
                     declaration.attributes,
                     declaration.span,
-                    hir::Data {
-                        binder,
-                        type_: type_annotation,
-                        constructors,
-                    }
-                    .into(),
+                    hir::Data { binder, type_: type_annotation, constructors }.into(),
                 ))
             }
             Constructor(constructor) => {
                 let module = module.unwrap();
-                let Context::DataDeclaration {
-                    index: namespace, ..
-                } = context
-                else {
+                let Context::DataDeclaration { index: namespace, .. } = context else {
                     unreachable!()
                 };
 
@@ -529,11 +501,7 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
                 Some(hir::Declaration::new(
                     declaration.attributes,
                     declaration.span,
-                    hir::Constructor {
-                        binder,
-                        type_: type_annotation,
-                    }
-                    .into(),
+                    hir::Constructor { binder, type_: type_annotation }.into(),
                 ))
             }
             Module(submodule) => {
@@ -608,10 +576,7 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
                         let error = self.as_ref().report_resolution_error(error);
                         self.health.taint(error);
                     }
-                    Err(UnresolvedUseBinding {
-                        binder,
-                        extra: _extra,
-                    }) => {
+                    Err(UnresolvedUseBinding { binder, extra: _extra }) => {
                         partially_resolved_use_bindings.insert(
                             index,
                             PartiallyResolvedUseBinding {
@@ -660,24 +625,18 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
                 // unwrap: root always has Exposure::Unrestricted, it won't reach this branch
                 let definition_site_namespace = entity.parent.unwrap().global(self.session);
 
-                if let Err(error) = self
-                    .as_ref()
-                    .resolve_restricted_exposure(exposure, definition_site_namespace)
+                if let Err(error) =
+                    self.as_ref().resolve_restricted_exposure(exposure, definition_site_namespace)
                 {
                     self.health.taint(error);
                     continue;
                 };
             }
 
-            if let EntityKind::Use {
-                target: target_index,
-            } = entity.kind
-            {
+            if let EntityKind::Use { target: target_index } = entity.kind {
                 let target = &self.session[target_index];
 
-                if entity
-                    .exposure
-                    .compare(&target.exposure, self.session.component())
+                if entity.exposure.compare(&target.exposure, self.session.component())
                     == Some(Ordering::Greater)
                 {
                     let error = Diagnostic::error()
@@ -734,9 +693,8 @@ impl<'a> Resolver<'a> {
                 // @Task don't use def-site span use use-site span
                 // @Bug the span is not really a "user" (in the typer sense) but just a reference
                 // @Task distinguish
-                let type_ = self
-                    .session
-                    .require_special(special::Type::Type, Some(expression.span))?;
+                let type_ =
+                    self.session.require_special(special::Type::Type, Some(expression.span))?;
 
                 hir::Expression::new(
                     expression.attributes,
@@ -757,7 +715,7 @@ impl<'a> Resolver<'a> {
                 return Err(Diagnostic::error()
                     .message("wildcards are not supported yet")
                     .unlabeled_span(expression)
-                    .report(self.session.reporter()))
+                    .report(self.session.reporter()));
             }
             Projection(projection) => hir::Expression::new(
                 expression.attributes,
@@ -819,18 +777,14 @@ impl<'a> Resolver<'a> {
                 hir::Binding(self.resolve_path_inside_function(&path, scope)?).into(),
             ),
             Lambda(lambda) => {
-                let domain = lambda
-                    .domain
-                    .map(|type_| self.resolve_expression(type_, scope));
+                let domain = lambda.domain.map(|type_| self.resolve_expression(type_, scope));
                 let scope = match lambda.binder {
                     Some(binder) => Owned(scope.extend_with_parameter(binder)),
                     None => Borrowed(scope),
                 };
                 let scope = scope.as_ref();
 
-                let codomain = lambda
-                    .codomain
-                    .map(|type_| self.resolve_expression(type_, scope));
+                let codomain = lambda.codomain.map(|type_| self.resolve_expression(type_, scope));
 
                 let body = self.resolve_expression(lambda.body, scope);
 
@@ -886,14 +840,10 @@ impl<'a> Resolver<'a> {
                 Result::from(*health)?;
 
                 self.resolve_sequence_literal(
-                    hir::Item::new(
-                        expression.attributes,
-                        expression.span,
-                        ast::SequenceLiteral {
-                            path: sequence.path,
-                            elements: Spanned::new(sequence.elements.span, elements),
-                        },
-                    ),
+                    hir::Item::new(expression.attributes, expression.span, ast::SequenceLiteral {
+                        path: sequence.path,
+                        elements: Spanned::new(sequence.elements.span, elements),
+                    }),
                     scope,
                 )?
             }
@@ -958,7 +908,7 @@ impl<'a> Resolver<'a> {
                 return Err(Diagnostic::error()
                     .message("wildcards are not supported yet")
                     .unlabeled_span(pattern)
-                    .report(self.session.reporter()))
+                    .report(self.session.reporter()));
             }
             NumberLiteral(number) => self.resolve_number_literal(
                 hir::Item::new(pattern.attributes, pattern.span, *number),
@@ -981,9 +931,7 @@ impl<'a> Resolver<'a> {
                 hir::Pattern::new(
                     pattern.attributes,
                     pattern.span,
-                    binder
-                        .map(|binder| Identifier::new(Index::Parameter, binder))
-                        .into(),
+                    binder.map(|binder| Identifier::new(Index::Parameter, binder)).into(),
                 )
             }
             Application(application) => {
@@ -999,12 +947,7 @@ impl<'a> Resolver<'a> {
                 hir::Pattern::new(
                     pattern.attributes,
                     pattern.span,
-                    hir::Application {
-                        callee,
-                        kind: application.kind,
-                        argument,
-                    }
-                    .into(),
+                    hir::Application { callee, kind: application.kind, argument }.into(),
                 )
             }
             SequenceLiteral(sequence) => {
@@ -1018,14 +961,10 @@ impl<'a> Resolver<'a> {
                 }
 
                 self.resolve_sequence_literal(
-                    hir::Item::new(
-                        pattern.attributes,
-                        pattern.span,
-                        ast::SequenceLiteral {
-                            path: sequence.path,
-                            elements: Spanned::new(sequence.elements.span, elements),
-                        },
-                    ),
+                    hir::Item::new(pattern.attributes, pattern.span, ast::SequenceLiteral {
+                        path: sequence.path,
+                        elements: Spanned::new(sequence.elements.span, elements),
+                    }),
                     scope,
                 )?
             }
@@ -1074,14 +1013,11 @@ impl<'a> Resolver<'a> {
         let Ok(resolved_number) = hir::Number::parse(literal.bare.to_str(), type_) else {
             return Err(Diagnostic::error()
                 .code(ErrorCode::E007)
-                .message(format!(
-                    "number literal ‘{literal}’ does not fit type ‘{type_}’",
-                ))
+                .message(format!("number literal ‘{literal}’ does not fit type ‘{type_}’",))
                 .unlabeled_span(literal)
-                .note(format!(
-                    "values of this type must fit integer interval {}",
-                    type_.interval(),
-                ))
+                .note(
+                    format!("values of this type must fit integer interval {}", type_.interval(),),
+                )
                 .report(self.session.reporter()));
         };
 
@@ -1186,12 +1122,9 @@ impl<'a> Resolver<'a> {
                 .report(self.session.reporter()));
         };
 
-        let empty = self
-            .session
-            .require_special(special::Constructor::ListEmpty, Some(span))?;
-        let prepend = self
-            .session
-            .require_special(special::Constructor::ListPrepend, Some(span))?;
+        let empty = self.session.require_special(special::Constructor::ListEmpty, Some(span))?;
+        let prepend =
+            self.session.require_special(special::Constructor::ListPrepend, Some(span))?;
 
         // @Task check if all those attributes & spans make sense
         let mut result = hir::Item::common(
@@ -1223,12 +1156,8 @@ impl<'a> Resolver<'a> {
                 hir::Application {
                     callee: hir::Item::common(
                         element.span,
-                        hir::Application {
-                            callee: prepend,
-                            kind: Explicit,
-                            argument: element,
-                        }
-                        .into(),
+                        hir::Application { callee: prepend, kind: Explicit, argument: element }
+                            .into(),
                     ),
                     kind: Explicit,
                     argument: result,
@@ -1262,12 +1191,9 @@ impl<'a> Resolver<'a> {
                 .report(self.session.reporter()));
         };
 
-        let empty = self
-            .session
-            .require_special(special::Constructor::VectorEmpty, Some(span))?;
-        let prepend = self
-            .session
-            .require_special(special::Constructor::VectorPrepend, Some(span))?;
+        let empty = self.session.require_special(special::Constructor::VectorEmpty, Some(span))?;
+        let prepend =
+            self.session.require_special(special::Constructor::VectorPrepend, Some(span))?;
 
         // @Task check if all those attributes & spans make sense
         let mut result = hir::Item::common(
@@ -1312,12 +1238,8 @@ impl<'a> Resolver<'a> {
                 hir::Application {
                     callee: hir::Item::common(
                         element.span,
-                        hir::Application {
-                            callee: prepend,
-                            kind: Explicit,
-                            argument: element,
-                        }
-                        .into(),
+                        hir::Application { callee: prepend, kind: Explicit, argument: element }
+                            .into(),
                     ),
                     kind: Explicit,
                     argument: result,
@@ -1346,15 +1268,12 @@ impl<'a> Resolver<'a> {
                 .report(self.session.reporter()));
         }
 
-        let empty = self
-            .session
-            .require_special(special::Constructor::TupleEmpty, Some(elements.span))?;
+        let empty =
+            self.session.require_special(special::Constructor::TupleEmpty, Some(elements.span))?;
         let prepend = self
             .session
             .require_special(special::Constructor::TuplePrepend, Some(elements.span))?;
-        let type_ = self
-            .session
-            .require_special(special::Type::Type, Some(elements.span))?;
+        let type_ = self.session.require_special(special::Type::Type, Some(elements.span))?;
 
         // @Task check if all those attributes & spans make sense
         let mut result = hir::Item::common(elements.span, hir::Binding(empty).into());
@@ -1390,12 +1309,8 @@ impl<'a> Resolver<'a> {
                 hir::Application {
                     callee: hir::Item::common(
                         element.span,
-                        hir::Application {
-                            callee: prepend,
-                            kind: Explicit,
-                            argument: element,
-                        }
-                        .into(),
+                        hir::Application { callee: prepend, kind: Explicit, argument: element }
+                            .into(),
                     ),
                     kind: Explicit,
                     argument: result,
@@ -1607,14 +1522,11 @@ impl<'a> Resolver<'a> {
         }
 
         if !context.allow_deprecated
-            && let Some(deprecated) = self.session[index]
-                .attributes
-                .get::<{ AttributeName::Deprecated }>()
+            && let Some(deprecated) =
+                self.session[index].attributes.get::<{ AttributeName::Deprecated }>()
         {
-            let mut message = format!(
-                "use of deprecated binding ‘{}’",
-                self.session.index_to_path(index),
-            );
+            let mut message =
+                format!("use of deprecated binding ‘{}’", self.session.index_to_path(index),);
 
             if let Some(reason) = &deprecated.bare.reason {
                 message += ": ";
@@ -1656,10 +1568,7 @@ impl<'a> Resolver<'a> {
             ) {
                 return Err(Diagnostic::error()
                     .code(ErrorCode::E029)
-                    .message(format!(
-                        "binding ‘{}’ is private",
-                        self.session.index_to_path(index)
-                    ))
+                    .message(format!("binding ‘{}’ is private", self.session.index_to_path(index)))
                     .unlabeled_span(identifier)
                     .report(self.session.reporter())
                     .into());
@@ -1681,10 +1590,7 @@ impl<'a> Resolver<'a> {
 
         match self.session[index].kind {
             Use { target } => Ok(target),
-            UnresolvedUse => Err(ResolutionError::UnresolvedUseBinding {
-                binder: index,
-                extra,
-            }),
+            UnresolvedUse => Err(ResolutionError::UnresolvedUseBinding { binder: index, extra }),
             _ => Ok(index),
         }
     }
@@ -1713,10 +1619,8 @@ impl<'a> Resolver<'a> {
                     )
                     .map_err(|error| self.report_resolution_error(error))?;
 
-                let reach_is_ancestor = self
-                    .session
-                    .component()
-                    .some_ancestor_equals(definition_site_namespace, reach);
+                let reach_is_ancestor =
+                    self.session.component().some_ancestor_equals(definition_site_namespace, reach);
 
                 if !reach_is_ancestor {
                     return Err(Diagnostic::error()
@@ -1900,10 +1804,8 @@ impl<'a> Resolver<'a> {
                 }
             }
             PatternBinders { parent, binders } => {
-                if let Some(binder) = binders
-                    .iter()
-                    .rev()
-                    .find(|binder| is_similar(identifier, binder.to_str()))
+                if let Some(binder) =
+                    binders.iter().rev().find(|binder| is_similar(identifier, binder.to_str()))
                 {
                     Some(binder.bare())
                 } else {
@@ -1927,11 +1829,7 @@ impl<'a> Resolver<'a> {
     ) -> ErasedReportedError {
         match error {
             ResolutionError::Erased(error) => error,
-            ResolutionError::UnresolvedBinding {
-                identifier,
-                namespace,
-                usage,
-            } => {
+            ResolutionError::UnresolvedBinding { identifier, namespace, usage } => {
                 let mut message = format!("the binding ‘{identifier}’ is not defined in ");
 
                 match usage {
@@ -1961,10 +1859,7 @@ impl<'a> Resolver<'a> {
                         match lookalike_finder(identifier, namespace) {
                             Some(lookalike) => error.help(format!(
                                 "a binding with a similar name exists in scope: {}",
-                                Lookalike {
-                                    actual: identifier,
-                                    lookalike,
-                                },
+                                Lookalike { actual: identifier, lookalike },
                             )),
                             None => error,
                         }
@@ -2000,10 +1895,7 @@ impl<'a> Resolver<'a> {
             binder.to_str(),
             |entity| {
                 entity.namespace().map_or(false, |namespace| {
-                    namespace
-                        .binders
-                        .iter()
-                        .any(|&index| self.session[index].source == subbinder)
+                    namespace.binders.iter().any(|&index| self.session[index].source == subbinder)
                 })
             },
             parent,
@@ -2021,7 +1913,8 @@ impl<'a> Resolver<'a> {
                 binder.span().end().merge(&subbinder),
                 "denotes a reference to a binding inside of a namespace",
             )
-            .with(|it| match similarly_named_namespace {
+            .with(|it| {
+                match similarly_named_namespace {
                 Some(lookalike) => it.help(format!(
                 "a namespace with a similar name exists in scope containing the binding:\n    {}",
                 Lookalike {
@@ -2030,6 +1923,7 @@ impl<'a> Resolver<'a> {
                 },
             )),
                 None => it,
+            }
             })
             .with(|it| {
                 if show_very_general_help {
@@ -2115,31 +2009,19 @@ impl PathResolutionContext {
     }
 
     fn origin_namespace(self, origin_namespace: DeclarationIndex) -> Self {
-        Self {
-            origin_namespace,
-            ..self
-        }
+        Self { origin_namespace, ..self }
     }
 
     fn ignore_exposure(self) -> Self {
-        Self {
-            validate_exposure: false,
-            ..self
-        }
+        Self { validate_exposure: false, ..self }
     }
 
     fn allow_deprecated(self) -> Self {
-        Self {
-            allow_deprecated: true,
-            ..self
-        }
+        Self { allow_deprecated: true, ..self }
     }
 
     fn qualified_identifier(self) -> Self {
-        Self {
-            usage: IdentifierUsage::Qualified,
-            ..self
-        }
+        Self { usage: IdentifierUsage::Qualified, ..self }
     }
 }
 
@@ -2247,29 +2129,17 @@ impl ExposureCompare for ExposureReach {
 
 enum FunctionScope<'a> {
     Module(LocalDeclarationIndex),
-    FunctionParameter {
-        parent: &'a Self,
-        binder: ast::Identifier,
-    },
-    PatternBinders {
-        parent: &'a Self,
-        binders: Vec<ast::Identifier>,
-    },
+    FunctionParameter { parent: &'a Self, binder: ast::Identifier },
+    PatternBinders { parent: &'a Self, binders: Vec<ast::Identifier> },
 }
 
 impl<'a> FunctionScope<'a> {
     fn extend_with_parameter(&'a self, binder: ast::Identifier) -> Self {
-        Self::FunctionParameter {
-            parent: self,
-            binder,
-        }
+        Self::FunctionParameter { parent: self, binder }
     }
 
     fn extend_with_pattern_binders(&'a self, binders: Vec<ast::Identifier>) -> Self {
-        Self::PatternBinders {
-            parent: self,
-            binders,
-        }
+        Self::PatternBinders { parent: self, binders }
     }
 
     fn module(&self) -> LocalDeclarationIndex {
@@ -2529,9 +2399,7 @@ mod error {
     ) -> Diagnostic {
         Diagnostic::error()
             .code(ErrorCode::E020)
-            .message(format!(
-                "‘{binder}’ is defined multiple times in this scope"
-            ))
+            .message(format!("‘{binder}’ is defined multiple times in this scope"))
             .spans(conflicts, "conflicting definition")
     }
 
@@ -2558,9 +2426,7 @@ mod error {
 
     pub(super) fn unqualified_literal(kind: &'static str, span: Span) -> Diagnostic {
         Diagnostic::error()
-            .message(format!(
-                "{kind} literals without explicit type are not supported yet"
-            ))
+            .message(format!("{kind} literals without explicit type are not supported yet"))
             .unlabeled_span(span)
             .help("consider prefixing the literal with a path to a type followed by a ‘.’")
     }

@@ -1,8 +1,8 @@
 use crate::utility::{HelperAttribute, TokenStream1, TokenStream2};
 use quote::quote;
 use syn::{
-    parse::{Nothing, Parse, ParseStream},
     Attribute, Error, Fields, Ident, Token,
+    parse::{Nothing, Parse, ParseStream},
 };
 
 // @Task allow configuring derives and visibility of the discriminant type
@@ -74,10 +74,6 @@ impl Parse for DiscriminantAttribute {
         let _: Nothing = input.parse()?;
         let _: Nothing = input.parse()?;
 
-        Ok(Self {
-            method,
-            attributes,
-            type_,
-        })
+        Ok(Self { method, attributes, type_ })
     }
 }

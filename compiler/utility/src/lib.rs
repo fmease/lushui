@@ -347,10 +347,7 @@ mod test {
 
     #[test]
     fn listing_two_elements() {
-        assert_eq!(
-            [false, true].into_iter().list(Conjunction::And),
-            "false and true"
-        );
+        assert_eq!([false, true].into_iter().list(Conjunction::And), "false and true");
     }
 
     #[test]
@@ -361,9 +358,7 @@ mod test {
     #[test]
     fn listing_many_elements() {
         assert_eq!(
-            ["a", "b", "c", "d", "e", "f", "g"]
-                .into_iter()
-                .list(Conjunction::And),
+            ["a", "b", "c", "d", "e", "f", "g"].into_iter().list(Conjunction::And),
             "a, b, c, d, e, f and g"
         );
     }

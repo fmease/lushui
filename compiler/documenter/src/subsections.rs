@@ -1,11 +1,10 @@
 use super::{
-    add_declaration_attributes, declaration_id, documentation,
+    LOREM_IPSUM, Options, add_declaration_attributes, declaration_id, documentation,
     node::{Attributable, Element, Node},
     text_processor::TextProcessor,
-    Options, LOREM_IPSUM,
 };
 use derivation::Elements;
-use hir::{attribute::Query as _, AttributeName};
+use hir::{AttributeName, attribute::Query as _};
 use std::borrow::Cow;
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -25,16 +24,13 @@ impl<'a> Subsections<'a> {
     pub(crate) fn reserved_identifiers() -> Self {
         let mut subsections = Self::default();
 
-        subsections.keywords.0.extend(
-            crate::KEYWORDS
-                .into_iter()
-                .map(|keyword| Keyword { name: keyword }),
-        );
+        subsections
+            .keywords
+            .0
+            .extend(crate::KEYWORDS.into_iter().map(|keyword| Keyword { name: keyword }));
 
         subsections.reserved_symbols.0.extend(
-            crate::RESERVED_SYMBOLS
-                .into_iter()
-                .map(|symbol| ReservedSymbol { name: symbol }),
+            crate::RESERVED_SYMBOLS.into_iter().map(|symbol| ReservedSymbol { name: symbol }),
         );
 
         subsections
@@ -63,10 +59,8 @@ impl<'a> Subsections<'a> {
         options: &Options,
     ) {
         self.modules.render(parent, options);
-        self.types
-            .render(url_prefix, parent, text_processor, options);
-        self.functions
-            .render(url_prefix, parent, text_processor, options);
+        self.types.render(url_prefix, parent, text_processor, options);
+        self.functions.render(url_prefix, parent, text_processor, options);
         self.attributes.render(parent);
         self.keywords.render(parent);
         self.reserved_symbols.render(parent);
@@ -95,10 +89,12 @@ pub(crate) trait Subsection<'a> {
         subsubsections.sort_by_key(|subsubsection| subsubsection.title().to_lowercase());
 
         for subsubsection in subsubsections {
-            list.add_child(Element::new("li").child(Element::anchor(
-                format!("#{}", subsubsection.id()),
-                subsubsection.title(),
-            )));
+            list.add_child(
+                Element::new("li").child(Element::anchor(
+                    format!("#{}", subsubsection.id()),
+                    subsubsection.title(),
+                )),
+            );
         }
 
         parent.add_child(list);
@@ -169,9 +165,7 @@ impl<'a> Modules<'a> {
             }
 
             table.add_child(
-                Element::new("tr")
-                    .child(Element::new("td").child(anchor))
-                    .child(table_definition),
+                Element::new("tr").child(Element::new("td").child(anchor)).child(table_definition),
             );
         }
 
@@ -256,21 +250,14 @@ impl<'a> Types<'a> {
             // @Beacon @Task for abstract data types, only continue if this type is not local
             // and if --doc-priv-decls was not specified
             if type_.constructors.is_empty()
-                || type_
-                    .attributes
-                    .has(AttributeName::Abstract.or(AttributeName::Intrinsic))
+                || type_.attributes.has(AttributeName::Abstract.or(AttributeName::Intrinsic))
             {
                 continue;
             }
 
-            let mut subsection =
-                Element::new("section")
-                    .class("indented")
-                    .child(anchored_subheading(
-                        4,
-                        format!("constructors.{}", type_.binder),
-                        "Constructors",
-                    ));
+            let mut subsection = Element::new("section").class("indented").child(
+                anchored_subheading(4, format!("constructors.{}", type_.binder), "Constructors"),
+            );
 
             for constructor in type_.constructors {
                 let id = declaration_id(&format!("{}.{}", type_.binder, constructor.binder));
@@ -580,9 +567,7 @@ impl<'a> Subsubsection<'a> for AttributeName {
 
 fn source_link() -> Element<'static> {
     // @Task create an actual link!
-    Element::anchor("#", "source")
-        .class("source")
-        .attribute("title", "Go to the source code")
+    Element::anchor("#", "source").class("source").attribute("title", "Go to the source code")
 }
 
 fn anchored_subheading<'a>(

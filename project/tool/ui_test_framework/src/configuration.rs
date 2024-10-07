@@ -5,7 +5,7 @@ use derivation::{FromStr, Str};
 use lexer::token::BareToken;
 use span::{SourceFile, SourceMap, Span, Spanned};
 use std::{collections::HashMap, str::FromStr, time::Duration};
-use utility::{default, pluralize, Str};
+use utility::{Str, default, pluralize};
 
 #[cfg(test)]
 mod tests;
@@ -172,29 +172,21 @@ fn blocks<'a>(
     use recnot as _;
 
     let block: Vec<_> = match language {
-        Language::Lushui => lexer::lex(
-            file,
-            &lexer::Options {
-                keep_comments: true,
-            },
-        )
-        .tokens
-        .into_iter()
-        .filter(|token| token.bare == BareToken::Comment)
-        .map(|token| token.span)
-        .collect(),
+        Language::Lushui => lexer::lex(file, &lexer::Options { keep_comments: true })
+            .tokens
+            .into_iter()
+            .filter(|token| token.bare == BareToken::Comment)
+            .map(|token| token.span)
+            .collect(),
 
-        Language::Recnot => recnot::lexer::lex(
-            file,
-            &recnot::lexer::Options {
-                keep_comments: true,
-            },
-        )
-        .tokens
-        .into_iter()
-        .filter(|token| token.bare == recnot::lexer::BareToken::Comment)
-        .map(|token| token.span)
-        .collect(),
+        Language::Recnot => {
+            recnot::lexer::lex(file, &recnot::lexer::Options { keep_comments: true })
+                .tokens
+                .into_iter()
+                .filter(|token| token.bare == recnot::lexer::BareToken::Comment)
+                .map(|token| token.span)
+                .collect()
+        }
     };
 
     block.into_iter().filter_map(move |span| {
@@ -267,9 +259,7 @@ fn parse_parameter(mut source: Spanned<&str>, type_: TestType) -> Result<Paramet
                 _ => unreachable!(),
             }
         }
-        "auxiliary" => ParameterKind::Auxiliary {
-            users: arguments.collect(),
-        },
+        "auxiliary" => ParameterKind::Auxiliary { users: arguments.collect() },
         "ignore" => {
             exhaust_arguments(arguments)?;
 
@@ -309,9 +299,7 @@ fn parse_parameter(mut source: Spanned<&str>, type_: TestType) -> Result<Paramet
             ParameterKind::ProgramEnvVar { name, value }
         }
         "timeout" => {
-            let timeout = arguments
-                .next()
-                .ok_or_else(|| missing_argument("duration"))?;
+            let timeout = arguments.next().ok_or_else(|| missing_argument("duration"))?;
 
             exhaust_arguments(arguments)?;
 
@@ -361,12 +349,9 @@ fn parse_mode(source: Spanned<&str>, type_: TestType) -> Result<Mode, Error> {
         (RecnotSourceFile, Mode::Check) => {}
         (RecnotSourceFile, Mode::Build | Mode::Run) => {
             return Err(Error::new(
-                format!(
-                    "the test mode ‘{}’ is not available for {type_} tests",
-                    mode.name()
-                ),
+                format!("the test mode ‘{}’ is not available for {type_} tests", mode.name()),
                 source.span,
-            ))
+            ));
         }
     }
 
@@ -471,10 +456,7 @@ pub(crate) struct Error {
 
 impl Error {
     fn new(message: impl Into<Str>, span: Span) -> Self {
-        Self {
-            message: message.into(),
-            span,
-        }
+        Self { message: message.into(), span }
     }
 
     fn missing_argument(parameter: &str, argument: &str, span: Span) -> Self {

@@ -1,17 +1,17 @@
 use super::BuildQueue;
 use derivation::{Elements, FromStr, Str};
 use diagnostics::{
+    Diagnostic, ErrorCode, Reporter,
     error::{Health, Outcome, Result},
     reporter::ErasedReportedError,
-    Diagnostic, ErrorCode, Reporter,
 };
-use recnot::{convert, Record, RecordWalker, WithTextContentSpanExt};
+use recnot::{Record, RecordWalker, WithTextContentSpanExt, convert};
 use session::{package::Version, unit::ComponentType};
 
 use lexer::word::Word;
 use span::{Affinity, SourceFileIndex, SourceMap, Spanned};
 use std::{fmt, path::PathBuf, str::FromStr};
-use utility::{try_all, AndThenMapExt, Conjunction, HashMap, ListingExt, QuoteExt};
+use utility::{AndThenMapExt, Conjunction, HashMap, ListingExt, QuoteExt, try_all};
 
 pub(super) struct PackageManifest {
     pub(super) profile: PackageProfile,
@@ -32,11 +32,9 @@ impl PackageManifest {
         let version = manifest.take("version");
         let description = manifest.take_optional("description");
 
-        let components = manifest
-            .take_optional("components")
-            .and_then_map(|components| {
-                parse_components(components, &queue.shared_map(), &queue.reporter)
-            });
+        let components = manifest.take_optional("components").and_then_map(|components| {
+            parse_components(components, &queue.shared_map(), &queue.reporter)
+        });
 
         manifest.exhaust()?;
 
@@ -46,11 +44,7 @@ impl PackageManifest {
         };
 
         Ok(PackageManifest {
-            profile: PackageProfile {
-                name,
-                version: version.map(Version),
-                description,
-            },
+            profile: PackageProfile { name, version: version.map(Version), description },
             components,
         })
     }
@@ -61,16 +55,14 @@ fn parse_name(
     kind: NameKind,
     reporter: &Reporter,
 ) -> Result<Spanned<Word>> {
-    Word::parse(name.clone())
-        .map(|name| Spanned::new(span, name))
-        .map_err(|()| {
-            // @Task DRY, @Question is the common code justified? package v component
-            Diagnostic::error()
-                .code(ErrorCode::E036)
-                .message(format!("the {kind} name ‘{name}’ is not a valid word"))
-                .unlabeled_span(span)
-                .report(reporter)
-        })
+    Word::parse(name.clone()).map(|name| Spanned::new(span, name)).map_err(|()| {
+        // @Task DRY, @Question is the common code justified? package v component
+        Diagnostic::error()
+            .code(ErrorCode::E036)
+            .message(format!("the {kind} name ‘{name}’ is not a valid word"))
+            .unlabeled_span(span)
+            .report(reporter)
+    })
 }
 
 #[derive(Clone, Copy)]
@@ -116,9 +108,7 @@ fn parse_components(
             .map(|type_| type_.with_text_content_span(map))
             .and_then(|type_| parse_component_type(type_, reporter));
 
-        let path = component
-            .take::<String>("path")
-            .map(|path| path.with_text_content_span(map));
+        let path = component.take::<String>("path").map(|path| path.with_text_content_span(map));
 
         let dependencies = component
             .take_optional("dependencies")
@@ -134,15 +124,12 @@ fn parse_components(
 
         components.insert(
             name,
-            Spanned::new(
-                span,
-                ComponentManifest {
-                    type_,
-                    public,
-                    path: path.map(Into::into),
-                    dependencies,
-                },
-            ),
+            Spanned::new(span, ComponentManifest {
+                type_,
+                public,
+                path: path.map(Into::into),
+                dependencies,
+            }),
         );
     }
 
@@ -153,24 +140,22 @@ fn parse_component_type(
     Spanned!(span, type_): Spanned<String>,
     reporter: &Reporter,
 ) -> Result<Spanned<ComponentType>, ErasedReportedError> {
-    ComponentType::from_str(&type_)
-        .map(|type_| Spanned::new(span, type_))
-        .map_err(|()| {
-            // @Task don't list all component types unconditionally:
-            //       if the invalid type is_similar to a valid one, give a more
-            //       fine-tuned suggestion
-            Diagnostic::error()
-                .message(format!("‘{type_}’ is not a valid component type"))
-                .unlabeled_span(span)
-                .note(format!(
-                    "valid component types are {}",
-                    ComponentType::elements()
-                        .map(|element| element.name())
-                        .map(QuoteExt::quote)
-                        .list(Conjunction::And)
-                ))
-                .report(reporter)
-        })
+    ComponentType::from_str(&type_).map(|type_| Spanned::new(span, type_)).map_err(|()| {
+        // @Task don't list all component types unconditionally:
+        //       if the invalid type is_similar to a valid one, give a more
+        //       fine-tuned suggestion
+        Diagnostic::error()
+            .message(format!("‘{type_}’ is not a valid component type"))
+            .unlabeled_span(span)
+            .note(format!(
+                "valid component types are {}",
+                ComponentType::elements()
+                    .map(|element| element.name())
+                    .map(QuoteExt::quote)
+                    .list(Conjunction::And)
+            ))
+            .report(reporter)
+    })
 }
 
 fn parse_dependencies(
@@ -196,45 +181,31 @@ fn parse_dependencies(
         let mut declaration = RecordWalker::new(declaration, reporter);
 
         let component_endonym = declaration.take_optional("component").and_then_map(|name| {
-            parse_name(
-                name.with_text_content_span(map),
-                NameKind::Component,
-                reporter,
-            )
+            parse_name(name.with_text_content_span(map), NameKind::Component, reporter)
         });
 
-        let provider = declaration
-            .take_optional::<String>("provider")
-            .and_then_map(|name| {
-                let Spanned!(span, name) = name.with_text_content_span(map);
-                DependencyProvider::from_str(&name)
-                    .map(|name| Spanned::new(span, name))
-                    .map_err(|()| {
-                        // @Task code
-                        // @Task don't list all providers unconditionally:
-                        //       if the invalid provider is_similar to a valid one, give a more
-                        //       fine-tuned suggestion
-                        Diagnostic::error()
-                            .message(format!("‘{name}’ is not a valid dependency provider"))
-                            .unlabeled_span(span)
-                            .note(format!(
-                                "valid dependency providers are {}",
-                                DependencyProvider::elements()
-                                    .map(QuoteExt::quote)
-                                    .list(Conjunction::And)
-                            ))
-                            .report(reporter)
-                    })
-            });
+        let provider = declaration.take_optional::<String>("provider").and_then_map(|name| {
+            let Spanned!(span, name) = name.with_text_content_span(map);
+            DependencyProvider::from_str(&name).map(|name| Spanned::new(span, name)).map_err(|()| {
+                // @Task code
+                // @Task don't list all providers unconditionally:
+                //       if the invalid provider is_similar to a valid one, give a more
+                //       fine-tuned suggestion
+                Diagnostic::error()
+                    .message(format!("‘{name}’ is not a valid dependency provider"))
+                    .unlabeled_span(span)
+                    .note(format!(
+                        "valid dependency providers are {}",
+                        DependencyProvider::elements().map(QuoteExt::quote).list(Conjunction::And)
+                    ))
+                    .report(reporter)
+            })
+        });
 
         let version = declaration.take_optional::<String>("version");
         let path = declaration.take_optional::<String>("path");
         let package = declaration.take_optional("package").and_then_map(|name| {
-            parse_name(
-                name.with_text_content_span(map),
-                NameKind::Package,
-                reporter,
-            )
+            parse_name(name.with_text_content_span(map), NameKind::Package, reporter)
         });
         let public = declaration.take_optional("public");
 
@@ -248,25 +219,18 @@ fn parse_dependencies(
 
         dependencies.insert(
             exonym,
-            Spanned::new(
-                span,
-                DependencyDeclaration {
-                    component: component_endonym,
-                    provider,
-                    version: version.map(|version| version.map(VersionRequirement)),
-                    path: path.map(|path| path.map(Into::into).with_text_content_span(map)),
-                    package,
-                    public,
-                },
-            ),
+            Spanned::new(span, DependencyDeclaration {
+                component: component_endonym,
+                provider,
+                version: version.map(|version| version.map(VersionRequirement)),
+                path: path.map(|path| path.map(Into::into).with_text_content_span(map)),
+                package,
+                public,
+            }),
         );
     }
 
-    Outcome::new(
-        Spanned::new(untyped_dependencies.span, dependencies),
-        health,
-    )
-    .into()
+    Outcome::new(Spanned::new(untyped_dependencies.span, dependencies), health).into()
 }
 
 pub(super) struct PackageProfile {

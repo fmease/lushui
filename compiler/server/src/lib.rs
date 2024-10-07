@@ -5,7 +5,7 @@
 use self::diagnostics::DiagnosticExt;
 use self::span::{FromPositionExt, ToLocationExt};
 use ::diagnostics::{
-    error::Result, reporter::Buffer, Diagnostic, ErrorCode, Reporter, UntaggedDiagnostic,
+    Diagnostic, ErrorCode, Reporter, UntaggedDiagnostic, error::Result, reporter::Buffer,
 };
 use ::span::{ByteIndex, SourceMap, Spanning};
 use index_map::IndexMap;
@@ -13,9 +13,9 @@ use package::resolve_file;
 use resolver::ProgramEntryExt;
 use session::Context;
 use session::{
+    Session,
     component::Component,
     unit::{BuildUnit, ComponentType},
-    Session,
 };
 use std::{
     collections::BTreeSet,
@@ -24,16 +24,15 @@ use std::{
     sync::{Arc, RwLock},
 };
 use tower_lsp::{
-    jsonrpc,
+    Client, jsonrpc,
     lsp_types::{
         DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
         GotoDefinitionParams, GotoDefinitionResponse, InitializeParams, InitializeResult,
         InitializedParams, MessageType, OneOf, ServerCapabilities, ServerInfo,
         TextDocumentSyncKind, TextDocumentSyncOptions, Url,
     },
-    Client,
 };
-use utility::{default, path::CanonicalPath, ComponentIndex, FormatError, HashMap, PROGRAM_ENTRY};
+use utility::{ComponentIndex, FormatError, HashMap, PROGRAM_ENTRY, default, path::CanonicalPath};
 
 mod diagnostics;
 mod span;
@@ -45,9 +44,7 @@ pub async fn serve(map: Arc<RwLock<SourceMap>>) {
     let stdout = tokio::io::stdout();
 
     let (service, socket) = tower_lsp::LspService::new(|client| Server::new(map, client));
-    tower_lsp::Server::new(stdin, stdout, socket)
-        .serve(service)
-        .await;
+    tower_lsp::Server::new(stdin, stdout, socket).serve(service).await;
 }
 
 struct Server {
@@ -59,11 +56,7 @@ struct Server {
 
 impl Server {
     fn new(map: Arc<RwLock<SourceMap>>, client: Client) -> Self {
-        Self {
-            map,
-            documents: default(),
-            client,
-        }
+        Self { map, documents: default(), client }
     }
 
     // @Beacon @Temporary
@@ -80,10 +73,7 @@ impl Server {
         let scheme = uri.scheme();
         if scheme != "file" {
             self.client
-                .log_message(
-                    MessageType::ERROR,
-                    format!("Unsupported URI scheme ‘{scheme}’"),
-                )
+                .log_message(MessageType::ERROR, format!("Unsupported URI scheme ‘{scheme}’"))
                 .await;
             return;
         }
@@ -93,12 +83,7 @@ impl Server {
 
         self.reset_source_map();
 
-        _ = check_file(
-            path,
-            content,
-            &self.map,
-            Reporter::buffer(diagnostics.clone()),
-        );
+        _ = check_file(path, content, &self.map, Reporter::buffer(diagnostics.clone()));
 
         let diagnostics = mem::take(&mut *diagnostics.lock().unwrap());
         self.report(diagnostics, uri, version).await;
@@ -116,9 +101,7 @@ impl Server {
         }
 
         // @Bug incorrect URI + version in general!
-        self.client
-            .publish_diagnostics(uri, lsp_diagnostics, Some(version))
-            .await;
+        self.client.publish_diagnostics(uri, lsp_diagnostics, Some(version)).await;
     }
 }
 
@@ -149,9 +132,7 @@ impl tower_lsp::LanguageServer for Server {
     }
 
     async fn initialized(&self, _: InitializedParams) {
-        self.client
-            .log_message(MessageType::INFO, "Language server initialized")
-            .await;
+        self.client.log_message(MessageType::INFO, "Language server initialized").await;
     }
 
     async fn shutdown(&self) -> jsonrpc::Result<()> {
@@ -167,8 +148,7 @@ impl tower_lsp::LanguageServer for Server {
             .insert(parameters.text_document.uri.clone(), content.clone());
 
         // @Question version??
-        self.validate_file(parameters.text_document.uri.clone(), 0, content)
-            .await;
+        self.validate_file(parameters.text_document.uri.clone(), 0, content).await;
     }
 
     async fn did_change(&self, mut parameters: DidChangeTextDocumentParams) {
@@ -190,9 +170,7 @@ impl tower_lsp::LanguageServer for Server {
 
     async fn did_close(&self, parameters: DidCloseTextDocumentParams) {
         // @Task unless it's a workspace(?) (a package), get rid of any diagnostics
-        self.client
-            .publish_diagnostics(parameters.text_document.uri, Vec::new(), None)
-            .await;
+        self.client.publish_diagnostics(parameters.text_document.uri, Vec::new(), None).await;
     }
 
     async fn goto_definition(
@@ -216,14 +194,8 @@ impl tower_lsp::LanguageServer for Server {
             let byte_index = ByteIndex::from_position(position, path, &self.map.read().unwrap());
 
             // @Task just get the SourceFileIndex with the URL from the SourceMap in the future
-            let component = self
-                .map
-                .read()
-                .unwrap()
-                .file_by_path(path)
-                .unwrap()
-                .component()
-                .unwrap();
+            let component =
+                self.map.read().unwrap().file_by_path(path).unwrap().component().unwrap();
             let component_root = &component_roots[&component];
 
             let binding = component_root.find_binding(byte_index);
@@ -235,10 +207,7 @@ impl tower_lsp::LanguageServer for Server {
             };
 
             Some(GotoDefinitionResponse::Scalar(
-                context[index]
-                    .source
-                    .span()
-                    .to_location(&self.map.read().unwrap()),
+                context[index].source.span().to_location(&self.map.read().unwrap()),
             ))
         })())
     }
@@ -252,14 +221,8 @@ fn check_file(
     map: &Arc<RwLock<SourceMap>>,
     reporter: Reporter,
 ) -> Result<(Context, HashMap<ComponentIndex, hir::Declaration>)> {
-    let (units, mut context) = resolve_file(
-        path,
-        Some(content),
-        ComponentType::Executable,
-        false,
-        map,
-        reporter,
-    )?;
+    let (units, mut context) =
+        resolve_file(path, Some(content), ComponentType::Executable, false, map, reporter)?;
 
     let mut component_roots = HashMap::default();
 
@@ -283,33 +246,26 @@ fn build_unit(unit: BuildUnit, session: &mut Session<'_>) -> Result<hir::Declara
     // @Beacon @Task this shouldm't need to be that ugly!!!
 
     let file = match content {
-        Some(content) => session
-            .map()
-            .add(path.bare.to_owned(), content, Some(unit.index)),
+        Some(content) => session.map().add(path.bare.to_owned(), content, Some(unit.index)),
         None => {
-            session
-                .map()
-                .load(path.bare, Some(unit.index))
-                .map_err(|error| {
-                    use std::fmt::Write;
+            session.map().load(path.bare, Some(unit.index)).map_err(|error| {
+                use std::fmt::Write;
 
-                    let mut message = format!(
-                        "could not load the {} component ‘{}’",
-                        unit.type_, unit.name
-                    );
+                let mut message =
+                    format!("could not load the {} component ‘{}’", unit.type_, unit.name);
 
-                    if let Some(package) = session.package() {
-                        write!(message, " in package ‘{}’", session[package].name).unwrap();
-                    }
+                if let Some(package) = session.package() {
+                    write!(message, " in package ‘{}’", session[package].name).unwrap();
+                }
 
-                    // @Bug this is duplication with main.rs!!
-                    Diagnostic::error()
-                        .message(message)
-                        .path(path.bare.to_path_buf())
-                        .unlabeled_span(path)
-                        .note(error.format())
-                        .report(session.reporter())
-                })?
+                // @Bug this is duplication with main.rs!!
+                Diagnostic::error()
+                    .message(message)
+                    .path(path.bare.to_path_buf())
+                    .unlabeled_span(path)
+                    .note(error.format())
+                    .report(session.reporter())
+            })?
         }
     };
 

@@ -1,4 +1,4 @@
-use diagnostics::{reporter::ErasedReportedError, Diagnostic};
+use diagnostics::{Diagnostic, reporter::ErasedReportedError};
 use lexer::word::Word;
 use session::unit::ComponentType;
 use span::Spanned;
@@ -22,9 +22,7 @@ pub(crate) fn undefined_component_error(name: Spanned<Word>, package: Word) -> D
     // @Question should we special-case component name = package name?
 
     Diagnostic::error()
-        .message(format!(
-            "the package ‘{package}’ does not contain a component called ‘{name}’"
-        ))
+        .message(format!("the package ‘{package}’ does not contain a component called ‘{name}’"))
         .unlabeled_span(name)
 }
 
@@ -34,9 +32,7 @@ pub(crate) fn non_library_dependency_error(
     package: Word,
 ) -> Diagnostic {
     Diagnostic::error()
-        .message(format!(
-            "the component ‘{name}’ in package ‘{package}’ is not a library",
-        ))
+        .message(format!("the component ‘{name}’ in package ‘{package}’ is not a library",))
         .unlabeled_span(name)
         .note(format!("one cannot depend on {type_} components"))
 }

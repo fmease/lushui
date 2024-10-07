@@ -2,18 +2,18 @@
 #![feature(let_chains, try_trait_v2)]
 
 use diagnostics::{
+    Diagnostic, ErrorCode, Reporter,
     error::{Health, Outcome, Result},
     reporter::ErasedReportedError,
-    Diagnostic, ErrorCode, Reporter,
 };
 use index_map::IndexMap;
 use lexer::word::Word;
 use manifest::{DependencyDeclaration, DependencyProvider, PackageManifest, PackageProfile};
 use recnot::Record;
 use session::{
-    package::{ManifestPath, Package, PossiblyUnresolvedComponent::*, CORE_PACKAGE_NAME},
-    unit::{BuildUnit, ComponentType},
     Context,
+    package::{CORE_PACKAGE_NAME, ManifestPath, Package, PossiblyUnresolvedComponent::*},
+    unit::{BuildUnit, ComponentType},
 };
 use span::{Affinity, SourceMap, Spanned};
 use std::{
@@ -22,8 +22,8 @@ use std::{
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 use utility::{
-    cycle::find_cycles_by_key, default, path::CanonicalPathBuf, pluralize, ComponentIndex,
-    Conjunction, FormatError, HashMap, ListingExt, QuoteExt, FILE_EXTENSION,
+    ComponentIndex, Conjunction, FILE_EXTENSION, FormatError, HashMap, ListingExt, QuoteExt,
+    cycle::find_cycles_by_key, default, path::CanonicalPathBuf, pluralize,
 };
 
 mod error;
@@ -34,11 +34,7 @@ pub fn find_package(path: &Path) -> Option<&Path> {
 
     // Using `exists` over `try_exists` is fine here since any suppressed errors will surface later
     // when we try to load the manifest without degradation in the quality of the error message.
-    if manifest_path.exists() {
-        Some(path)
-    } else {
-        find_package(path.parent()?)
-    }
+    if manifest_path.exists() { Some(path) } else { find_package(path.parent()?) }
 }
 
 /// Resolve all components and package dependencies of a package given the path to its folder without building anything.
@@ -118,10 +114,7 @@ impl BuildQueue {
                 return Err(Diagnostic::error()
                     .message("could not load the package")
                     .path(manifest_path)
-                    .note(format!(
-                        "failed to open the package manifest:\n{}",
-                        error.format()
-                    ))
+                    .note(format!("failed to open the package manifest:\n{}", error.format()))
                     .report(&self.reporter));
             }
         };
@@ -153,11 +146,9 @@ impl BuildQueue {
                 .map(|(name, component)| (name, (component, None)))
                 .collect();
 
-            self[manifest_path].components.extend(
-                component_worklist
-                    .keys()
-                    .map(|name| (name.bare, Unresolved)),
-            );
+            self[manifest_path]
+                .components
+                .extend(component_worklist.keys().map(|name| (name.bare, Unresolved)));
 
             while !component_worklist.is_empty() {
                 let amount_unresolved_components = component_worklist.len();
@@ -391,10 +382,8 @@ impl BuildQueue {
                 .into());
         }
 
-        let component_endonym = declaration
-            .bare
-            .component
-            .unwrap_or_else(|| component_exonym.strengthen());
+        let component_endonym =
+            declaration.bare.component.unwrap_or_else(|| component_exonym.strengthen());
 
         // @Question do we want to a allow declarations of the form ‘<secondary-lib>: { … }’ w/o an explicit ‘component: <secondary-lib>’?
 
@@ -422,11 +411,9 @@ impl BuildQueue {
                             component_endonym,
                         ))
                     }
-                    None => Err(
-                        error::undefined_component_error(component_endonym, package.name)
-                            .report(&self.reporter)
-                            .into(),
-                    ),
+                    None => Err(error::undefined_component_error(component_endonym, package.name)
+                        .report(&self.reporter)
+                        .into()),
                 };
             }
         };
@@ -473,11 +460,9 @@ impl BuildQueue {
                     // @Task this should definitely not be fatal fatal since we wanna catch separate cycles (eg. {{a,b,c}, {a,sep}})
                     // Err(error::DependencyResolutionError::Cycle(Spanned::bare(dependent_component_name.clone())))
                 }
-                None => Err(
-                    error::undefined_component_error(component_endonym, package.name)
-                        .report(&self.reporter)
-                        .into(),
-                ),
+                None => Err(error::undefined_component_error(component_endonym, package.name)
+                    .report(&self.reporter)
+                    .into()),
             };
         }
 
@@ -487,9 +472,7 @@ impl BuildQueue {
             declaration.bare.package,
             Box::new(|| {
                 Diagnostic::error()
-                    .message(format!(
-                        "could not load the dependency ‘{component_exonym}’",
-                    ))
+                    .message(format!("could not load the dependency ‘{component_exonym}’",))
                     .path(manifest_path_unchecked)
                     .unlabeled_span(match &declaration.bare.path {
                         Some(path) => path.span,
@@ -520,10 +503,7 @@ impl BuildQueue {
                 // @Question code?
                 // @Task provide more information when provider==distribution
                 // @Question use endonym here instead? or use both?
-                return Err(load_error()
-                    .note(error.format())
-                    .report(&self.reporter)
-                    .into());
+                return Err(load_error().note(error.format()).report(&self.reporter).into());
             }
         };
 
@@ -562,14 +542,12 @@ impl BuildQueue {
                     package_name,
                 )
                 .report(&self.reporter)
-                .into())
+                .into());
             }
             None => {
-                return Err(
-                    error::undefined_component_error(component_endonym, package_name)
-                        .report(&self.reporter)
-                        .into(),
-                )
+                return Err(error::undefined_component_error(component_endonym, package_name)
+                    .report(&self.reporter)
+                    .into());
             }
         };
 
@@ -666,9 +644,9 @@ impl BuildQueue {
 
         match provider {
             DependencyProvider::Filesystem => match &declaration.path {
-                Some(path) => Ok(Dependency::ForeignPackage(
-                    manifest_path.folder().join(&path.bare),
-                )),
+                Some(path) => {
+                    Ok(Dependency::ForeignPackage(manifest_path.folder().join(&path.bare)))
+                }
                 // @Task improve message
                 None => Err(Diagnostic::error()
                     .message("dependency declaration does not have entry ‘path’")
@@ -681,18 +659,13 @@ impl BuildQueue {
                     .report(&self.reporter)),
             },
             DependencyProvider::Distribution => {
-                let component = declaration
-                    .component
-                    .as_ref()
-                    .map_or(exonym, |name| name.bare);
+                let component = declaration.component.as_ref().map_or(exonym, |name| name.bare);
                 let path = session::package::distributed_packages_path().join(component.to_str());
                 Ok(Dependency::ForeignPackage(path))
             }
             DependencyProvider::Package => Ok(Dependency::LocalComponent),
             DependencyProvider::Git | DependencyProvider::Registry => Err(Diagnostic::error()
-                .message(format!(
-                    "the dependency provider ‘{provider}’ is not supported yet",
-                ))
+                .message(format!("the dependency provider ‘{provider}’ is not supported yet",))
                 // @Task better label! say how it was inferred!!
                 .with(|it| match declaration.provider {
                     Some(provider) => it.unlabeled_span(provider),
@@ -742,9 +715,7 @@ impl ComponentFilter {
 fn parse_component_name_from_file_path(path: &Path, reporter: &Reporter) -> Result<Word> {
     if !utility::has_file_extension(path, FILE_EXTENSION) {
         Diagnostic::warning()
-            .message(format!(
-                "the source file does not have the file extension ‘{FILE_EXTENSION}’"
-            ))
+            .message(format!("the source file does not have the file extension ‘{FILE_EXTENSION}’"))
             .report(reporter);
     }
 

@@ -1,9 +1,9 @@
+use BareToken::*;
 use derivation::Discriminant;
 use diagnostics::Diagnostic;
 use span::{LocalByteIndex, LocalSpan, SourceFile, Span, Spanned};
 use std::{fmt, iter::Peekable, num::ParseIntError, str::CharIndices};
 use utility::{obtain, quoted};
-use BareToken::*;
 
 // @Task add "unbalanced bracket" errors
 pub fn lex(file: &SourceFile, options: &Options) -> Outcome {
@@ -70,10 +70,7 @@ impl<'a> Lexer<'a> {
         self.local_span = self.file.local_span().end();
         self.add(EndOfInput);
 
-        Outcome {
-            tokens: self.tokens,
-            errors: self.errors,
-        }
+        Outcome { tokens: self.tokens, errors: self.errors }
     }
 
     fn lex_comment(&mut self) {
@@ -197,10 +194,7 @@ impl<'a> Lexer<'a> {
                     NegOverflow => i64::MIN,
                     _ => 0,
                 }));
-                self.errors.push(Error::NumberExceedsSizeLimit(Spanned::new(
-                    self.span(),
-                    error,
-                )));
+                self.errors.push(Error::NumberExceedsSizeLimit(Spanned::new(self.span(), error)));
             }
         };
     }
@@ -231,9 +225,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn peek_with_index(&mut self) -> Option<(LocalByteIndex, char)> {
-        self.characters
-            .peek()
-            .map(|&(index, character)| (index.try_into().unwrap(), character))
+        self.characters.peek().map(|&(index, character)| (index.try_into().unwrap(), character))
     }
 
     /// [Take](Self::take) the span of all succeeding tokens where the predicate holds and step.
@@ -359,19 +351,15 @@ impl From<Error> for Diagnostic {
     fn from(error: Error) -> Self {
         match error {
             Error::InvalidToken(token) => {
-                let message = format!(
-                    "found invalid character U+{:04X} ‘{token}’",
-                    token.bare as u32,
-                );
+                let message =
+                    format!("found invalid character U+{:04X} ‘{token}’", token.bare as u32,);
 
-                Diagnostic::error()
-                    .message(message)
-                    .span(token, "unexpected token")
+                Diagnostic::error().message(message).span(token, "unexpected token")
             }
             // @Task improve message, mention closing it with quotes
-            Error::UnterminatedText(span) => Diagnostic::error()
-                .message("unterminated text")
-                .unlabeled_span(span),
+            Error::UnterminatedText(span) => {
+                Diagnostic::error().message("unterminated text").unlabeled_span(span)
+            }
             Error::NumberExceedsSizeLimit(parse_error) => {
                 use std::num::IntErrorKind::*;
 

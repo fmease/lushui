@@ -11,13 +11,13 @@ use std::{
     path::{Path, PathBuf},
     process::Command,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
     },
     time::Duration,
 };
 use syntax::parse_path;
-use utility::{default, HashSet};
+use utility::{HashSet, default};
 
 pub(super) enum TextProcessor<'env> {
     None,
@@ -108,10 +108,7 @@ impl<'scope> Asciidoctor<'scope> {
             .create(true)
             .truncate(true)
             .open(&output_path)?;
-        fs::write(
-            &extensions_path,
-            include_str!("../include/rb/AsciidoctorExtensions.rb"),
-        )?;
+        fs::write(&extensions_path, include_str!("../include/rb/AsciidoctorExtensions.rb"))?;
         File::create(&request_log_path)?;
         File::create(&response_log_path)?;
 
@@ -182,10 +179,7 @@ impl<'scope> Asciidoctor<'scope> {
 
                 if !unhandled_requests.is_empty() {
                     let mut response_file = BufWriter::new(
-                        File::options()
-                            .append(true)
-                            .open(response_log_path)
-                            .unwrap(),
+                        File::options().append(true).open(response_log_path).unwrap(),
                     );
 
                     // @Question correctness: should this be moved into the loop?
@@ -225,10 +219,7 @@ impl<'scope> Asciidoctor<'scope> {
         let status = self.process.status()?;
 
         if !status.success() {
-            return Err(Error::new(
-                ErrorKind::Other,
-                "AsciiDoctor did not exit successfully",
-            ));
+            return Err(Error::new(ErrorKind::Other, "AsciiDoctor did not exit successfully"));
         }
 
         let mut output = String::new();

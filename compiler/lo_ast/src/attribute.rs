@@ -1,7 +1,7 @@
 use derivation::{Discriminant, Elements, Str};
 use span::{Span, Spanned, Spanning};
 use std::{fmt, marker::ConstParamTy};
-use utility::{condition, obtain, Atom, Str};
+use utility::{Atom, Str, condition, obtain};
 
 /// Something attributes can be ascribed to.
 ///
@@ -304,15 +304,11 @@ pub struct Attributes(pub Vec<Attribute>);
 
 impl Attributes {
     pub fn has<Q: Query>(&self, query: Q) -> bool {
-        self.0
-            .iter()
-            .any(move |attribute| query.matches(&attribute.bare))
+        self.0.iter().any(move |attribute| query.matches(&attribute.bare))
     }
 
     pub fn filter<Q: Query>(&self, query: Q) -> impl Iterator<Item = &Attribute> {
-        self.0
-            .iter()
-            .filter(move |attribute| query.matches(&attribute.bare))
+        self.0.iter().filter(move |attribute| query.matches(&attribute.bare))
     }
 
     pub fn get<const NAME: AttributeName>(&self) -> Option<Spanned<&DataQueryOutput<NAME>>>
@@ -320,10 +316,7 @@ impl Attributes {
         NameQuery<NAME>: DataQuery,
     {
         self.0.iter().find_map(move |attribute| {
-            Some(Spanned::new(
-                attribute.span,
-                NameQuery::<NAME>::obtain(&attribute.bare)?,
-            ))
+            Some(Spanned::new(attribute.span, NameQuery::<NAME>::obtain(&attribute.bare)?))
         })
     }
 
@@ -333,16 +326,11 @@ impl Attributes {
     where
         NameQuery<NAME>: DataQuery,
     {
-        self.0
-            .iter()
-            .filter_map(move |attribute| NameQuery::<NAME>::obtain(&attribute.bare))
+        self.0.iter().filter_map(move |attribute| NameQuery::<NAME>::obtain(&attribute.bare))
     }
 
     pub fn span<Q: Query>(&self, query: Q) -> Option<Span> {
-        self.0
-            .iter()
-            .find(move |attribute| query.matches(&attribute.bare))
-            .map(Attribute::span)
+        self.0.iter().find(move |attribute| query.matches(&attribute.bare)).map(Attribute::span)
     }
 }
 
@@ -695,10 +683,7 @@ pub trait Query: Copy {
     fn matches(self, attribute: &BareAttribute) -> bool;
 
     fn or<Q: Query>(self, other: Q) -> Or<Self, Q> {
-        Or {
-            left: self,
-            right: other,
-        }
+        Or { left: self, right: other }
     }
 }
 

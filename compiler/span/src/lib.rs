@@ -1,10 +1,5 @@
 //! Data structures and procedures for handling source locations.
-#![feature(
-    adt_const_params,
-    decl_macro,
-    min_specialization,
-    type_changing_struct_update
-)]
+#![feature(adt_const_params, decl_macro, min_specialization, type_changing_struct_update)]
 #![allow(incomplete_features)] // adt_const_params
 
 // @Task handle overflows showing errors like "file too big" to the user
@@ -111,12 +106,7 @@ mod generic {
     impl<const L: Locality> Span<L> {
         #[cfg_attr(debug_assertions, track_caller)]
         pub fn new(start: ByteIndex<L>, end: ByteIndex<L>) -> Self {
-            debug_assert!(
-                start <= end,
-                "span start ({}) > span end ({})",
-                start.0,
-                end.0
-            );
+            debug_assert!(start <= end, "span start ({}) > span end ({})", start.0, end.0);
 
             Self { start, end }
         }
@@ -313,10 +303,7 @@ impl Span {
         let trimmed = source.trim_end_matches(predicate);
         let difference = source.len() - trimmed.len();
 
-        Span::new(
-            self.start,
-            self.end - ByteIndex::try_from(difference).unwrap(),
-        )
+        Span::new(self.start, self.end - ByteIndex::try_from(difference).unwrap())
     }
 
     // @Task implement expand_{start,end}_matches to expand outwards
@@ -442,55 +429,34 @@ mod spanned {
 
     impl<Bare, const AFFINITY: Affinity> Spanned<Bare, AFFINITY> {
         pub fn bare(bare: Bare) -> Self {
-            Self {
-                span: default(),
-                bare,
-            }
+            Self { span: default(), bare }
         }
 
         pub fn map<Output>(self, mapper: impl FnOnce(Bare) -> Output) -> Spanned<Output, AFFINITY> {
-            Spanned {
-                span: self.span,
-                bare: mapper(self.bare),
-            }
+            Spanned { span: self.span, bare: mapper(self.bare) }
         }
 
         pub fn remap<Output>(self, bare: Output) -> Spanned<Output, AFFINITY> {
-            Spanned {
-                span: self.span,
-                bare,
-            }
+            Spanned { span: self.span, bare }
         }
 
         pub fn transform(self, mapper: impl FnOnce(Span) -> Span) -> Self {
-            Self {
-                span: mapper(self.span),
-                ..self
-            }
+            Self { span: mapper(self.span), ..self }
         }
 
         pub const fn as_ref(&self) -> Spanned<&Bare, AFFINITY> {
-            Spanned {
-                span: self.span,
-                bare: &self.bare,
-            }
+            Spanned { span: self.span, bare: &self.bare }
         }
 
         pub fn as_mut(&mut self) -> Spanned<&mut Bare, AFFINITY> {
-            Spanned {
-                span: self.span,
-                bare: &mut self.bare,
-            }
+            Spanned { span: self.span, bare: &mut self.bare }
         }
 
         pub fn as_deref(&self) -> Spanned<&Bare::Target, AFFINITY>
         where
             Bare: Deref,
         {
-            Spanned {
-                span: self.span,
-                bare: &self.bare,
-            }
+            Spanned { span: self.span, bare: &self.bare }
         }
     }
 
@@ -535,19 +501,13 @@ mod spanned {
         }
 
         pub fn weaken(self) -> Spanned<Bare, { Affinity::Weak }> {
-            Spanned {
-                bare: self.bare,
-                span: self.span,
-            }
+            Spanned { bare: self.bare, span: self.span }
         }
     }
 
     impl<Bare> Spanned<Bare, { Affinity::Weak }> {
         pub fn strengthen(self) -> Spanned<Bare> {
-            Spanned {
-                bare: self.bare,
-                span: self.span,
-            }
+            Spanned { bare: self.bare, span: self.span }
         }
     }
 
@@ -577,9 +537,7 @@ mod spanned {
 
     impl<Bare: Ord> Ord for Spanned<Bare> {
         fn cmp(&self, other: &Self) -> Ordering {
-            self.span
-                .cmp(&other.span)
-                .then_with(|| self.bare.cmp(&other.bare))
+            self.span.cmp(&other.span).then_with(|| self.bare.cmp(&other.bare))
         }
     }
 
@@ -611,10 +569,7 @@ mod spanned {
     }
 
     pub macro Spanned($span:pat, $bare:pat $(,)?) {
-        Spanned {
-            span: $span,
-            bare: $bare,
-        }
+        Spanned { span: $span, bare: $bare }
     }
 
     #[derive(PartialEq, Eq, Clone, Copy, ConstParamTy)]

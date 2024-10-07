@@ -1,9 +1,9 @@
 use super::{Error, Mode, Parameter, ParameterKind, Timeout};
 use crate::{
-    configuration::{Configuration, TestTag},
     TestType::{self, *},
+    configuration::{Configuration, TestTag},
 };
-use span::{span, FileName, SourceMap, Spanned};
+use span::{FileName, SourceMap, Spanned, span};
 use utility::default;
 
 fn parse_configuration<'m>(
@@ -34,10 +34,7 @@ fn parse_parameter_program_args() {
 #[test]
 fn parse_parameter_pass_check() {
     assert_eq!(
-        Ok(Parameter {
-            revisions: Vec::new(),
-            kind: ParameterKind::Pass { mode: Mode::Check }
-        }),
+        Ok(Parameter { revisions: Vec::new(), kind: ParameterKind::Pass { mode: Mode::Check } }),
         parse_parameter("pass check", SourceFile)
     );
 }
@@ -45,10 +42,7 @@ fn parse_parameter_pass_check() {
 #[test]
 fn parse_parameter_fail_build() {
     assert_eq!(
-        Ok(Parameter {
-            revisions: Vec::new(),
-            kind: ParameterKind::Fail { mode: Mode::Build }
-        }),
+        Ok(Parameter { revisions: Vec::new(), kind: ParameterKind::Fail { mode: Mode::Build } }),
         parse_parameter("fail build", SourceFile)
     );
 }
@@ -140,10 +134,7 @@ fn parse_parameter_missing_parameter() {
 #[test]
 fn parse_parameter_undefined_parameter() {
     assert_eq!(
-        Err(Error::new(
-            "‘weird’ is not a valid test parameter",
-            span(0, 0)
-        )),
+        Err(Error::new("‘weird’ is not a valid test parameter", span(0, 0))),
         parse_parameter("weird", SourceFile)
     );
 }
@@ -151,10 +142,7 @@ fn parse_parameter_undefined_parameter() {
 #[test]
 fn parse_parameter_missing_argument_pass() {
     assert_eq!(
-        Err(Error::new(
-            "the test parameter ‘pass’ is missing the argument ‘mode’",
-            span(0, 0)
-        )),
+        Err(Error::new("the test parameter ‘pass’ is missing the argument ‘mode’", span(0, 0))),
         parse_parameter("pass", SourceFile)
     );
 }
@@ -192,10 +180,7 @@ fn parse_parameter_invalid_argument() {
 #[test]
 fn parse_parameter_too_many_arguments_timeout() {
     assert_eq!(
-        Err(Error::new(
-            "1 extraneous argument is passed to ‘timeout’",
-            span(0, 0)
-        )),
+        Err(Error::new("1 extraneous argument is passed to ‘timeout’", span(0, 0))),
         parse_parameter("timeout 9999 none", SourceFile)
     );
 }
@@ -203,10 +188,7 @@ fn parse_parameter_too_many_arguments_timeout() {
 #[test]
 fn parse_parameter_too_many_arguments_pass() {
     assert_eq!(
-        Err(Error::new(
-            "3 extraneous arguments are passed to ‘pass’",
-            span(0, 0)
-        )),
+        Err(Error::new("3 extraneous arguments are passed to ‘pass’", span(0, 0))),
         parse_parameter("pass check -Zinternals --no-core --tlib", SourceFile)
     );
 }
@@ -214,10 +196,7 @@ fn parse_parameter_too_many_arguments_pass() {
 #[test]
 fn parse_parameter_too_many_arguments_program_env_var() {
     assert_eq!(
-        Err(Error::new(
-            "2 extraneous arguments are passed to ‘program-env-var’",
-            span(0, 0)
-        )),
+        Err(Error::new("2 extraneous arguments are passed to ‘program-env-var’", span(0, 0))),
         parse_parameter("program-env-var hey there fellow traveler", SourceFile)
     );
 }
@@ -233,10 +212,7 @@ fn parse_configuraiton_no_parameters() {
 #[test]
 fn parse_configuration_single_parameter() {
     assert_eq!(
-        Ok(Configuration {
-            tag: TestTag::Pass { mode: Mode::Build },
-            ..default()
-        }),
+        Ok(Configuration { tag: TestTag::Pass { mode: Mode::Build }, ..default() }),
         parse_configuration(";;; TEST pass build", SourceFile, &mut SourceMap::default())
     );
 }
@@ -274,10 +250,7 @@ fn parse_configuration_conflicting_parameters_1() {
 #[test]
 fn parse_configuration_accumulating_parameters() {
     assert_eq!(
-        Ok(Configuration {
-            compiler_args: vec!["one", "two", "three"],
-            ..default()
-        }),
+        Ok(Configuration { compiler_args: vec!["one", "two", "three"], ..default() }),
         parse_configuration(
             "
 ;;; TEST compiler-args one two
@@ -293,10 +266,7 @@ fn parse_configuration_accumulating_parameters() {
 #[test]
 fn parse_configuration_unsupported_program_args() {
     assert_eq!(
-        Err(Error::new(
-            "the test parameter ‘program-args’ is not supported yet",
-            span(1, 26)
-        )),
+        Err(Error::new("the test parameter ‘program-args’ is not supported yet", span(1, 26))),
         parse_configuration(
             "# TEST program-args input",
             RecnotSourceFile,
@@ -308,10 +278,7 @@ fn parse_configuration_unsupported_program_args() {
 #[test]
 fn parse_configuration_unsupported_program_env_var() {
     assert_eq!(
-        Err(Error::new(
-            "the test parameter ‘program-env-var’ is not supported yet",
-            span(1, 36)
-        )),
+        Err(Error::new("the test parameter ‘program-env-var’ is not supported yet", span(1, 36))),
         parse_configuration(
             "# TEST program-env-var EXTRA STUFF!",
             RecnotSourceFile,
@@ -323,15 +290,8 @@ fn parse_configuration_unsupported_program_env_var() {
 #[test]
 fn parse_configuration_unsupported_revisions_parameter() {
     assert_eq!(
-        Err(Error::new(
-            "the test parameter ‘revisions’ is not supported yet",
-            span(1, 30)
-        )),
-        parse_configuration(
-            ";;; TEST revisions base modif",
-            SourceFile,
-            &mut SourceMap::default()
-        ),
+        Err(Error::new("the test parameter ‘revisions’ is not supported yet", span(1, 30))),
+        parse_configuration(";;; TEST revisions base modif", SourceFile, &mut SourceMap::default()),
     );
 }
 
@@ -350,10 +310,7 @@ fn parse_configuration_unsupported_revisions_syntax() {
 #[test]
 fn parse_configuration_unsupported_substitution() {
     assert_eq!(
-        Err(Error::new(
-            "the test parameter ‘substitution’ is not supported yet",
-            span(1, 40)
-        )),
+        Err(Error::new("the test parameter ‘substitution’ is not supported yet", span(1, 40))),
         parse_configuration(
             r";;; TEST substitution DIR path/to/(\w+)",
             SourceFile,
@@ -381,10 +338,7 @@ fn parse_configuration_revisions_depending_on_revisions() {
 #[test]
 fn parse_configuration_end_of_line_source_file() {
     assert_eq!(
-        Ok(Configuration {
-            tag: TestTag::Pass { mode: Mode::Check },
-            ..default()
-        }),
+        Ok(Configuration { tag: TestTag::Pass { mode: Mode::Check }, ..default() }),
         parse_configuration(
             "some filler content ;;; TEST pass check",
             SourceFile,
@@ -396,10 +350,7 @@ fn parse_configuration_end_of_line_source_file() {
 #[test]
 fn parse_configuration_end_of_line_source_file_invalid() {
     assert_eq!(
-        Err(Error::new(
-            "‘undefined’ is not a valid test parameter",
-            span(14, 32)
-        )),
+        Err(Error::new("‘undefined’ is not a valid test parameter", span(14, 32))),
         parse_configuration(
             "Int -> Int32 ;;; TEST undefined",
             SourceFile,
@@ -424,10 +375,7 @@ fn do_not_parse_configuration_inside_text_literal() {
 #[test]
 fn parse_configuration_end_of_line_recnot_source_file() {
     assert_eq!(
-        Ok(Configuration {
-            tag: TestTag::Pass { mode: Mode::Check },
-            ..default()
-        }),
+        Ok(Configuration { tag: TestTag::Pass { mode: Mode::Check }, ..default() }),
         parse_configuration(
             "some filler content # TEST pass check",
             RecnotSourceFile,
@@ -439,10 +387,7 @@ fn parse_configuration_end_of_line_recnot_source_file() {
 #[test]
 fn parse_configuration_end_of_line_recnot_source_file_invalid() {
     assert_eq!(
-        Err(Error::new(
-            "‘unknown’ is not a valid test parameter",
-            span(19, 33)
-        )),
+        Err(Error::new("‘unknown’ is not a valid test parameter", span(19, 33))),
         parse_configuration(
             r#"{ left: "right" } # TEST unknown"#,
             RecnotSourceFile,

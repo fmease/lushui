@@ -3,18 +3,15 @@
 //! Negative behavior tests are UI tests and found in `/test/ui/tests/recnot/`.
 
 use super::{Record, Value};
-use diagnostics::{error::Result, Reporter};
-use span::{span, FileName, SourceMap, Spanned};
+use diagnostics::{Reporter, error::Result};
+use span::{FileName, SourceMap, Spanned, span};
 use std::sync::{Arc, RwLock};
-use utility::paint::{epaint, ColorChoice};
-use utility::{default, Changeset, ChangesetExt};
+use utility::paint::{ColorChoice, epaint};
+use utility::{Changeset, ChangesetExt, default};
 
 fn parse(source: &str) -> Result<Value> {
     let map: Arc<RwLock<SourceMap>> = default();
-    let file = map
-        .write()
-        .unwrap()
-        .add(FileName::Anonymous, Arc::new(source.to_owned()), None);
+    let file = map.write().unwrap().add(FileName::Anonymous, Arc::new(source.to_owned()), None);
     let reporter = Reporter::stderr(ColorChoice::Auto).with_map(map.clone());
     super::super::parse(file, &map, &reporter)
 }
@@ -57,18 +54,12 @@ fn empty() {
 
 #[test]
 fn sole_line_break() {
-    assert_eq(
-        parse("\n"),
-        Value::new(span(1, 2), Record::default().into()),
-    );
+    assert_eq(parse("\n"), Value::new(span(1, 2), Record::default().into()));
 }
 
 #[test]
 fn comment() {
-    assert_eq(
-        parse("# there it is"),
-        Value::new(span(1, 14), Record::default().into()),
-    );
+    assert_eq(parse("# there it is"), Value::new(span(1, 14), Record::default().into()));
 }
 
 #[test]
@@ -118,18 +109,12 @@ fn negative_number() {
 
 #[test]
 fn number_with_separators() {
-    assert_eq(
-        parse("9'999'998"),
-        Value::new(span(1, 10), 9_999_998.into()),
-    );
+    assert_eq(parse("9'999'998"), Value::new(span(1, 10), 9_999_998.into()));
 }
 
 #[test]
 fn text() {
-    assert_eq(
-        parse(r#""filler""#),
-        Value::new(span(1, 9), "filler".into()),
-    );
+    assert_eq(parse(r#""filler""#), Value::new(span(1, 9), "filler".into()));
 }
 
 #[test]

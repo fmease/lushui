@@ -142,9 +142,7 @@ fn write_pi_type_literal_or_lower(
 
                 f.write_str("]")?;
             } else {
-                let binder = lambda
-                    .binder
-                    .map_or(Atom::UNDERSCORE, ast::Identifier::bare);
+                let binder = lambda.binder.map_or(Atom::UNDERSCORE, ast::Identifier::bare);
 
                 if let Some(domain) = &lambda.domain {
                     f.write_str("(")?;

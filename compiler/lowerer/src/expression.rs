@@ -1,6 +1,6 @@
 use crate::Lowerer;
 use ast::{LocalBinder, ParameterKind::Explicit};
-use diagnostics::{error::PossiblyErroneous, Diagnostic, ErrorCode, Substitution};
+use diagnostics::{Diagnostic, ErrorCode, Substitution, error::PossiblyErroneous};
 use span::{Span, Spanning};
 
 impl Lowerer<'_> {
@@ -33,12 +33,7 @@ impl Lowerer<'_> {
                 lo_ast::Expression::new(
                     attributes,
                     expression.span,
-                    lo_ast::Application {
-                        callee,
-                        argument,
-                        kind: application.kind,
-                    }
-                    .into(),
+                    lo_ast::Application { callee, argument, kind: application.kind }.into(),
                 )
             }
             Projection(projection) => lo_ast::Expression::new(
@@ -85,10 +80,7 @@ impl Lowerer<'_> {
                 ast::SequenceLiteral {
                     path: sequence.path,
                     elements: sequence.elements.map(|elements| {
-                        elements
-                            .into_iter()
-                            .map(|element| self.lower_expression(element))
-                            .collect()
+                        elements.into_iter().map(|element| self.lower_expression(element)).collect()
                     }),
                 }
                 .into(),
@@ -172,16 +164,10 @@ impl Lowerer<'_> {
 
         let mut body = self.lower_expression(lambda.body);
 
-        let mut codomain = lambda
-            .codomain
-            .map(|type_| self.lower_expression(type_))
-            .into_iter();
+        let mut codomain = lambda.codomain.map(|type_| self.lower_expression(type_)).into_iter();
 
         for parameter in lambda.parameters.into_iter().rev() {
-            let domain = parameter
-                .bare
-                .type_
-                .map(|type_| self.lower_expression(type_));
+            let domain = parameter.bare.type_.map(|type_| self.lower_expression(type_));
 
             body = lo_ast::Expression::common(
                 span,
@@ -206,11 +192,8 @@ impl Lowerer<'_> {
             match binding.body {
                 Some(body) => body,
                 None => {
-                    let span = binder
-                        .span()
-                        .fit_end(&binding.parameters)
-                        .fit_end(&binding.type_)
-                        .end();
+                    let span =
+                        binder.span().fit_end(&binding.parameters).fit_end(&binding.type_).end();
 
                     Diagnostic::error()
                         .code(ErrorCode::E012)
@@ -227,16 +210,10 @@ impl Lowerer<'_> {
         };
         let mut body = self.lower_expression(body);
 
-        let mut type_ = binding
-            .type_
-            .map(|type_| self.lower_expression(type_))
-            .into_iter();
+        let mut type_ = binding.type_.map(|type_| self.lower_expression(type_)).into_iter();
 
         for parameter in binding.parameters.into_iter().rev() {
-            let domain = parameter
-                .bare
-                .type_
-                .map(|type_| self.lower_expression(type_));
+            let domain = parameter.bare.type_.map(|type_| self.lower_expression(type_));
 
             // @Bug don't create bare expression, use a span from somewhere
             body = lo_ast::Expression::bare(
@@ -290,13 +267,10 @@ impl Lowerer<'_> {
 
         match type_ {
             Some(type_) => self.lower_expression(type_),
-            None => lo_ast::Expression::common(
-                span,
-                match kind {
-                    ast::ParameterKind::Implicit if BIDIR_TYCK => ast::Wildcard::Silent.into(),
-                    _ => lo_ast::BareExpression::Type,
-                },
-            ),
+            None => lo_ast::Expression::common(span, match kind {
+                ast::ParameterKind::Implicit if BIDIR_TYCK => ast::Wildcard::Silent.into(),
+                _ => lo_ast::BareExpression::Type,
+            }),
         }
     }
 }

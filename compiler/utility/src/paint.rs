@@ -80,11 +80,7 @@ impl Painter {
     }
 
     fn new(writer: Writer, colorize: bool) -> Self {
-        Self {
-            writer,
-            colorize,
-            stack: SmallVec::new(),
-        }
+        Self { writer, colorize, stack: SmallVec::new() }
     }
 
     pub fn set(&mut self, style: impl IntoStyle) -> io::Result<()> {

@@ -1,4 +1,4 @@
-use crate::{path::shorten, terminal_width, Stream};
+use crate::{Stream, path::shorten, terminal_width};
 use derivation::{Elements, FromStr, Str};
 use diagnostics::Diagnostic;
 use span::{SourceMap, Span};
@@ -9,8 +9,9 @@ use std::{
     time::Duration,
 };
 use utility::{
+    Changeset, ChangesetExt, Str,
     paint::{AnsiColor, Painter},
-    pluralize, Changeset, ChangesetExt, Str,
+    pluralize,
 };
 
 pub(crate) struct FailedTest {
@@ -20,10 +21,7 @@ pub(crate) struct FailedTest {
 
 impl FailedTest {
     pub(crate) fn new(path: PathBuf, kind: Failure) -> Self {
-        Self {
-            path,
-            failure: kind,
-        }
+        Self { path, failure: kind }
     }
 
     pub(crate) fn print(
@@ -60,14 +58,9 @@ impl FailedTest {
 
                 diagnostic.render(None, painter)
             }
-            Failure::GoldenFileMismatch {
-                golden,
-                actual,
-                stream,
-            } => {
-                let diagnostic = Diagnostic::error()
-                    .path(shorten(&self.path).to_path_buf())
-                    .message(format!(
+            Failure::GoldenFileMismatch { golden, actual, stream } => {
+                let diagnostic =
+                    Diagnostic::error().path(shorten(&self.path).to_path_buf()).message(format!(
                         "the {stream} output of the compiler differs from the expected one"
                     ));
 
@@ -96,11 +89,7 @@ impl FailedTest {
                 write!(painter, "{}", "-".repeat(terminal_width()))?;
                 painter.unset()
             }
-            Failure::InvalidTest {
-                message,
-                note,
-                span,
-            } => {
+            Failure::InvalidTest { message, note, span } => {
                 let diagnostic = Diagnostic::error()
                     .path(shorten(&self.path).to_path_buf())
                     .message(message.clone())
@@ -117,9 +106,8 @@ impl FailedTest {
             }
             Failure::InvalidConfiguration(error) => {
                 // @Temporary
-                let diagnostic = Diagnostic::error()
-                    .message(error.message.clone())
-                    .unlabeled_span(error.span);
+                let diagnostic =
+                    Diagnostic::error().message(error.message.clone()).unlabeled_span(error.span);
 
                 diagnostic.render(Some(map), painter)
             }

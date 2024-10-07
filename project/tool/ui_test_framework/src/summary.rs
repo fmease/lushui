@@ -62,11 +62,7 @@ impl TestSuiteSummary {
         }
         painter.unset()?;
 
-        write!(
-            painter,
-            " ({:.2}%)",
-            self.statistics.ratio_passed_vs_included(),
-        )?;
+        write!(painter, " ({:.2}%)", self.statistics.ratio_passed_vs_included(),)?;
 
         fn column(
             count: usize,
@@ -90,12 +86,7 @@ impl TestSuiteSummary {
 
         column(self.statistics.failed, "failed", AnsiColor::Red, painter)?;
 
-        column(
-            self.statistics.ignored,
-            "ignored",
-            AnsiColor::Yellow,
-            painter,
-        )?;
+        column(self.statistics.ignored, "ignored", AnsiColor::Yellow, painter)?;
 
         write!(painter, " | {} filtered out", self.statistics.skipped)?;
         write!(painter, " | {} in total", self.statistics.total_amount())?;

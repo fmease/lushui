@@ -1,6 +1,6 @@
 use crate::{
-    special, Attributes, DeclarationIndex, Exposure, Expression, Identifier, LocalDeclarationIndex,
-    Namespace, ValueView,
+    Attributes, DeclarationIndex, Exposure, Expression, Identifier, LocalDeclarationIndex,
+    Namespace, ValueView, special,
 };
 use diagnostics::{error::PossiblyErroneous, reporter::ErasedReportedError};
 use utility::default;
@@ -33,10 +33,7 @@ pub struct Entity {
 
 impl Entity {
     pub const fn is_untyped(&self) -> bool {
-        matches!(
-            self.kind,
-            UntypedFunction | UntypedDataType { .. } | UntypedConstructor { .. }
-        )
+        matches!(self.kind, UntypedFunction | UntypedDataType { .. } | UntypedConstructor { .. })
     }
 
     /// Test if the entity is a (typed or untyped) function.
@@ -89,13 +86,7 @@ impl Entity {
     }
 
     pub const fn is_bodiless_function(&self) -> bool {
-        matches!(
-            self.kind,
-            Function {
-                expression: None,
-                ..
-            }
-        )
+        matches!(self.kind, Function { expression: None, .. })
     }
 
     pub fn type_(&self) -> Option<Expression> {
@@ -117,13 +108,10 @@ impl Entity {
     /// not ready yet.
     pub fn value(&self) -> ValueView {
         match &self.kind {
-            Function {
-                expression: Some(expression),
-                ..
-            } => ValueView::Reducible(expression.clone()),
-            Function {
-                expression: None, ..
+            Function { expression: Some(expression), .. } => {
+                ValueView::Reducible(expression.clone())
             }
+            Function { expression: None, .. }
             | Error(_)
             | DataType { .. }
             | Constructor { .. }
@@ -181,15 +169,11 @@ pub enum EntityKind {
 
 impl EntityKind {
     pub fn module() -> Self {
-        Module {
-            namespace: default(),
-        }
+        Module { namespace: default() }
     }
 
     pub fn untyped_data_type() -> Self {
-        UntypedDataType {
-            namespace: default(),
-        }
+        UntypedDataType { namespace: default() }
     }
 
     /// The user-facing name of the entity kind.

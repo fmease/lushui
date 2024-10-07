@@ -1,9 +1,9 @@
 use crate::{Diagnostic, ErrorCode, LintCode, UnboxedUntaggedDiagnostic};
-use span::{span, FileName::Anonymous, SourceMap};
+use span::{FileName::Anonymous, SourceMap, span};
 use std::{path::Path, sync::Arc};
 use utility::{
-    paint::{epaint, paint_to_string, ColorChoice},
     Changeset, ChangesetExt,
+    paint::{ColorChoice, epaint, paint_to_string},
 };
 
 #[track_caller]
@@ -42,9 +42,7 @@ fn format_single_line_primary_highlight() {
     let mut map = SourceMap::default();
     map.add_str(Anonymous, "alpha\nbeta\ngamma\n");
 
-    let diagnostic = Diagnostic::error()
-        .message("message")
-        .unlabeled_span(span(8, 11));
+    let diagnostic = Diagnostic::error().message("message").unlabeled_span(span(8, 11));
 
     assert_format(
         &diagnostic,
@@ -116,9 +114,8 @@ fn format_triple_digit_line_number() {
         None,
     );
 
-    let diagnostic = Diagnostic::warning()
-        .message("this is a sentence")
-        .unlabeled_span(span(124, 133));
+    let diagnostic =
+        Diagnostic::warning().message("this is a sentence").unlabeled_span(span(124, 133));
 
     assert_format(
         &diagnostic,
@@ -199,9 +196,8 @@ fn format_highlights_in_different_files() {
     map.add_str("ONE", "a\nbc\ndef\n");
     map.add_str("TWO", "zyx");
 
-    let diagnostic = Diagnostic::debug()
-        .unlabeled_span(span(4, 5))
-        .unlabeled_secondary_span(span(11, 13));
+    let diagnostic =
+        Diagnostic::debug().unlabeled_span(span(4, 5)).unlabeled_secondary_span(span(11, 13));
 
     assert_format(
         &diagnostic,
@@ -523,9 +519,7 @@ fn format_zero_length_highlight() {
     let mut map = SourceMap::default();
     map.add_str(Anonymous, "sample\n");
 
-    let diagnostic = Diagnostic::debug()
-        .message("nil")
-        .unlabeled_span(span(3, 3));
+    let diagnostic = Diagnostic::debug().message("nil").unlabeled_span(span(3, 3));
 
     assert_format(
         &diagnostic,
@@ -544,9 +538,7 @@ fn format_zero_length_highlight_start_of_line() {
     let mut map = SourceMap::default();
     map.add_str(Anonymous, "sample\n");
 
-    let diagnostic = Diagnostic::debug()
-        .message("nil")
-        .unlabeled_span(span(1, 1));
+    let diagnostic = Diagnostic::debug().message("nil").unlabeled_span(span(1, 1));
 
     assert_format(
         &diagnostic,
@@ -565,9 +557,7 @@ fn format_zero_length_secondary_highlight() {
     let mut map = SourceMap::default();
     map.add_str(Anonymous, "sample\n");
 
-    let diagnostic = Diagnostic::debug()
-        .message("nil")
-        .unlabeled_secondary_span(span(3, 3));
+    let diagnostic = Diagnostic::debug().message("nil").unlabeled_secondary_span(span(3, 3));
 
     assert_format(
         &diagnostic,
@@ -584,10 +574,7 @@ internal debugging message: nil
 #[test]
 fn format_highlight_line_break() {
     let mut map = SourceMap::default();
-    map.add_str(
-        Anonymous,
-        "This is a sentence.\nThis is a follow-up sentence.\n",
-    );
+    map.add_str(Anonymous, "This is a sentence.\nThis is a follow-up sentence.\n");
 
     let diagnostic = Diagnostic::error().span(span(20, 20), "EOL");
 
@@ -652,9 +639,7 @@ fn format_highlight_containing_final_line_break() {
     let mut map = SourceMap::default();
     map.add_str(Anonymous, "This is a sentence.\n");
 
-    let diagnostic = Diagnostic::warning()
-        .message("weird corner case")
-        .unlabeled_span(span(1, 21));
+    let diagnostic = Diagnostic::warning().message("weird corner case").unlabeled_span(span(1, 21));
 
     assert_format(
         &diagnostic,
@@ -714,9 +699,8 @@ error: this file has to contain something reasonable
 
 #[test]
 fn format_warning_with_lint_code() {
-    let diagnostic = Diagnostic::warning()
-        .code(LintCode::PermanentlyUnassigned)
-        .message("no man's land");
+    let diagnostic =
+        Diagnostic::warning().code(LintCode::PermanentlyUnassigned).message("no man's land");
 
     assert_format(
         &diagnostic,
@@ -842,9 +826,11 @@ fn format_suggestion_removal() {
     let mut map = SourceMap::default();
     map.add_str(Anonymous, "This is the the best!");
 
-    let diagnostic = Diagnostic::error()
-        .message("duplicate consecutive word ‘the’")
-        .suggest(span(13, 17), "remove the second occurrence of the word", "");
+    let diagnostic = Diagnostic::error().message("duplicate consecutive word ‘the’").suggest(
+        span(13, 17),
+        "remove the second occurrence of the word",
+        "",
+    );
 
     assert_format(
         &diagnostic,

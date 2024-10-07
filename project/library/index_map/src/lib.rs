@@ -25,10 +25,7 @@ impl<I, T> IndexMap<I, T> {
     }
 
     pub fn bare(values: Vec<T>) -> Self {
-        Self {
-            values,
-            _marker: PhantomData,
-        }
+        Self { values, _marker: PhantomData }
     }
 
     #[must_use]
@@ -112,7 +109,7 @@ use iter::{IntoIter, Iter, IterMut};
 
 // FIXME: Inline this module once `type_alias_impl_trait` supports `#[define]` (..).
 mod iter {
-    use super::{map, Index, IndexMap};
+    use super::{Index, IndexMap, map};
 
     // FIXME: Shouldn't rustc be smart enough to imply `T: 'a`? Is this related to
     // the `implied_bounds(ty::Weak)` oversight of mine?
@@ -145,10 +142,7 @@ impl<I, T> Default for IndexMap<I, T> {
 
 impl<I, T: Clone> Clone for IndexMap<I, T> {
     fn clone(&self) -> Self {
-        Self {
-            values: self.values.clone(),
-            _marker: PhantomData,
-        }
+        Self { values: self.values.clone(), _marker: PhantomData }
     }
 }
 

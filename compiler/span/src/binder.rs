@@ -1,6 +1,6 @@
 use crate::{Span, Spanning};
 use std::fmt;
-use utility::{obtain, Atom};
+use utility::{Atom, obtain};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum LocalBinder<T> {

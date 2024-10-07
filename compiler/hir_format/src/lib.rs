@@ -2,10 +2,10 @@
 #![feature(associated_type_defaults)]
 
 use joinery::JoinableIterator;
-use lexer::{token::INDENTATION, CharExt};
+use lexer::{CharExt, token::INDENTATION};
 use session::{
-    component::{Component, DeclarationIndexExt, LocalDeclarationIndexExt},
     Session,
+    component::{Component, DeclarationIndexExt, LocalDeclarationIndexExt},
 };
 use std::{collections::VecDeque, fmt};
 use utility::Atom;
@@ -174,9 +174,7 @@ fn write_pi_type_literal_or_lower(
 
                 f.write_str("]")?;
             } else {
-                let binder = lambda
-                    .binder
-                    .map_or(Atom::UNDERSCORE, hir::Identifier::bare);
+                let binder = lambda.binder.map_or(Atom::UNDERSCORE, hir::Identifier::bare);
 
                 if let Some(domain) = &lambda.domain {
                     write!(f, "({binder}: ")?;
@@ -376,16 +374,8 @@ impl Display for hir::Entity {
         // @Task improve output for overly long lines (when the identifier is too long or more
         // importantly when the entity kind (esp. expressions within it) are big)
 
-        let parent = self
-            .parent
-            .map(|parent| format!("{parent:?}."))
-            .unwrap_or_default();
-        write!(
-            f,
-            "{:>4?}<   {:<40} ↦ ",
-            self.exposure,
-            format!("{parent}{}", self.source)
-        )?;
+        let parent = self.parent.map(|parent| format!("{parent:?}.")).unwrap_or_default();
+        write!(f, "{:>4?}<   {:<40} ↦ ", self.exposure, format!("{parent}{}", self.source))?;
         self.kind.write(session, f)
     }
 }
@@ -408,11 +398,7 @@ impl Display for hir::EntityKind {
                 write!(f, " : ")?;
                 type_.write(session, f)
             }
-            DataType {
-                type_,
-                constructors,
-                ..
-            } => {
+            DataType { type_, constructors, .. } => {
                 type_.write(session, f)?;
 
                 if !constructors.is_empty() {

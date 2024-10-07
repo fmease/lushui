@@ -9,10 +9,10 @@
 //! * text escape sequences
 //! * negative numbers
 use derivation::Discriminant;
-use diagnostics::{error::Result, reporter::ErasedReportedError, Diagnostic, ErrorCode, Reporter};
+use diagnostics::{Diagnostic, ErrorCode, Reporter, error::Result, reporter::ErasedReportedError};
 use span::{Affinity, SourceFileIndex, SourceMap, Span, Spanned, Spanning};
 use std::{fmt, sync::RwLock};
-use utility::{obtain, HashMap};
+use utility::{HashMap, obtain};
 
 mod parser;
 
@@ -49,10 +49,8 @@ impl TryFrom<BareValue> for bool {
     fn try_from(value: BareValue) -> Result<Self, Self::Error> {
         let type_ = value.type_();
 
-        obtain!(value, BareValue::Boolean(value) => value).ok_or(TypeError {
-            expected: Type::Boolean,
-            actual: type_,
-        })
+        obtain!(value, BareValue::Boolean(value) => value)
+            .ok_or(TypeError { expected: Type::Boolean, actual: type_ })
     }
 }
 
@@ -68,10 +66,8 @@ impl TryFrom<BareValue> for i64 {
     fn try_from(value: BareValue) -> Result<Self, Self::Error> {
         let type_ = value.type_();
 
-        obtain!(value, BareValue::Integer(value) => value).ok_or(TypeError {
-            expected: Type::Integer,
-            actual: type_,
-        })
+        obtain!(value, BareValue::Integer(value) => value)
+            .ok_or(TypeError { expected: Type::Integer, actual: type_ })
     }
 }
 
@@ -93,10 +89,8 @@ impl TryFrom<BareValue> for String {
     fn try_from(value: BareValue) -> Result<Self, Self::Error> {
         let type_ = value.type_();
 
-        obtain!(value, BareValue::Text(value) => value).ok_or(TypeError {
-            expected: Type::Text,
-            actual: type_,
-        })
+        obtain!(value, BareValue::Text(value) => value)
+            .ok_or(TypeError { expected: Type::Text, actual: type_ })
     }
 }
 
@@ -118,10 +112,8 @@ impl TryFrom<BareValue> for Vec<Value> {
     fn try_from(value: BareValue) -> Result<Self, Self::Error> {
         let type_ = value.type_();
 
-        obtain!(value, BareValue::List(value) => value).ok_or(TypeError {
-            expected: Type::List,
-            actual: type_,
-        })
+        obtain!(value, BareValue::List(value) => value)
+            .ok_or(TypeError { expected: Type::List, actual: type_ })
     }
 }
 
@@ -137,10 +129,8 @@ impl TryFrom<BareValue> for Record {
     fn try_from(value: BareValue) -> Result<Self, Self::Error> {
         let type_ = value.type_();
 
-        obtain!(value, BareValue::Record(value) => value).ok_or(TypeError {
-            expected: Type::Record,
-            actual: type_,
-        })
+        obtain!(value, BareValue::Record(value) => value)
+            .ok_or(TypeError { expected: Type::Record, actual: type_ })
     }
 }
 
@@ -170,11 +160,7 @@ impl<T: Spanning> TextContentSpanExt for T {
         fn text_content_span(span: Span, map: &SourceMap) -> Span {
             let is_quoted = map.snippet(span).starts_with('"');
 
-            if is_quoted {
-                span.trim(1)
-            } else {
-                span
-            }
+            if is_quoted { span.trim(1) } else { span }
         }
 
         text_content_span(self.span(), map)
@@ -197,18 +183,13 @@ pub fn convert<T: TryFrom<BareValue, Error = TypeError>>(
 ) -> Result<Spanned<T>> {
     Ok(Spanned::new(
         value.span,
-        value
-            .bare
-            .try_into()
-            .map_err(|TypeError { expected, actual }| {
-                Diagnostic::error()
-                    .code(ErrorCode::E800)
-                    .message(format!(
-                        "expected type ‘{expected}’ but got type ‘{actual}’",
-                    ))
-                    .span(value.span, "has the wrong type")
-                    .report(reporter)
-            })?,
+        value.bare.try_into().map_err(|TypeError { expected, actual }| {
+            Diagnostic::error()
+                .code(ErrorCode::E800)
+                .message(format!("expected type ‘{expected}’ but got type ‘{actual}’",))
+                .span(value.span, "has the wrong type")
+                .report(reporter)
+        })?,
     ))
 }
 

@@ -78,11 +78,7 @@ pub(crate) struct Element<'a> {
 
 impl<'a> Element<'a> {
     pub(crate) fn new(tag: impl Into<Cow<'a, str>>) -> Self {
-        Self {
-            tag: tag.into(),
-            attributes: Attributes::default(),
-            children: NodeList::default(),
-        }
+        Self { tag: tag.into(), attributes: Attributes::default(), children: NodeList::default() }
     }
 
     pub(crate) fn anchor(href: impl Into<Cow<'a, str>>, child: impl Into<Node<'a>>) -> Self {
@@ -137,10 +133,7 @@ pub(crate) struct VoidElement<'a> {
 
 impl<'a> VoidElement<'a> {
     pub(crate) fn new(tag: impl Into<Cow<'a, str>>) -> Self {
-        Self {
-            tag: tag.into(),
-            attributes: Attributes::default(),
-        }
+        Self { tag: tag.into(), attributes: Attributes::default() }
     }
 
     fn render(self, output: &mut String) {
@@ -195,9 +188,7 @@ pub(crate) trait Attributable<'a>: Sized {
     fn attributes(&mut self) -> &mut Attributes<'a>;
 
     fn add_attribute(&mut self, name: &'a str, value: impl Into<Cow<'a, str>>) {
-        self.attributes()
-            .key_value
-            .insert(name.into(), value.into());
+        self.attributes().key_value.insert(name.into(), value.into());
     }
 
     fn add_boolean_attribute(&mut self, name: &'a str) {

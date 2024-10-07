@@ -9,15 +9,15 @@ use ast::{
     ParameterKind::{Explicit, Implicit},
     Parameters, Path, Pattern, Render, UsePathTree,
 };
-use diagnostics::{error::Result, Reporter};
+use diagnostics::{Reporter, error::Result};
 use index_map::Index as _;
 use lexer::lex;
-use span::{span, FileName, SourceFileIndex, SourceMap, Span, Spanned};
+use span::{FileName, SourceFileIndex, SourceMap, Span, Spanned, span};
 use std::sync::{Arc, RwLock};
 use utility::{
-    default,
-    paint::{epaint, paint_to_string, ColorChoice},
-    smallvec, Changeset, ChangesetExt, SmallVec,
+    Changeset, ChangesetExt, SmallVec, default,
+    paint::{ColorChoice, epaint, paint_to_string},
+    smallvec,
 };
 
 fn parse_expression(source: &str) -> Result<Expression> {
@@ -26,13 +26,7 @@ fn parse_expression(source: &str) -> Result<Expression> {
     let map = Arc::new(RwLock::new(map));
     let reporter = Reporter::stderr(ColorChoice::Auto).with_map(map.clone());
     let map = map.read().unwrap();
-    parse(
-        lex(&map[file], &default()),
-        |parser| parser.parse_expression(),
-        file,
-        &map,
-        &reporter,
-    )
+    parse(lex(&map[file], &default()), |parser| parser.parse_expression(), file, &map, &reporter)
 }
 
 fn parse_pattern(source: &str) -> Result<Pattern> {
@@ -41,13 +35,7 @@ fn parse_pattern(source: &str) -> Result<Pattern> {
     let map = Arc::new(RwLock::new(map));
     let reporter = Reporter::stderr(ColorChoice::Auto).with_map(map.clone());
     let map = map.read().unwrap();
-    parse(
-        lex(&map[file], &default()),
-        |parser| parser.parse_pattern(),
-        file,
-        &map,
-        &reporter,
-    )
+    parse(lex(&map[file], &default()), |parser| parser.parse_pattern(), file, &map, &reporter)
 }
 
 fn parse_declaration(source: &str) -> Result<Declaration> {
@@ -221,23 +209,20 @@ fn pi_type_literal_application_bracketed_argument_domain() {
             span(1, 22),
             ast::QuantifiedType {
                 quantifier: ast::Quantifier::Pi,
-                parameters: smallvec![Parameter::new(
-                    span(1, 13),
-                    BareParameter {
-                        kind: Explicit,
-                        binder: None,
-                        type_: Some(Expression::common(
-                            span(1, 13),
-                            ast::Application {
-                                callee: identifier("Alpha", span(1, 6)).into(),
-                                argument: identifier("Beta", span(7, 13)).into(),
-                                kind: Explicit,
-                                binder: None,
-                            }
-                            .into(),
-                        )),
-                    }
-                ),],
+                parameters: smallvec![Parameter::new(span(1, 13), BareParameter {
+                    kind: Explicit,
+                    binder: None,
+                    type_: Some(Expression::common(
+                        span(1, 13),
+                        ast::Application {
+                            callee: identifier("Alpha", span(1, 6)).into(),
+                            argument: identifier("Beta", span(7, 13)).into(),
+                            kind: Explicit,
+                            binder: None,
+                        }
+                        .into(),
+                    )),
+                }),],
                 codomain: identifier("Gamma", span(17, 22)).into(),
             }
             .into(),
@@ -253,23 +238,20 @@ fn bracketed_pi_type_literal_application_bracketed_argument_domain() {
             span(1, 24),
             ast::QuantifiedType {
                 quantifier: ast::Quantifier::Pi,
-                parameters: smallvec![Parameter::new(
-                    span(2, 14),
-                    BareParameter {
-                        kind: Explicit,
-                        binder: None,
-                        type_: Some(Expression::common(
-                            span(2, 14),
-                            ast::Application {
-                                callee: identifier("Alpha", span(2, 7)).into(),
-                                argument: identifier("Beta", span(8, 14)).into(),
-                                kind: Explicit,
-                                binder: None,
-                            }
-                            .into(),
-                        )),
-                    }
-                )],
+                parameters: smallvec![Parameter::new(span(2, 14), BareParameter {
+                    kind: Explicit,
+                    binder: None,
+                    type_: Some(Expression::common(
+                        span(2, 14),
+                        ast::Application {
+                            callee: identifier("Alpha", span(2, 7)).into(),
+                            argument: identifier("Beta", span(8, 14)).into(),
+                            kind: Explicit,
+                            binder: None,
+                        }
+                        .into(),
+                    )),
+                })],
                 codomain: identifier("Gamma", span(18, 23)).into(),
             }
             .into(),
@@ -289,23 +271,20 @@ fn pi_type_literal_application_implicit_argument_domain() {
             span(1, 15),
             ast::QuantifiedType {
                 quantifier: ast::Quantifier::Pi,
-                parameters: smallvec![Parameter::new(
-                    span(1, 7),
-                    BareParameter {
-                        kind: Explicit,
-                        binder: None,
-                        type_: Some(Expression::common(
-                            span(1, 7),
-                            ast::Application {
-                                callee: identifier("f", span(1, 2)).into(),
-                                argument: identifier("Int", span(4, 7)).into(),
-                                kind: Implicit,
-                                binder: None,
-                            }
-                            .into(),
-                        )),
-                    }
-                )],
+                parameters: smallvec![Parameter::new(span(1, 7), BareParameter {
+                    kind: Explicit,
+                    binder: None,
+                    type_: Some(Expression::common(
+                        span(1, 7),
+                        ast::Application {
+                            callee: identifier("f", span(1, 2)).into(),
+                            argument: identifier("Int", span(4, 7)).into(),
+                            kind: Implicit,
+                            binder: None,
+                        }
+                        .into(),
+                    )),
+                })],
                 codomain: identifier("Type", span(11, 15)).into(),
             }
             .into(),
@@ -321,23 +300,20 @@ fn pi_type_literal_application_implicit_named_argument_domain() {
             span(1, 21),
             ast::QuantifiedType {
                 quantifier: ast::Quantifier::Pi,
-                parameters: smallvec![Parameter::new(
-                    span(1, 13),
-                    BareParameter {
-                        kind: Explicit,
-                        binder: None,
-                        type_: Some(Expression::common(
-                            span(1, 13),
-                            ast::Application {
-                                callee: identifier("f", span(1, 2)).into(),
-                                argument: identifier("Int", span(9, 12)).into(),
-                                kind: Implicit,
-                                binder: Some(identifier("T", span(5, 6))),
-                            }
-                            .into(),
-                        )),
-                    }
-                )],
+                parameters: smallvec![Parameter::new(span(1, 13), BareParameter {
+                    kind: Explicit,
+                    binder: None,
+                    type_: Some(Expression::common(
+                        span(1, 13),
+                        ast::Application {
+                            callee: identifier("f", span(1, 2)).into(),
+                            argument: identifier("Int", span(9, 12)).into(),
+                            kind: Implicit,
+                            binder: Some(identifier("T", span(5, 6))),
+                        }
+                        .into(),
+                    )),
+                })],
                 codomain: identifier("Type", span(17, 21)).into(),
             }
             .into(),
@@ -358,14 +334,11 @@ fn application_pi_type_literal_implicit_domain() {
                     span(9, 32),
                     ast::QuantifiedType {
                         quantifier: ast::Quantifier::Pi,
-                        parameters: smallvec![Parameter::new(
-                            span(14, 23),
-                            BareParameter {
-                                kind: Implicit,
-                                binder: Some(identifier("n", span(16, 17)).into()),
-                                type_: Some(identifier("Int", span(19, 22)).into()),
-                            }
-                        )],
+                        parameters: smallvec![Parameter::new(span(14, 23), BareParameter {
+                            kind: Implicit,
+                            binder: Some(identifier("n", span(16, 17)).into()),
+                            type_: Some(identifier("Int", span(19, 22)).into()),
+                        })],
                         codomain: identifier("Type", span(27, 31)).into(),
                     }
                     .into(),
@@ -432,13 +405,10 @@ fn field_with_attribute() {
     assert_eq(
         parse_expression("@overall compound::projection"),
         Ok(Expression::new(
-            vec![Attribute::new(
-                span(1, 9),
-                BareAttribute::Regular {
-                    binder: identifier("overall", span(2, 9)),
-                    arguments: default(),
-                },
-            )],
+            vec![Attribute::new(span(1, 9), BareAttribute::Regular {
+                binder: identifier("overall", span(2, 9)),
+                arguments: default(),
+            })],
             span(10, 30),
             ast::Projection {
                 basis: identifier("compound", span(10, 18)).into(),
@@ -458,13 +428,10 @@ fn base_with_attribute_and_field() {
             span(1, 37),
             ast::Projection {
                 basis: Expression::new(
-                    vec![Attribute::new(
-                        span(2, 15),
-                        BareAttribute::Regular {
-                            binder: identifier("specifically", span(3, 15)),
-                            arguments: default(),
-                        },
-                    )],
+                    vec![Attribute::new(span(2, 15), BareAttribute::Regular {
+                        binder: identifier("specifically", span(3, 15)),
+                        arguments: default(),
+                    })],
                     span(1, 25),
                     Path::from(identifier("compound", span(16, 24))).into(),
                 ),
@@ -512,27 +479,18 @@ fn outer_and_inner_attributes() {
         parse_expression("@outer @outer (@inner Type)"),
         Ok(Expression::new(
             vec![
-                Attribute::new(
-                    span(16, 22),
-                    BareAttribute::Regular {
-                        binder: identifier("inner", span(17, 22)),
-                        arguments: default(),
-                    },
-                ),
-                Attribute::new(
-                    span(1, 7),
-                    BareAttribute::Regular {
-                        binder: identifier("outer", span(2, 7)),
-                        arguments: default(),
-                    },
-                ),
-                Attribute::new(
-                    span(8, 14),
-                    BareAttribute::Regular {
-                        binder: identifier("outer", span(9, 14)),
-                        arguments: default(),
-                    },
-                ),
+                Attribute::new(span(16, 22), BareAttribute::Regular {
+                    binder: identifier("inner", span(17, 22)),
+                    arguments: default(),
+                }),
+                Attribute::new(span(1, 7), BareAttribute::Regular {
+                    binder: identifier("outer", span(2, 7)),
+                    arguments: default(),
+                }),
+                Attribute::new(span(8, 14), BareAttribute::Regular {
+                    binder: identifier("outer", span(9, 14)),
+                    arguments: default(),
+                }),
             ],
             span(15, 28),
             Path::from(identifier("Type", span(15, 28))).into(),
@@ -643,19 +601,16 @@ fn use_as_plain() {
                 declarations: Some(vec![Declaration::common(
                     span(1, 24),
                     ast::Use {
-                        bindings: UsePathTree::new(
-                            span(5, 24),
-                            BareUsePathTree::Single {
-                                target: Path {
-                                    hanger: None,
-                                    segments: smallvec![
-                                        identifier("alpha", span(5, 10)),
-                                        identifier("beta", span(11, 15)),
-                                    ],
-                                },
-                                binder: Some(identifier("gamma", span(19, 24))),
+                        bindings: UsePathTree::new(span(5, 24), BareUsePathTree::Single {
+                            target: Path {
+                                hanger: None,
+                                segments: smallvec![
+                                    identifier("alpha", span(5, 10)),
+                                    identifier("beta", span(11, 15)),
+                                ],
                             },
-                        ),
+                            binder: Some(identifier("gamma", span(19, 24))),
+                        }),
                     }
                     .into(),
                 )]),
@@ -817,13 +772,10 @@ fn pattern_with_attributes() {
     assert_eq(
         parse_pattern("@it (has @IT HAS)"),
         Ok(Pattern::new(
-            vec![Attribute::new(
-                span(1, 4),
-                BareAttribute::Regular {
-                    binder: identifier("it", span(2, 4)),
-                    arguments: SmallVec::new(),
-                },
-            )],
+            vec![Attribute::new(span(1, 4), BareAttribute::Regular {
+                binder: identifier("it", span(2, 4)),
+                arguments: SmallVec::new(),
+            })],
             span(5, 18),
             ast::Application {
                 callee: Pattern::common(
@@ -833,13 +785,10 @@ fn pattern_with_attributes() {
                 kind: Explicit,
                 binder: None,
                 argument: Pattern::new(
-                    vec![Attribute::new(
-                        span(10, 13),
-                        BareAttribute::Regular {
-                            binder: identifier("IT", span(11, 13)),
-                            arguments: SmallVec::new(),
-                        },
-                    )],
+                    vec![Attribute::new(span(10, 13), BareAttribute::Regular {
+                        binder: identifier("IT", span(11, 13)),
+                        arguments: SmallVec::new(),
+                    })],
                     span(14, 17),
                     Path::from(identifier("HAS", span(14, 17))).into(),
                 ),

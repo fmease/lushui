@@ -5,9 +5,8 @@ use std::{
     sync::{LazyLock, Mutex},
 };
 use utility::{
-    default,
+    ComponentIndex, HashMap, default,
     path::{CanonicalPath, CanonicalPathBuf},
-    ComponentIndex, HashMap,
 };
 
 /// A collection of [components](crate::Component) and some metadata.

@@ -5,7 +5,7 @@ use derivation::{Elements, FromStr, Str};
 use lexer::word::Word;
 use span::Spanned;
 use std::fmt;
-use utility::{path::CanonicalPathBuf, ComponentIndex, HashMap};
+use utility::{ComponentIndex, HashMap, path::CanonicalPathBuf};
 
 // @Beacon @Beacon @Beacon @Task rename BuildUnit again to sth containing "Component"
 
@@ -21,10 +21,7 @@ pub struct BuildUnit {
 impl BuildUnit {
     // @Temporary
     pub fn outline(&self) -> ComponentOutline {
-        ComponentOutline {
-            name: self.name,
-            index: self.index,
-        }
+        ComponentOutline { name: self.name, index: self.index }
     }
 
     /// Test if this component is the standard library `core`.

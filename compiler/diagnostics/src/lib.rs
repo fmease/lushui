@@ -33,9 +33,7 @@ pub struct Diagnostic<const S: Severity = { Severity::Error }> {
 
 impl<const S: Severity> Diagnostic<S> {
     fn new() -> Self {
-        Self {
-            untagged: Box::new(UnboxedUntaggedDiagnostic::new(S)),
-        }
+        Self { untagged: Box::new(UnboxedUntaggedDiagnostic::new(S)) }
     }
 
     /// Add a text message describing the issue.
@@ -116,9 +114,7 @@ impl<const S: Severity> Diagnostic<S> {
     }
 
     fn subdiagnostic(mut self, severity: Subseverity, message: Str) -> Self {
-        self.untagged
-            .subdiagnostics
-            .push(Subdiagnostic { severity, message });
+        self.untagged.subdiagnostics.push(Subdiagnostic { severity, message });
         self
     }
 

@@ -7,7 +7,7 @@ use hir_format::{ComponentExt, Display, SessionExt};
 use joinery::JoinableIterator;
 use session::Session;
 use std::fmt::Write;
-use utility::{displayed, Atom};
+use utility::{Atom, displayed};
 
 pub(super) fn format_expression(
     expression: &hir::Expression,
@@ -31,11 +31,7 @@ struct Formatter<'a> {
 
 impl<'a> Formatter<'a> {
     fn new(url_prefix: &'a str, session: &'a Session<'a>) -> Self {
-        Self {
-            url_prefix,
-            session,
-            output: String::new(),
-        }
+        Self { url_prefix, session, output: String::new() }
     }
 
     fn write(&mut self, content: &str) {
@@ -75,10 +71,8 @@ impl<'a> Formatter<'a> {
 
                         self.write("]");
                     } else {
-                        let binder = pi
-                            .binder
-                            .map_or(Atom::UNDERSCORE, hir::Identifier::bare)
-                            .to_str();
+                        let binder =
+                            pi.binder.map_or(Atom::UNDERSCORE, hir::Identifier::bare).to_str();
 
                         self.write("(");
                         self.write(binder);
@@ -111,10 +105,8 @@ impl<'a> Formatter<'a> {
 
                     self.write("]");
                 } else {
-                    let binder = lambda
-                        .binder
-                        .map_or(Atom::UNDERSCORE, hir::Identifier::bare)
-                        .to_str();
+                    let binder =
+                        lambda.binder.map_or(Atom::UNDERSCORE, hir::Identifier::bare).to_str();
 
                     if let Some(domain) = &lambda.domain {
                         self.write("(");
@@ -265,11 +257,7 @@ impl<'a> Formatter<'a> {
         format!(
             "{}{}/index.html",
             self.url_prefix,
-            segments
-                .into_iter()
-                .map(Atom::to_str)
-                .map(urlencoding::encode)
-                .join_with("/")
+            segments.into_iter().map(Atom::to_str).map(urlencoding::encode).join_with("/")
         )
     }
 

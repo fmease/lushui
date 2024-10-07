@@ -11,11 +11,7 @@ pub struct Item<Bare, Attributes> {
 
 impl<Bare, Attributes> Item<Bare, Attributes> {
     pub const fn new(attributes: Attributes, span: Span, bare: Bare) -> Self {
-        Self {
-            bare,
-            span,
-            attributes,
-        }
+        Self { bare, span, attributes }
     }
 
     pub fn common(span: Span, bare: Bare) -> Self
@@ -33,10 +29,7 @@ impl<Bare, Attributes> Item<Bare, Attributes> {
     }
 
     pub fn map<U>(self, mapper: impl FnOnce(Bare) -> U) -> Item<U, Attributes> {
-        Item {
-            bare: mapper(self.bare),
-            ..self
-        }
+        Item { bare: mapper(self.bare), ..self }
     }
 
     pub fn remap<U>(self, bare: U) -> Item<U, Attributes> {

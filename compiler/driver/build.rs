@@ -12,11 +12,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .stdout;
     let commit_data = String::from_utf8(commit_data)?;
 
-    let [short_commit_hash, commit_hash, commit_date]: [_; _] = commit_data
-        .split(',')
-        .collect::<Vec<_>>()
-        .try_into()
-        .unwrap();
+    let [short_commit_hash, commit_hash, commit_date]: [_; _] =
+        commit_data.split(',').collect::<Vec<_>>().try_into().unwrap();
 
     let version = std::fs::read_to_string("../../version")?;
     let version = version.trim();

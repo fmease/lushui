@@ -16,9 +16,9 @@ use joinery::JoinableIterator;
 use lexer::word::Word;
 use node::{Attributable, Document, Element, Node, VoidElement};
 use session::{
+    Context, OUTPUT_FOLDER_NAME, Session,
     component::{DeclarationIndexExt, IdentifierExt},
     package::{ManifestPath, Package},
-    Context, Session, OUTPUT_FOLDER_NAME,
 };
 use std::{
     fs,
@@ -26,7 +26,7 @@ use std::{
     path::{Path, PathBuf},
 };
 use text_processor::TextProcessor;
-use utility::{default, Atom};
+use utility::{Atom, default};
 
 mod fonts;
 mod format;
@@ -55,9 +55,7 @@ pub fn document_component(
 
         // @Beacon @Bug this re-creates these special pages with every component!
         //         @Task do it only once!
-        documenter
-            .pages
-            .push(documenter.reserved_identifiers_page());
+        documenter.pages.push(documenter.reserved_identifiers_page());
         documenter.pages.push(documenter.attributes_page());
 
         // @Task don't document the same package twice!
@@ -201,13 +199,10 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                     SearchItem::Declaration(index) => {
                         // @Beacon @Task don't use the to_string variant, so we don't need to split() JS (which would be
                         // incorrect on top of that!)
-                        let path = self
-                            .session
-                            .component()
-                            .local_index_with_root_to_extern_path(
-                                index.local(self.session).unwrap(),
-                                component_name.to_owned(),
-                            );
+                        let path = self.session.component().local_index_with_root_to_extern_path(
+                            index.local(self.session).unwrap(),
+                            component_name.to_owned(),
+                        );
 
                         write!(
                             search_index,
@@ -262,8 +257,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
         }
 
         for attribute in AttributeName::elements() {
-            self.search_items
-                .push(SearchItem::Attribute(attribute.to_str()));
+            self.search_items.push(SearchItem::Attribute(attribute.to_str()));
         }
 
         self.collect_declaration_search_items(component_root);
@@ -272,14 +266,12 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
     fn collect_declaration_search_items(&mut self, declaration: &hir::Declaration) {
         match &declaration.bare {
             hir::BareDeclaration::Function(function) => {
-                self.search_items.push(SearchItem::Declaration(
-                    function.binder.declaration_index().unwrap(),
-                ));
+                self.search_items
+                    .push(SearchItem::Declaration(function.binder.declaration_index().unwrap()));
             }
             hir::BareDeclaration::Data(type_) => {
-                self.search_items.push(SearchItem::Declaration(
-                    type_.binder.declaration_index().unwrap(),
-                ));
+                self.search_items
+                    .push(SearchItem::Declaration(type_.binder.declaration_index().unwrap()));
 
                 if let Some(constructors) = &type_.constructors {
                     for declaration in constructors {
@@ -288,14 +280,12 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                 }
             }
             hir::BareDeclaration::Constructor(constructor) => {
-                self.search_items.push(SearchItem::Declaration(
-                    constructor.binder.declaration_index().unwrap(),
-                ));
+                self.search_items
+                    .push(SearchItem::Declaration(constructor.binder.declaration_index().unwrap()));
             }
             hir::BareDeclaration::Module(module) => {
-                self.search_items.push(SearchItem::Declaration(
-                    module.binder.declaration_index().unwrap(),
-                ));
+                self.search_items
+                    .push(SearchItem::Declaration(module.binder.declaration_index().unwrap()));
 
                 for declaration in &module.declarations {
                     self.collect_declaration_search_items(declaration);
@@ -387,12 +377,9 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
         let mut container = Element::div("container");
 
         let subsections = subsections::Subsections::reserved_identifiers();
-        container.add_child(sidebar(
-            &subsections,
-            url_prefix,
-            default(),
-            vec![self.session.root_component().name],
-        ));
+        container.add_child(sidebar(&subsections, url_prefix, default(), vec![
+            self.session.root_component().name,
+        ]));
 
         // main content
         {
@@ -415,11 +402,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
         Page {
             path: self.path.join("identifiers.html"),
             content: render_page(
-                head(
-                    self.session.component().name(),
-                    url_prefix,
-                    "Reserved Identifiers".into(),
-                ),
+                head(self.session.component().name(), url_prefix, "Reserved Identifiers".into()),
                 body,
             ),
         }
@@ -431,12 +414,9 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
         let mut container = Element::div("container");
 
         let subsections = subsections::Subsections::attributes();
-        container.add_child(sidebar(
-            &subsections,
-            url_prefix,
-            default(),
-            vec![self.session.root_component().name],
-        ));
+        container.add_child(sidebar(&subsections, url_prefix, default(), vec![
+            self.session.root_component().name,
+        ]));
 
         // main content
         {
@@ -459,11 +439,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
         Page {
             path: self.path.join("attributes.html"),
             content: render_page(
-                head(
-                    self.session.component().name(),
-                    url_prefix,
-                    "Attributes".into(),
-                ),
+                head(self.session.component().name(), url_prefix, "Attributes".into()),
                 body,
             ),
         }
@@ -477,12 +453,9 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
         let mut body = Element::new("body").child(ledge(url_prefix, Some(package), None));
         let mut container = Element::div("container");
 
-        container.add_child(sidebar(
-            &default(),
-            url_prefix,
-            default(),
-            vec![self.session.root_component().name],
-        ));
+        container.add_child(sidebar(&default(), url_prefix, default(), vec![
+            self.session.root_component().name,
+        ]));
 
         // main content
         {
@@ -554,12 +527,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
         container.add_child(sidebar(
             &subsections,
             &url_prefix,
-            self.session
-                .component()
-                .dependencies()
-                .keys()
-                .copied()
-                .collect(),
+            self.session.component().dependencies().keys().copied().collect(),
             vec![self.session.root_component().name],
         ));
 
@@ -617,11 +585,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
             .local_index_with_root_to_extern_path(index, component_name.to_string());
 
         Page {
-            path: segments
-                .into_iter()
-                .map(Atom::to_str)
-                .chain(Some("index.html"))
-                .collect(),
+            path: segments.into_iter().map(Atom::to_str).chain(Some("index.html")).collect(),
             content: render_page(head(component_name, &url_prefix, title.into()), body),
         }
     }
@@ -652,19 +616,13 @@ fn ledge<'a>(
 
         // @Beacon @Task actual link
         context.add_child(
-            Element::anchor(
-                format!("{url_prefix}{component}/index.html"),
-                component.to_str(),
-            )
-            .class("component"),
+            Element::anchor(format!("{url_prefix}{component}/index.html"), component.to_str())
+                .class("component"),
         );
     }
 
-    Element::div("ledge-container").child(
-        Element::div("ledge")
-            .child(context)
-            .child(search_bar(url_prefix)),
-    )
+    Element::div("ledge-container")
+        .child(Element::div("ledge").child(context).child(search_bar(url_prefix)))
 }
 
 fn search_bar(url_prefix: &str) -> Element<'_> {
@@ -686,12 +644,7 @@ fn search_bar(url_prefix: &str) -> Element<'_> {
 
 fn render_page(head: Element<'_>, body: Element<'_>) -> String {
     Document::default()
-        .child(
-            Element::new("html")
-                .attribute("lang", "en")
-                .child(head)
-                .child(body),
-        )
+        .child(Element::new("html").attribute("lang", "en").child(head).child(body))
         .render()
 }
 
@@ -744,9 +697,7 @@ fn sidebar<'a>(
 
     if !dependencies.is_empty() {
         sidebar.add_child(
-            Element::div("title")
-                .child("Dependencies")
-                .attribute("title", "Direct Dependencies"),
+            Element::div("title").child("Dependencies").attribute("title", "Direct Dependencies"),
         );
 
         let mut list = Element::new("ul");
@@ -764,11 +715,8 @@ fn sidebar<'a>(
     }
 
     {
-        sidebar.add_child(
-            Element::div("title")
-                .child("Roots")
-                .attribute("title", "Root Components"),
-        );
+        sidebar
+            .add_child(Element::div("title").child("Roots").attribute("title", "Root Components"));
 
         let mut list = Element::new("ul");
         for component in root_components {
@@ -811,11 +759,8 @@ fn add_declaration_attributes(
         }
     } else if let Some(documentation) = documentation(attributes) {
         // @Task handle errors properly!
-        description.add_child(
-            text_processor
-                .process(documentation, url_prefix.to_owned())
-                .unwrap(),
-        );
+        description
+            .add_child(text_processor.process(documentation, url_prefix.to_owned()).unwrap());
     }
 
     parent.add_child(description);
@@ -831,10 +776,7 @@ fn add_declaration_attribute(attribute: &Attribute, parent: &mut Element<'_>, ur
             let name = attribute.bare.name().to_str();
 
             parent.add_child(Element::div("attribute").child(Element::anchor(
-                format!(
-                    "{url_prefix}attributes.html#attribute.{}",
-                    urlencoding::encode(name)
-                ),
+                format!("{url_prefix}attributes.html#attribute.{}", urlencoding::encode(name)),
                 name,
             )));
         }

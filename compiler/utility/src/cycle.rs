@@ -18,12 +18,7 @@ where
     for node in graph.keys() {
         if let Entry::Vacant(entry) = visited.entry(node) {
             entry.insert(Status::Visited);
-            cycles.extend(find_cycle_by_key(
-                graph,
-                &get_key,
-                &mut vec![node],
-                &mut visited,
-            ));
+            cycles.extend(find_cycle_by_key(graph, &get_key, &mut vec![node], &mut visited));
         }
     }
 
@@ -102,11 +97,8 @@ where
 
     let cycle = match visited.get(&node) {
         Some(Status::Visited) => {
-            let cycle: Cycle<'_, _> = worklist
-                .iter()
-                .copied()
-                .skip_while(|&some_node| some_node != node)
-                .collect();
+            let cycle: Cycle<'_, _> =
+                worklist.iter().copied().skip_while(|&some_node| some_node != node).collect();
 
             (!cycle.is_empty()).then_some(cycle)
         }
@@ -130,7 +122,7 @@ enum Status {
 
 #[cfg(test)]
 mod tests {
-    use super::{find_cycles, Cycle, Graph};
+    use super::{Cycle, Graph, find_cycles};
     use crate::HashMap;
 
     #[test]
@@ -142,34 +134,24 @@ mod tests {
 
     #[test]
     fn no_cycle_0() {
-        assert_eq!(
-            find_cycles(&HashMap::from_iter([(1, 4), (4, 9), (3, 8)])),
-            Vec::new(),
-        );
+        assert_eq!(find_cycles(&HashMap::from_iter([(1, 4), (4, 9), (3, 8)])), Vec::new(),);
     }
 
     #[test]
     fn no_cycle_1() {
-        assert_eq!(
-            find_cycles(&HashMap::from_iter([(8, 0), (20, 0), (1, 0)])),
-            Vec::new(),
-        );
+        assert_eq!(find_cycles(&HashMap::from_iter([(8, 0), (20, 0), (1, 0)])), Vec::new(),);
     }
 
     #[test]
     fn cycle_size_one() {
-        assert_eq!(
-            find_cycles(&HashMap::from_iter([(0, 0)])),
-            vec![Cycle::from_iter([&0])],
-        );
+        assert_eq!(find_cycles(&HashMap::from_iter([(0, 0)])), vec![Cycle::from_iter([&0])],);
     }
 
     #[test]
     fn cycle_size_two() {
-        assert_eq!(
-            find_cycles(&HashMap::from_iter([(5, 90), (90, 5)])),
-            vec![Cycle::from_iter([&5, &90])],
-        );
+        assert_eq!(find_cycles(&HashMap::from_iter([(5, 90), (90, 5)])), vec![Cycle::from_iter([
+            &5, &90
+        ])],);
     }
 
     #[test]
@@ -192,13 +174,7 @@ mod tests {
     #[test]
     fn two_cycles() {
         assert_eq!(
-            find_cycles(&HashMap::from_iter([
-                (1, 2),
-                (10, 9),
-                (2, 3),
-                (3, 1),
-                (9, 10)
-            ])),
+            find_cycles(&HashMap::from_iter([(1, 2), (10, 9), (2, 3), (3, 1), (9, 10)])),
             vec![Cycle::from_iter([&9, &10]), Cycle::from_iter([&1, &2, &3])],
         );
     }

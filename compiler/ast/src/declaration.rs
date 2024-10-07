@@ -143,14 +143,8 @@ pub type UsePathTree = Spanned<BareUsePathTree>;
 
 #[derive(Clone, PartialEq, Eq)]
 pub enum BareUsePathTree {
-    Single {
-        target: Path,
-        binder: Option<Identifier>,
-    },
-    Multiple {
-        path: Path,
-        subpaths: Vec<UsePathTree>,
-    },
+    Single { target: Path, binder: Option<Identifier> },
+    Multiple { path: Path, subpaths: Vec<UsePathTree> },
 }
 
 /*

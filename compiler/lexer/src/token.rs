@@ -1,10 +1,10 @@
 //! The tokens emitted by the lexer.
 
+use BareToken::*;
 use derivation::Str;
 use span::Spanned;
 use std::{cmp::Ordering, fmt};
-use utility::{quoted, Atom};
-use BareToken::*;
+use utility::{Atom, quoted};
 
 pub type Token = Spanned<BareToken>;
 

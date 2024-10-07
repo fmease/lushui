@@ -1,7 +1,7 @@
 use crate::{
-    declaration::{Use, UsePathTree},
     Application, Identifier, Item, LocalBinder, NumberLiteral, Parameters, Path, Pattern,
     RecordLiteral, SequenceLiteral, TextLiteral, Wildcard,
+    declaration::{Use, UsePathTree},
 };
 use diagnostics::{error::PossiblyErroneous, reporter::ErasedReportedError};
 

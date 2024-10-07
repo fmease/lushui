@@ -28,14 +28,8 @@ pub enum Value {
     Int(Int),
     Int32(i32),
     Int64(i64),
-    Option {
-        type_: Type,
-        value: Option<Box<Value>>,
-    },
-    IO {
-        index: usize,
-        arguments: Vec<Value>,
-    },
+    Option { type_: Type, value: Option<Box<Value>> },
+    IO { index: usize, arguments: Vec<Value> },
 }
 
 /// Rust types that can be mapped to interfaceable lushui types.
@@ -94,9 +88,6 @@ impl<V: IntoValue> IntoValue for Option<V> {
     }
 
     fn into_value(self) -> Value {
-        Value::Option {
-            type_: V::into_type(),
-            value: self.map(|value| Box::new(value.into())),
-        }
+        Value::Option { type_: V::into_type(), value: self.map(|value| Box::new(value.into())) }
     }
 }

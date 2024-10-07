@@ -16,21 +16,14 @@
 //!   exclusivity rules
 //! * checks if the required type annotations on top-level declarations are present
 //! * gates a lot of unsupported features
-#![feature(
-    decl_macro,
-    slice_take,
-    min_specialization,
-    if_let_guard,
-    iter_collect_into,
-    let_chains
-)]
+#![feature(decl_macro, slice_take, min_specialization, if_let_guard, iter_collect_into, let_chains)]
 
 // @Task ungate named arguments but validate them in the resolver (and/or typer)
 // @Task disallow conflicting parameter names
 
 use diagnostics::{
-    error::{Handler, Health, Outcome, PossiblyErroneous, Result},
     Diagnostic,
+    error::{Handler, Health, Outcome, PossiblyErroneous, Result},
 };
 use session::Session;
 
@@ -45,11 +38,7 @@ pub fn lower_file(
     options: Options,
     session: &Session<'_>,
 ) -> Result<lo_ast::Declaration> {
-    let mut lowerer = Lowerer {
-        options,
-        session,
-        health: Health::Untainted,
-    };
+    let mut lowerer = Lowerer { options, session, health: Health::Untainted };
     let mut declaration = lowerer.lower_declaration(declaration);
     let root = declaration.pop().unwrap();
     Outcome::new(root, lowerer.health).into()

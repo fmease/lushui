@@ -10,8 +10,8 @@ use std::{
 };
 use struct_::Struct;
 use utility::{
-    paint::{AnsiColor, Painter},
     SmallVec,
+    paint::{AnsiColor, Painter},
 };
 
 pub use indentation::Indentation;
@@ -43,7 +43,7 @@ mod indentation {
 }
 
 mod struct_ {
-    use super::{palette, Indentation, Render};
+    use super::{Indentation, Render, palette};
     use std::io::{self, Write};
     use utility::paint::Painter;
 
@@ -57,13 +57,7 @@ mod struct_ {
 
     impl<'p> Struct<'p> {
         pub(super) fn new(indentation: Indentation, painter: &'p mut Painter) -> Self {
-            Self {
-                painter,
-                indentation,
-                has_fields: false,
-                inline: false,
-                result: Ok(()),
-            }
+            Self { painter, indentation, has_fields: false, inline: false, result: Ok(()) }
         }
 
         pub(super) fn name(mut self, name: &str) -> Self {
@@ -83,11 +77,7 @@ mod struct_ {
             }
 
             self.result = self.result.and_then(|()| {
-                if self.inline {
-                    write!(self.painter, " ")
-                } else {
-                    writeln!(self.painter)
-                }
+                if self.inline { write!(self.painter, " ") } else { writeln!(self.painter) }
             });
 
             self.result = self.result.and_then(|()| {
@@ -160,10 +150,7 @@ impl<T: Render, const N: usize> Render for SmallVec<T, N> {
 
 impl<T: Render, U: Render> Render for (T, U) {
     fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
-        Struct::new(indentation, painter)
-            .field("0", &self.0)
-            .field("1", &self.1)
-            .finish()
+        Struct::new(indentation, painter).field("0", &self.0).field("1", &self.1).finish()
     }
 }
 
@@ -210,9 +197,7 @@ impl Render for super::BareDeclaration {
             Self::Function(function) => function.render(indentation, painter),
             Self::Data(type_) => type_.render(indentation, painter),
             Self::Module(module) => module.render(indentation, painter),
-            Self::ModuleHeader => Struct::new(indentation, painter)
-                .name("Module-Header")
-                .finish(),
+            Self::ModuleHeader => Struct::new(indentation, painter).name("Module-Header").finish(),
             Self::Use(use_) => use_.render(indentation, painter),
             Self::Given(given) => given.render(indentation, painter),
         }
@@ -256,9 +241,7 @@ impl Render for super::Module {
 
 impl Render for SourceFileIndex {
     fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
-        Struct::new(indentation, painter)
-            .name("Source-File-Index")
-            .finish()?;
+        Struct::new(indentation, painter).name("Source-File-Index").finish()?;
         painter.set(palette::VERBATIM)?;
         write!(painter, " {}", self.value())?;
         painter.unset()
@@ -279,10 +262,9 @@ impl Render for super::BareUsePathTree {
         let struct_ = Struct::new(indentation, painter);
 
         match self {
-            Self::Single { target, binder } => struct_
-                .name("Use-Path-Tree.Single")
-                .field("target", target)
-                .field("binder", binder),
+            Self::Single { target, binder } => {
+                struct_.name("Use-Path-Tree.Single").field("target", target).field("binder", binder)
+            }
             Self::Multiple { path, subpaths } => struct_
                 .name("Use-Path-Tree.Multiple")
                 .field("path", path)
@@ -661,9 +643,7 @@ impl Render for Identifier {
     fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
         self.span().render(indentation, painter)?;
         write!(painter, " ")?;
-        Struct::new(indentation, painter)
-            .name("Identifier")
-            .finish()?;
+        Struct::new(indentation, painter).name("Identifier").finish()?;
         painter.set(palette::VERBATIM)?;
         write!(painter, " {self}")?;
         painter.unset()
@@ -672,12 +652,7 @@ impl Render for Identifier {
 
 impl fmt::Display for Identifier {
     fn fmt(&self, painter: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            painter,
-            "{:width$}",
-            self.to_str(),
-            width = painter.width().unwrap_or_default()
-        )
+        write!(painter, "{:width$}", self.to_str(), width = painter.width().unwrap_or_default())
     }
 }
 
@@ -697,10 +672,9 @@ impl Render for super::BareAttribute {
     fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
         let struct_ = Struct::new(indentation, painter);
         match self {
-            Self::Regular { binder, arguments } => struct_
-                .name("Attribute")
-                .field("binder", binder)
-                .field("arguments", arguments),
+            Self::Regular { binder, arguments } => {
+                struct_.name("Attribute").field("binder", binder).field("arguments", arguments)
+            }
             Self::Documentation => struct_.name("Documentation"),
         }
         .finish()
@@ -711,17 +685,13 @@ impl Render for super::BareAttributeArgument {
     fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
         match self {
             Self::NumberLiteral(number) => {
-                Struct::new(indentation, painter)
-                    .name("Number-Literal")
-                    .finish()?;
+                Struct::new(indentation, painter).name("Number-Literal").finish()?;
                 painter.set(palette::VERBATIM)?;
                 write!(painter, " {number}")?;
                 painter.unset()
             }
             Self::TextLiteral(text) => {
-                Struct::new(indentation, painter)
-                    .name("Text-Literal")
-                    .finish()?;
+                Struct::new(indentation, painter).name("Text-Literal").finish()?;
                 write!(painter, " ")?;
                 render_text_literal(text.to_str(), painter)
             }

@@ -60,14 +60,11 @@ impl Parser<'_> {
             span,
             ast::QuantifiedType {
                 quantifier,
-                parameters: smallvec![ast::Parameter::new(
-                    domain.span,
-                    ast::BareParameter {
-                        kind: ParameterKind::Explicit,
-                        binder: None,
-                        type_: Some(domain),
-                    },
-                )],
+                parameters: smallvec![ast::Parameter::new(domain.span, ast::BareParameter {
+                    kind: ParameterKind::Explicit,
+                    binder: None,
+                    type_: Some(domain),
+                },)],
                 codomain,
             }
             .into(),
@@ -143,11 +140,7 @@ impl Parser<'_> {
 
                 Expression::common(
                     span,
-                    ast::NumberLiteral {
-                        path: None,
-                        literal: Spanned::new(span, literal),
-                    }
-                    .into(),
+                    ast::NumberLiteral { path: None, literal: Spanned::new(span, literal) }.into(),
                 )
             }
             TextLiteral(literal) => {
@@ -155,11 +148,7 @@ impl Parser<'_> {
 
                 Expression::common(
                     span,
-                    ast::TextLiteral {
-                        path: None,
-                        literal: Spanned::new(span, literal),
-                    }
-                    .into(),
+                    ast::TextLiteral { path: None, literal: Spanned::new(span, literal) }.into(),
                 )
             }
             PathHead!() => self.parse_path_or_namespaced_literal()?,
@@ -209,11 +198,7 @@ impl Parser<'_> {
             expression = Expression::new(
                 attributes.take().unwrap_or_default(),
                 expression.span.merge(&field),
-                ast::Projection {
-                    basis: expression,
-                    field,
-                }
-                .into(),
+                ast::Projection { basis: expression, field }.into(),
             );
         }
 
@@ -236,22 +221,11 @@ impl Parser<'_> {
     fn finish_parse_lambda_literal(&mut self, mut span: Span) -> Result<Expression> {
         let parameters = self.parse_parameters()?;
         let codomain = self.parse_optional_type_annotation()?;
-        self.annotate(Annotation::LabelWhileParsing {
-            span,
-            name: "lambda literal",
-        });
+        self.annotate(Annotation::LabelWhileParsing { span, name: "lambda literal" });
         self.parse_wide_arrow()?;
         let body = span.merging(self.parse_expression()?);
 
-        Ok(Expression::common(
-            span,
-            ast::LambdaLiteral {
-                parameters,
-                codomain,
-                body,
-            }
-            .into(),
-        ))
+        Ok(Expression::common(span, ast::LambdaLiteral { parameters, codomain, body }.into()))
     }
 
     /// Finish parsing a [quantified type] given the span of the already parsed leading `For` keyword.
@@ -273,10 +247,7 @@ impl Parser<'_> {
                 self.expected(ThinArrowRight);
                 self.expected(DoubleAsterisk);
 
-                self.annotate(Annotation::LabelWhileParsing {
-                    span,
-                    name: "quantified type",
-                });
+                self.annotate(Annotation::LabelWhileParsing { span, name: "quantified type" });
 
                 if let WideArrowRight = self.token() {
                     // @Note users might have also thought that this was the way to denote
@@ -296,12 +267,7 @@ impl Parser<'_> {
 
         Ok(Expression::common(
             span,
-            ast::QuantifiedType {
-                quantifier,
-                parameters,
-                codomain,
-            }
-            .into(),
+            ast::QuantifiedType { quantifier, parameters, codomain }.into(),
         ))
     }
 
@@ -323,11 +289,7 @@ impl Parser<'_> {
         let parameters = self.parse_parameters()?;
         let type_ = self.parse_optional_type_annotation()?;
 
-        let body = if self.consume(Equals) {
-            Some(self.parse_expression()?)
-        } else {
-            None
-        };
+        let body = if self.consume(Equals) { Some(self.parse_expression()?) } else { None };
 
         if let LineBreak = self.token() {
             self.advance();
@@ -339,14 +301,7 @@ impl Parser<'_> {
 
         Ok(Expression::common(
             span,
-            ast::LetBinding {
-                binder,
-                parameters,
-                type_,
-                body,
-                scope,
-            }
-            .into(),
+            ast::LetBinding { binder, parameters, type_, body, scope }.into(),
         ))
     }
 
@@ -373,10 +328,7 @@ impl Parser<'_> {
 
         let scope = self.parse_expression()?;
 
-        Ok(Expression::common(
-            span.merge(&scope),
-            ast::UseBinding { bindings, scope }.into(),
-        ))
+        Ok(Expression::common(span.merge(&scope), ast::UseBinding { bindings, scope }.into()))
     }
 
     /// Finish parsing a [case analysis] given the span of the already parsed leading `case` keyword.
@@ -411,10 +363,7 @@ impl Parser<'_> {
             self.advance();
         }
 
-        Ok(Expression::common(
-            span,
-            ast::CaseAnalysis { scrutinee, cases }.into(),
-        ))
+        Ok(Expression::common(span, ast::CaseAnalysis { scrutinee, cases }.into()))
     }
 
     /// Finish parsing a [do-block] given the span of the already parsed leading `do` keyword.
@@ -469,12 +418,7 @@ impl Parser<'_> {
 
                     self.parse_terminator()?;
 
-                    ast::Statement::Let(ast::LetStatement {
-                        binder,
-                        parameters,
-                        type_,
-                        body,
-                    })
+                    ast::Statement::Let(ast::LetStatement { binder, parameters, type_, body })
                 }
                 Use => {
                     self.advance();

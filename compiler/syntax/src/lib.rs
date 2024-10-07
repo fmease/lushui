@@ -39,10 +39,5 @@ pub fn parse_root_module_file(
 }
 
 pub fn parse_path(file: SourceFileIndex, session: &Session<'_>) -> Result<ast::Path> {
-    parser::parse_path(
-        lex(file, session),
-        file,
-        &session.shared_map(),
-        session.reporter(),
-    )
+    parser::parse_path(lex(file, session), file, &session.shared_map(), session.reporter())
 }

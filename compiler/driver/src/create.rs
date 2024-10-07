@@ -1,10 +1,10 @@
 //! Package creation.
 
-use diagnostics::{error::Result, Diagnostic, Reporter};
+use diagnostics::{Diagnostic, Reporter, error::Result};
 use lexer::word::Word;
 use session::package::ManifestPath;
 use std::{fs, io, path::PathBuf};
-use utility::{Atom, FormatError, FILE_EXTENSION};
+use utility::{Atom, FILE_EXTENSION, FormatError};
 
 const SOURCE_FOLDER_NAME: &str = "source";
 const LIBRARY_FILE_STEM: &str = "library";
@@ -50,16 +50,12 @@ fn create(name: Word, options: &PackageCreationOptions) -> Result<(), Error> {
     }
 
     if options.library {
-        let path = source_folder_path
-            .join(LIBRARY_FILE_STEM)
-            .with_extension(FILE_EXTENSION);
+        let path = source_folder_path.join(LIBRARY_FILE_STEM).with_extension(FILE_EXTENSION);
         fs::File::create(&path).with_path(path)?;
     }
 
     if options.executable {
-        let path = source_folder_path
-            .join(EXECUTABLE_FILE_STEM)
-            .with_extension(FILE_EXTENSION);
+        let path = source_folder_path.join(EXECUTABLE_FILE_STEM).with_extension(FILE_EXTENSION);
         let content = "main: extern.core.text.Text =\n    \"Hello there!\"";
         fs::write(&path, content).with_path(path)?;
     }
@@ -99,10 +95,7 @@ fn create_package_manifest(
         writeln!(sink, "    {name}: {{")?;
         // @Beacon @Note we might need to update this to ‘default-library’
         writeln!(sink, "        type: library,")?;
-        writeln!(
-            sink,
-            r#"        path: "{SOURCE_FOLDER_NAME}/{LIBRARY_FILE_STEM}.lushui","#
-        )?;
+        writeln!(sink, r#"        path: "{SOURCE_FOLDER_NAME}/{LIBRARY_FILE_STEM}.lushui","#)?;
         writeln!(sink)?;
         writeln!(sink, "        dependencies: {{")?;
         if !options.no_core {
@@ -113,19 +106,12 @@ fn create_package_manifest(
     }
 
     if options.executable {
-        let executable_name = if name.into_inner() != Atom::MAIN {
-            "main"
-        } else {
-            "main_"
-        };
+        let executable_name = if name.into_inner() != Atom::MAIN { "main" } else { "main_" };
 
         writeln!(sink, "    {executable_name}: {{")?;
         // @Beacon @Note we might need to update this to ‘default-executable’
         writeln!(sink, "        type: executable,")?;
-        writeln!(
-            sink,
-            r#"        path: "{SOURCE_FOLDER_NAME}/{EXECUTABLE_FILE_STEM}.lushui","#
-        )?;
+        writeln!(sink, r#"        path: "{SOURCE_FOLDER_NAME}/{EXECUTABLE_FILE_STEM}.lushui","#)?;
         writeln!(sink)?;
         writeln!(sink, "        dependencies: {{")?;
         if options.library {
@@ -148,10 +134,7 @@ struct Error {
 
 impl From<io::Error> for Error {
     fn from(error: io::Error) -> Self {
-        Self {
-            inner: error,
-            path: None,
-        }
+        Self { inner: error, path: None }
     }
 }
 
@@ -161,9 +144,6 @@ trait WithPathExt<T> {
 
 impl<T> WithPathExt<T> for Result<T, std::io::Error> {
     fn with_path(self, path: PathBuf) -> Result<T, Error> {
-        self.map_err(|error| Error {
-            inner: error,
-            path: Some(path),
-        })
+        self.map_err(|error| Error { inner: error, path: Some(path) })
     }
 }

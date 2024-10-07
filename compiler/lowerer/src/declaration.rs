@@ -1,12 +1,12 @@
 use crate::Lowerer;
 use ast::{BareHanger, LocalBinder, Path};
-use diagnostics::{error::PossiblyErroneous, Diagnostic, ErrorCode, Substitution};
+use diagnostics::{Diagnostic, ErrorCode, Substitution, error::PossiblyErroneous};
 use lo_ast::{
-    attribute::{ParentDeclarationKind, Target},
     AttributeName, Attributes, DeBruijnLevel,
+    attribute::{ParentDeclarationKind, Target},
 };
 use span::{PossiblySpanning, Span, Spanned, Spanning};
-use utility::{default, smallvec, Atom, FormatError, SmallVec, FILE_EXTENSION};
+use utility::{Atom, FILE_EXTENSION, FormatError, SmallVec, default, smallvec};
 
 // @Bug trait lowering is incorrect but it can't easily be fixed (the synthesized field accessors can refer to each
 // other order independently and the constructor can refer to them too by accident if it refers to fields that are
@@ -39,11 +39,7 @@ impl Lowerer<'_> {
             Function(function) => {
                 let function = self.lower_function(*function, &attributes, declaration.span);
 
-                smallvec![lo_ast::Declaration::new(
-                    attributes,
-                    declaration.span,
-                    function.into(),
-                )]
+                smallvec![lo_ast::Declaration::new(attributes, declaration.span, function.into(),)]
             }
             Data(type_) => smallvec![self.lower_data(*type_, attributes, declaration.span)],
             Given(given) => smallvec![self.lower_given(*given, attributes, declaration.span)],
@@ -85,11 +81,7 @@ impl Lowerer<'_> {
 
         let type_ = self.lower_parameters_to_pi_type(function.parameters, type_);
 
-        lo_ast::Function {
-            binder: function.binder,
-            type_,
-            body,
-        }
+        lo_ast::Function { binder: function.binder, type_, body }
     }
 
     fn check_function_body(
@@ -98,12 +90,8 @@ impl Lowerer<'_> {
         attributes: &Attributes,
         span: Span,
     ) {
-        let before_body_span = function
-            .binder
-            .span()
-            .fit_end(&function.parameters)
-            .fit_end(&function.type_)
-            .end();
+        let before_body_span =
+            function.binder.span().fit_end(&function.parameters).fit_end(&function.type_).end();
 
         match (&function.body, attributes.span(AttributeName::Intrinsic)) {
             (Some(_), Some(intrinsic)) => {
@@ -147,61 +135,43 @@ impl Lowerer<'_> {
         };
         let type_ = self.lower_parameters_to_pi_type(data_type.parameters.clone(), type_);
 
-        let declarations = data_type
-            .declarations
-            .map(|declarations| match data_type.kind {
-                ast::DataKind::Data => {
-                    self.lower_constructors(declarations, data_type.binder, &data_type.parameters)
-                }
-                ast::DataKind::Record => {
-                    vec![self.lower_fields_to_constructor(
-                        declarations,
-                        RecordKind::Record,
-                        data_type.binder,
-                        data_type.parameters,
-                    )]
-                }
-                ast::DataKind::Trait => {
-                    self.lower_trait_body(declarations, data_type.binder, data_type.parameters)
-                }
-            });
+        let declarations = data_type.declarations.map(|declarations| match data_type.kind {
+            ast::DataKind::Data => {
+                self.lower_constructors(declarations, data_type.binder, &data_type.parameters)
+            }
+            ast::DataKind::Record => {
+                vec![self.lower_fields_to_constructor(
+                    declarations,
+                    RecordKind::Record,
+                    data_type.binder,
+                    data_type.parameters,
+                )]
+            }
+            ast::DataKind::Trait => {
+                self.lower_trait_body(declarations, data_type.binder, data_type.parameters)
+            }
+        });
 
         if let ast::DataKind::Record | ast::DataKind::Trait = data_type.kind {
-            attributes
-                .0
-                .push(Spanned::new(span, lo_ast::BareAttribute::Record));
+            attributes.0.push(Spanned::new(span, lo_ast::BareAttribute::Record));
         }
 
         if let ast::DataKind::Trait = data_type.kind {
-            attributes
-                .0
-                .push(Spanned::new(span, lo_ast::BareAttribute::Trait));
+            attributes.0.push(Spanned::new(span, lo_ast::BareAttribute::Trait));
         }
 
         lo_ast::Declaration::new(
             attributes,
             span,
-            lo_ast::Data {
-                binder: data_type.binder,
-                type_,
-                declarations,
-            }
-            .into(),
+            lo_ast::Data { binder: data_type.binder, type_, declarations }.into(),
         )
     }
 
     fn check_data_body(&mut self, type_: &ast::Data, attributes: &Attributes, span: Span) {
-        let before_body_span = type_
-            .binder
-            .span()
-            .fit_end(&type_.parameters)
-            .fit_end(&type_.type_)
-            .end();
+        let before_body_span =
+            type_.binder.span().fit_end(&type_.parameters).fit_end(&type_.type_).end();
 
-        match (
-            &type_.declarations,
-            attributes.span(AttributeName::Intrinsic),
-        ) {
+        match (&type_.declarations, attributes.span(AttributeName::Intrinsic)) {
             (Some(constructors), Some(intrinsic)) => {
                 // @Task use Span combinators here instead like `unexpected_body` does
                 let keyword = before_body_span.between(span.end()).trim_start_matches(
@@ -293,21 +263,14 @@ the body containing a set of constructors
             None => synthesize_constructee(
                 type_constructor,
                 &type_constructor_parameters,
-                constructor
-                    .binder
-                    .span()
-                    .fit_end(&constructor.parameters)
-                    .end(),
+                constructor.binder.span().fit_end(&constructor.parameters).end(),
             ),
         };
 
         let type_ = self.lower_parameters_to_pi_type(constructor.parameters, type_);
         let type_ = self.lower_parent_parameters_to_pi_type(type_constructor_parameters, type_);
 
-        lo_ast::Constructor {
-            binder: constructor.binder,
-            type_,
-        }
+        lo_ast::Constructor { binder: constructor.binder, type_ }
     }
 
     /// Lower record or trait fields to a constructor.
@@ -502,12 +465,7 @@ the body containing a set of constructors
 
                 Some(lo_ast::Declaration::common(
                     declaration.span,
-                    lo_ast::Function {
-                        binder: field.binder,
-                        type_,
-                        body: Some(body),
-                    }
-                    .into(),
+                    lo_ast::Function { binder: field.binder, type_, body: Some(body) }.into(),
                 ))
             })
             .collect_into(&mut declarations);
@@ -528,9 +486,7 @@ the body containing a set of constructors
         mut attributes: Attributes,
         span: Span,
     ) -> lo_ast::Declaration {
-        attributes
-            .0
-            .push(Spanned::new(span, lo_ast::BareAttribute::Context));
+        attributes.0.push(Spanned::new(span, lo_ast::BareAttribute::Context));
 
         // @Task maybe reuse `lower_function`?
 
@@ -578,10 +534,7 @@ the body containing a set of constructors
                                         body,
                                     );
 
-                                    Some(lo_ast::Field {
-                                        binder: field.binder,
-                                        body,
-                                    })
+                                    Some(lo_ast::Field { binder: field.binder, body })
                                 }
                                 _ => {
                                     error::misplaced_declaration(
@@ -621,12 +574,7 @@ the body containing a set of constructors
         lo_ast::Declaration::new(
             attributes,
             span,
-            lo_ast::Function {
-                binder: given.binder,
-                type_,
-                body,
-            }
-            .into(),
+            lo_ast::Function { binder: given.binder, type_, body }.into(),
         )
     }
 
@@ -668,15 +616,12 @@ the body containing a set of constructors
                 path.set_extension(FILE_EXTENSION);
 
                 // @Task create & use a different API that doesn't "recanonicalize" the path
-                let file = self
-                    .session
-                    .map()
-                    .load(&path, Some(self.session.component().index()));
+                let file = self.session.map().load(&path, Some(self.session.component().index()));
                 let file = match file {
                     Ok(file) => file,
                     Err(error) => {
                         return error::module_loading_failure(&module.binder, span, path, error)
-                            .embed(&mut *self)
+                            .embed(&mut *self);
                     }
                 };
 
@@ -799,14 +744,10 @@ the body containing a set of constructors
                     // identifier of the target but if that one is `self`, look up the last identifier of
                     // the parent path
                     let Some(binder) = binder.or_else(|| {
-                        if target.is_bare_hanger(BareHanger::Self_) {
-                            path
-                        } else {
-                            &target
-                        }
-                        .segments
-                        .last()
-                        .copied()
+                        if target.is_bare_hanger(BareHanger::Self_) { path } else { &target }
+                            .segments
+                            .last()
+                            .copied()
                     }) else {
                         error::unnamed_path_hanger(target.hanger.unwrap()).handle(&mut *self);
                         continue;
@@ -815,17 +756,10 @@ the body containing a set of constructors
                     declarations.push(lo_ast::Declaration::new(
                         attributes.clone(),
                         span,
-                        lo_ast::Use {
-                            binder,
-                            target: combined_target,
-                        }
-                        .into(),
+                        lo_ast::Use { binder, target: combined_target }.into(),
                     ));
                 }
-                ast::BareUsePathTree::Multiple {
-                    path: subpath,
-                    subpaths,
-                } => {
+                ast::BareUsePathTree::Multiple { path: subpath, subpaths } => {
                     let path = match path.clone().join(subpath) {
                         Ok(path) => path,
                         Err(hanger) => {
@@ -947,10 +881,7 @@ the body containing a set of constructors
         let mut type_ = type_.into_iter();
 
         for parameter in parameters.into_iter().rev() {
-            let domain = parameter
-                .bare
-                .type_
-                .map(|type_| self.lower_expression(type_));
+            let domain = parameter.bare.type_.map(|type_| self.lower_expression(type_));
 
             body = lo_ast::Expression::common(
                 parameter.span,
@@ -978,10 +909,9 @@ fn synthesize_constructee(
     // a parameter shadowing it.
     let mut type_ = lo_ast::Expression::common(
         span,
-        ast::Path::hung(
-            ast::Hanger::new(span, ast::BareHanger::Self_),
-            smallvec![binder.respan(span)],
-        )
+        ast::Path::hung(ast::Hanger::new(span, ast::BareHanger::Self_), smallvec![
+            binder.respan(span)
+        ])
         .into(),
     );
 
@@ -990,15 +920,12 @@ fn synthesize_constructee(
             type_.span,
             lo_ast::Application {
                 kind: parameter.bare.kind,
-                argument: lo_ast::Expression::common(
-                    type_.span,
-                    match parameter.bare.binder {
-                        Some(ast::LocalBinder::Named(binder)) => {
-                            Path::from(binder.respan(type_.span)).into()
-                        }
-                        _ => DeBruijnLevel(level).into(),
-                    },
-                ),
+                argument: lo_ast::Expression::common(type_.span, match parameter.bare.binder {
+                    Some(ast::LocalBinder::Named(binder)) => {
+                        Path::from(binder.respan(type_.span)).into()
+                    }
+                    _ => DeBruijnLevel(level).into(),
+                }),
                 callee: type_,
             }
             .into(),
@@ -1049,9 +976,7 @@ mod error {
         parent: Spanned<Atom>,
     ) -> Diagnostic {
         Diagnostic::error()
-            .message(format!(
-                "{name} may not appear inside of a {parent} declaration",
-            ))
+            .message(format!("{name} may not appear inside of a {parent} declaration",))
             .span(span, "misplaced declaration")
             .label(parent, format!("the enclosing {parent} declaration"))
     }
@@ -1091,21 +1016,12 @@ mod error {
             .code(ErrorCode::E012)
             .message(format!("the declaration ‘{binder}’ does not have a body"))
             .span(span, "missing definition")
-            .suggest(
-                span,
-                "provide a definition for the declaration",
-                substitution,
-            )
+            .suggest(span, "provide a definition for the declaration", substitution)
     }
 
     // @Task dedup w/ `missing_body` (E012)
     pub(super) fn missing_field_body(field: &ast::Function) -> Diagnostic {
-        let span = field
-            .binder
-            .span()
-            .fit_end(&field.parameters)
-            .fit_end(&field.type_)
-            .end();
+        let span = field.binder.span().fit_end(&field.parameters).fit_end(&field.type_).end();
 
         Diagnostic::error()
             .message(format!("the field `{}` does not have a body", field.binder))
@@ -1124,9 +1040,7 @@ mod error {
     ) -> Diagnostic {
         Diagnostic::error()
             .code(ErrorCode::E015)
-            .message(format!(
-                "the {kind} ‘{binder}’ does not have a type annotation"
-            ))
+            .message(format!("the {kind} ‘{binder}’ does not have a type annotation"))
             .span(span, "missing required type annotation")
             .suggest(
                 span,
@@ -1159,24 +1073,16 @@ mod error {
     ) -> Diagnostic {
         // @Task use a multi-part suggestion here once they are available
 
-        let substitution = Substitution::from(": For ")
-            .str(map.snippet(span).to_owned())
-            .str(" -> ");
+        let substitution =
+            Substitution::from(": For ").str(map.snippet(span).to_owned()).str(" -> ");
 
         Diagnostic::error()
             .message("record fields may not have parameters")
             .unlabeled_span(span)
             .suggest(
-                binder
-                    .span()
-                    .end()
-                    .merge(&type_.possible_span().map_or(span, Span::start)),
+                binder.span().end().merge(&type_.possible_span().map_or(span, Span::start)),
                 "move the parameters to a function type",
-                if type_.is_some() {
-                    substitution
-                } else {
-                    substitution.placeholder("Type")
-                },
+                if type_.is_some() { substitution } else { substitution.placeholder("Type") },
             )
     }
 
@@ -1201,10 +1107,7 @@ mod error {
             .code(ErrorCode::E042)
             .message("intrinsic declarations may not have a body")
             .span(span, label)
-            .label(
-                attribute,
-                "marks the declaration as being defined outside of the language",
-            )
+            .label(attribute, "marks the declaration as being defined outside of the language")
     }
 
     pub(super) fn unnamed_path_hanger(hanger: ast::Hanger) -> Diagnostic {

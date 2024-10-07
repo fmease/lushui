@@ -2,8 +2,8 @@ pub(crate) use proc_macro::TokenStream as TokenStream1;
 pub(crate) use proc_macro2::TokenStream as TokenStream2;
 use quote::ToTokens;
 use syn::{
-    parse::{Error, Parse},
     AttrStyle, Attribute, Fields,
+    parse::{Error, Parse},
 };
 
 pub(crate) trait HelperAttribute: Parse {
@@ -11,10 +11,7 @@ pub(crate) trait HelperAttribute: Parse {
 
     fn obtain<Owner: ToTokens>(owner: &Owner, attrs: &[Attribute]) -> syn::Result<Self> {
         Self::obtain_optional(attrs)?.ok_or_else(|| {
-            Error::new_spanned(
-                owner,
-                format!("missing helper attribute `#[{}]`", Self::NAME),
-            )
+            Error::new_spanned(owner, format!("missing helper attribute `#[{}]`", Self::NAME))
         })
     }
 
@@ -37,9 +34,7 @@ pub(crate) trait SerializeExt {
 
 impl SerializeExt for syn::Result<TokenStream2> {
     fn serialize(self) -> TokenStream1 {
-        self.map_err(Error::into_compile_error)
-            .unwrap_or_else(std::convert::identity)
-            .into()
+        self.map_err(Error::into_compile_error).unwrap_or_else(std::convert::identity).into()
     }
 }
 

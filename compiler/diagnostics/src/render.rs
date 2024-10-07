@@ -20,8 +20,8 @@ use super::{
     Role, Severity, Subseverity, Substitution, SubstitutionPart, UnboxedUntaggedDiagnostic,
 };
 use span::{
-    source_map::{LineWithHighlight, LinesWithHighlight},
     FileName, SourceMap,
+    source_map::{LineWithHighlight, LinesWithHighlight},
 };
 use std::io::{self, Write};
 use unicode_width::UnicodeWidthStr;
@@ -36,11 +36,7 @@ impl UnboxedUntaggedDiagnostic {
 
         let (padding, highlights, suggestions) = resolve_spans(self, map);
 
-        let mut renderer = Renderer {
-            diagnostic: self,
-            padding,
-            painter,
-        };
+        let mut renderer = Renderer { diagnostic: self, padding, painter };
 
         renderer.render_path()?;
         renderer.render_highlights(&highlights)?;
@@ -83,11 +79,7 @@ fn render_header(diagnostic: &UnboxedUntaggedDiagnostic, painter: &mut Painter) 
 fn resolve_spans<'a>(
     diagnostic: &'a UnboxedUntaggedDiagnostic,
     map: Option<&'a SourceMap>,
-) -> (
-    String,
-    Vec<ResolvedHighlight<'a>>,
-    Vec<ResolvedSuggestion<'a>>,
-) {
+) -> (String, Vec<ResolvedHighlight<'a>>, Vec<ResolvedSuggestion<'a>>) {
     if diagnostic.highlights.is_empty() && diagnostic.suggestions.is_empty() {
         return (" ".into(), Vec::new(), Vec::new());
     }
@@ -151,24 +143,13 @@ impl Renderer<'_> {
         let needs_downward_connection =
             !self.diagnostic.highlights.is_empty() || !self.diagnostic.subdiagnostics.is_empty();
 
-        let connector = if needs_downward_connection {
-            Line::DownAndRight
-        } else {
-            Line::Horizontal
-        }
-        .single();
+        let connector =
+            if needs_downward_connection { Line::DownAndRight } else { Line::Horizontal }.single();
 
         writeln!(self.painter)?;
         self.painter.set(palette::FRAME)?;
-        write!(
-            self.painter,
-            "{} {}{} ",
-            self.padding,
-            connector,
-            Line::Horizontal.single(),
-        )?;
-        self.painter
-            .write_all(path.as_os_str().as_encoded_bytes())?;
+        write!(self.painter, "{} {}{} ", self.padding, connector, Line::Horizontal.single(),)?;
+        self.painter.write_all(path.as_os_str().as_encoded_bytes())?;
         self.painter.unset()?;
 
         if needs_downward_connection {
@@ -221,21 +202,13 @@ impl Renderer<'_> {
         let line = lines.first.number;
         let column = lines.first.highlight.start;
 
-        let connector = if needs_upward_connection {
-            Line::VerticalAndRight
-        } else {
-            Line::DownAndRight
-        }
-        .single();
+        let connector =
+            if needs_upward_connection { Line::VerticalAndRight } else { Line::DownAndRight }
+                .single();
 
         writeln!(self.painter)?;
         self.painter.set(palette::FRAME)?;
-        write!(
-            self.painter,
-            "{} {connector}{} ",
-            self.padding,
-            Line::Horizontal.single()
-        )?;
+        write!(self.painter, "{} {connector}{} ", self.padding, Line::Horizontal.single())?;
         // FIXME: Ensue that the painter.reset inside doesn't reset FRAME (I bet it does tho, `Painter` needs to support nesting)
         render_file_name(lines.file, self.painter)?;
         write!(self.painter, ":{line}:{column}")?;
@@ -302,11 +275,7 @@ impl Renderer<'_> {
 
             let spacing = " ".repeat(
                 line.highlight.prefix_width
-                    + if zero_length_highlight {
-                        1
-                    } else {
-                        line.highlight.width
-                    },
+                    + if zero_length_highlight { 1 } else { line.highlight.width },
             );
 
             for line_of_label in lines_of_label {
@@ -347,11 +316,8 @@ impl Renderer<'_> {
             {
                 // If the first and the final line are futher apart than one,
                 // render a (stylized) ellipsis instead of a bar.
-                let bar = if final_line.number - first_line.number > 1 {
-                    ELLIPSIS
-                } else {
-                    Self::BAR
-                };
+                let bar =
+                    if final_line.number - first_line.number > 1 { ELLIPSIS } else { Self::BAR };
 
                 self.painter.set(palette::FRAME)?;
 
@@ -362,9 +328,8 @@ impl Renderer<'_> {
             // The size of the hand is fixed and does not depend on the Unicode width of
             // the first character of the highlight. This should be fine.
             let joint = Line::DownAndRight.to_str(role);
-            let horizontal_arm = Line::Horizontal
-                .to_str(role)
-                .repeat(first_line.highlight.prefix_width + 1);
+            let horizontal_arm =
+                Line::Horizontal.to_str(role).repeat(first_line.highlight.prefix_width + 1);
             self.painter.set(color)?;
             writeln!(self.painter, "{joint}{horizontal_arm}{hand}")?;
             self.painter.unset()?;
@@ -387,9 +352,8 @@ impl Renderer<'_> {
                 let joint = Line::UpAndRight.to_str(role);
                 // FIXME: The length of the arm does not depend on the Unicode width of
                 //        the last character of the highlight.
-                let horizontal_arm = Line::Horizontal
-                    .to_str(role)
-                    .repeat(final_line.highlight.width);
+                let horizontal_arm =
+                    Line::Horizontal.to_str(role).repeat(final_line.highlight.width);
                 self.painter.set(color)?;
                 write!(self.painter, " {joint}{horizontal_arm}{hand}")?;
                 self.painter.unset()?;

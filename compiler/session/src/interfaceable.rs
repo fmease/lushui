@@ -1,6 +1,6 @@
 use crate::Session;
 use diagnostics::error::Result;
-use hir::{interfaceable, special, Expression, ParameterKind::Explicit};
+use hir::{Expression, ParameterKind::Explicit, interfaceable, special};
 use utility::condition;
 
 pub trait InterfaceableBindingExt: Sized {
@@ -34,10 +34,7 @@ impl InterfaceableBindingExt for interfaceable::Type {
             },
             hir::BareExpression::Application(application) => match &application.callee.bare {
                 hir::BareExpression::Binding(binding) if is_special!(binding, Option) => {
-                    Self::Option(Box::new(Self::from_expression(
-                        &application.argument,
-                        session,
-                    )?))
+                    Self::Option(Box::new(Self::from_expression(&application.argument, session)?))
                 }
                 _ => return None,
             },
@@ -49,9 +46,7 @@ impl InterfaceableBindingExt for interfaceable::Type {
         use special::{NumericType::*, Type::*};
 
         macro special($name:ident) {
-            session
-                .require_special($name, None)
-                .map(hir::Identifier::to_item)
+            session.require_special($name, None).map(hir::Identifier::to_item)
         }
 
         match self {
@@ -64,10 +59,9 @@ impl InterfaceableBindingExt for interfaceable::Type {
             Self::Int32 => special!(Int32),
             Self::Int64 => special!(Int64),
             Self::Text => special!(Text),
-            Self::Option(type_) => Ok(application(
-                special!(Option)?,
-                type_.into_expression(session)?,
-            )),
+            Self::Option(type_) => {
+                Ok(application(special!(Option)?, type_.into_expression(session)?))
+            }
         }
     }
 }
@@ -139,9 +133,9 @@ impl InterfaceableBindingExt for interfaceable::Value {
 
         Ok(match self {
             Self::Unit => session.require_special(Unit, None)?.to_item(),
-            Self::Bool(value) => session
-                .require_special(if value { BoolTrue } else { BoolFalse }, None)?
-                .to_item(),
+            Self::Bool(value) => {
+                session.require_special(if value { BoolTrue } else { BoolFalse }, None)?.to_item()
+            }
             Self::Text(value) => Expression::bare(hir::Text::Text(value).into()),
             Self::Nat(value) => Expression::bare(Nat(value).into()),
             Self::Nat32(value) => Expression::bare(Nat32(value).into()),
@@ -177,12 +171,5 @@ impl InterfaceableBindingExt for interfaceable::Value {
 }
 
 fn application(callee: Expression, argument: Expression) -> Expression {
-    Expression::bare(
-        hir::Application {
-            callee,
-            argument,
-            kind: Explicit,
-        }
-        .into(),
-    )
+    Expression::bare(hir::Application { callee, argument, kind: Explicit }.into())
 }

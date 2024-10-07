@@ -72,11 +72,7 @@ impl Parser<'_> {
 
                 Pattern::common(
                     span,
-                    ast::NumberLiteral {
-                        path: None,
-                        literal: Spanned::new(span, literal),
-                    }
-                    .into(),
+                    ast::NumberLiteral { path: None, literal: Spanned::new(span, literal) }.into(),
                 )
             }
             TextLiteral(literal) => {
@@ -84,11 +80,7 @@ impl Parser<'_> {
 
                 Pattern::common(
                     span,
-                    ast::TextLiteral {
-                        path: None,
-                        literal: Spanned::new(span, literal),
-                    }
-                    .into(),
+                    ast::TextLiteral { path: None, literal: Spanned::new(span, literal) }.into(),
                 )
             }
             PathHead!() => self.parse_path_or_namespaced_literal()?,

@@ -19,10 +19,9 @@ impl ToLocationExt for Span {
                     character: lines.first.highlight.start - 1,
                 },
                 end: match lines.last {
-                    Some(line) => Position {
-                        line: line.number - 1,
-                        character: line.highlight.end - 1,
-                    },
+                    Some(line) => {
+                        Position { line: line.number - 1, character: line.highlight.end - 1 }
+                    }
                     None => Position {
                         line: lines.first.number - 1,
                         character: lines.first.highlight.end - 1,

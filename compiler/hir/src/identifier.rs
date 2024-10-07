@@ -1,7 +1,7 @@
 use super::{Binding, Item};
 use span::{Span, Spanning};
 use std::fmt;
-use utility::{obtain, Atom, ComponentIndex};
+use utility::{Atom, ComponentIndex, obtain};
 
 /// A name-resolved identifier.
 #[derive(Clone, Copy, Eq)]
@@ -13,10 +13,7 @@ pub struct Identifier {
 
 impl Identifier {
     pub fn new(index: impl Into<Index>, source: ast::Identifier) -> Self {
-        Self {
-            index: index.into(),
-            source,
-        }
+        Self { index: index.into(), source }
     }
 
     pub fn to_str(self) -> &'static str {
@@ -41,17 +38,11 @@ impl Identifier {
     }
 
     pub fn shift(self, amount: usize) -> Self {
-        Self {
-            index: self.index.shift(amount),
-            ..self
-        }
+        Self { index: self.index.shift(amount), ..self }
     }
 
     pub fn unshift(self) -> Self {
-        Self {
-            index: self.index.unshift(),
-            ..self
-        }
+        Self { index: self.index.unshift(), ..self }
     }
 
     pub fn declaration_index(self) -> Option<DeclarationIndex> {

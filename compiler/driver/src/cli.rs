@@ -1,7 +1,7 @@
 use crate::create::PackageCreationOptions;
 use clap::{
-    builder::{PossibleValue, TypedValueParser, ValueParser},
     Arg, ArgAction, ArgMatches,
+    builder::{PossibleValue, TypedValueParser, ValueParser},
 };
 use derivation::{Elements, FromStr, Str};
 use diagnostics::error::Result;
@@ -11,7 +11,7 @@ use session::unit::ComponentType;
 use std::{cmp::max, ffi::OsStr, io::Write, path::PathBuf};
 use utility::{
     default,
-    paint::{paint_to_string, AnsiColor, ColorChoice},
+    paint::{AnsiColor, ColorChoice, paint_to_string},
 };
 
 // @Task update the color scheme of the `-Zhelp` output from clap-3-style to clap-4-style
@@ -19,12 +19,8 @@ use utility::{
 //       bold & underlined section titles and the use of bold letters
 
 pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
-    let short_version = format!(
-        "{} ({} {})",
-        env!("VERSION"),
-        env!("SHORT_COMMIT_HASH"),
-        env!("COMMIT_DATE"),
-    );
+    let short_version =
+        format!("{} ({} {})", env!("VERSION"), env!("SHORT_COMMIT_HASH"), env!("COMMIT_DATE"),);
 
     let long_version = format!(
         "\
@@ -74,10 +70,7 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
         .value_parser(ComponentTypeParser);
 
     let file_build_arguments = [
-        path_argument
-            .clone()
-            .required(true)
-            .help("The path to a source file"),
+        path_argument.clone().required(true).help("The path to a source file"),
         Arg::new(option::NO_CORE)
             .long("no-core")
             .short('0')
@@ -208,14 +201,12 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
                 ]),
             #[cfg(feature = "lsp")]
             clap::Command::new(subcommand::SERVE).about("Launch an LSP server"),
-            clap::Command::new(subcommand::EXPLAIN)
-                .about("Explain given error codes")
-                .arg(
-                    Arg::new(argument::CODES)
-                        .action(ArgAction::Append)
-                        .required(true)
-                        .help("The error codes that need explanation"),
-                ),
+            clap::Command::new(subcommand::EXPLAIN).about("Explain given error codes").arg(
+                Arg::new(argument::CODES)
+                    .action(ArgAction::Append)
+                    .required(true)
+                    .help("The error codes that need explanation"),
+            ),
             clap::Command::new(subcommand::INITIALIZE)
                 .visible_alias("init")
                 .about("Create a new package in the current folder")
@@ -233,11 +224,7 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
                 .about("Check a Recnot file for syntax errors")
                 .hide(true)
                 .after_help(recnot_subcommand_disclaimer)
-                .arg(
-                    path_argument
-                        .required(true)
-                        .help("The path to the Recnot file"),
-                ),
+                .arg(path_argument.required(true).help("The path to the Recnot file")),
         ])
         .get_matches();
 
@@ -338,9 +325,9 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
             },
             options: PackageCreationOptions::deserialize(matches),
         },
-        (subcommand::RECNOT, matches) => Command::Recnot {
-            path: matches.get_one(argument::PATH).cloned().unwrap(),
-        },
+        (subcommand::RECNOT, matches) => {
+            Command::Recnot { path: matches.get_one(argument::PATH).cloned().unwrap() }
+        }
         _ => unreachable!(),
     };
 
@@ -447,9 +434,7 @@ impl TypedValueParser for ColorChoiceParser {
     }
 
     fn possible_values(&self) -> Option<Box<dyn Iterator<Item = PossibleValue>>> {
-        Some(Box::new(
-            ColorChoice::elements().map(|mode| PossibleValue::new(mode.name())),
-        ))
+        Some(Box::new(ColorChoice::elements().map(|mode| PossibleValue::new(mode.name()))))
     }
 }
 
@@ -585,10 +570,7 @@ impl CompilationOptions {
         #[allow(unused_mut, clippy::needless_update)] // cfg-dependent
         let mut options = Self {
             // @Task instead of unwrap_or_default use clap's way sth sth default_value
-            backend: matches
-                .get_one(option::BACKEND)
-                .copied()
-                .unwrap_or_default(),
+            backend: matches.get_one(option::BACKEND).copied().unwrap_or_default(),
             ..default()
         };
 
@@ -739,9 +721,7 @@ impl TypedValueParser for ComponentTypeParser {
     }
 
     fn possible_values(&self) -> Option<Box<dyn Iterator<Item = PossibleValue>>> {
-        Some(Box::new(
-            ComponentType::elements().map(|type_| PossibleValue::new(type_.name())),
-        ))
+        Some(Box::new(ComponentType::elements().map(|type_| PossibleValue::new(type_.name()))))
     }
 }
 
@@ -770,24 +750,23 @@ impl TypedValueParser for BackendParser {
     }
 
     fn possible_values(&self) -> Option<Box<dyn Iterator<Item = PossibleValue>>> {
-        Some(Box::new(
-            Backend::elements().map(|backend| PossibleValue::new(backend.name())),
-        ))
+        Some(Box::new(Backend::elements().map(|backend| PossibleValue::new(backend.name()))))
     }
 }
 
 mod unstable {
     use clap::ArgMatches;
     use derivation::{Elements, FromStr, Str};
-    use diagnostics::{error::Result, Diagnostic, Reporter};
+    use diagnostics::{Diagnostic, Reporter, error::Result};
     use std::{
         io::{self, Write},
         iter::once,
         str::FromStr,
     };
     use utility::{
+        Conjunction, ListingExt, QuoteExt,
         paint::{AnsiColor, ColorChoice, Effects, Painter},
-        pluralize, Conjunction, ListingExt, QuoteExt,
+        pluralize,
     };
 
     const HELP_OPTION: &str = "help";
@@ -816,10 +795,7 @@ mod unstable {
                 .message(format!(
                     "invalid unstable {} {}",
                     pluralize!(invalid_options.len(), "option"),
-                    invalid_options
-                        .into_iter()
-                        .map(QuoteExt::quote)
-                        .list(Conjunction::And)
+                    invalid_options.into_iter().map(QuoteExt::quote).list(Conjunction::And)
                 ))
                 .report(&Reporter::stderr(ColorChoice::Auto)))
         } else {
@@ -846,11 +822,7 @@ mod unstable {
             .chain(once((HELP_OPTION, "Print help information and halt")))
             .collect();
 
-        let padding = elements
-            .iter()
-            .map(|(syntax, _)| syntax.len())
-            .max()
-            .unwrap_or_default();
+        let padding = elements.iter().map(|(syntax, _)| syntax.len()).max().unwrap_or_default();
 
         elements.sort_by_key(|&(syntax, _)| syntax);
 
@@ -864,12 +836,15 @@ mod unstable {
         writeln!(stdout)?;
 
         stdout.set(AnsiColor::Red)?;
-        writeln!(stdout, "\
+        writeln!(
+            stdout,
+            "\
             These options are not subject to any stability guarantees.\n\
             They may be CHANGED in their behavior or REMOVED ENTIRELY at any time and without further notice.\n\
             If this program is executed with any of these options specified,\n\
             its behavior and especially the form of its output MUST NOT BE RELIED UPON.\
-        ")?;
+        "
+        )?;
         stdout.unset()?;
 
         // FIXME: Don't use `exit` since it doesn't allow destructors to run.
@@ -904,17 +879,27 @@ mod unstable {
 
         fn help(self) -> &'static str {
             match self {
-                Self::EmitAst => "Emit the abstract syntax tree (AST) of the current component output by the parser",
-                Self::EmitBindings => "Emit the (typed) bindings of the current component after type checking",
-                Self::EmitHir => "Emit the high-level intermediate representation (HIR) of the current component output by the resolver",
+                Self::EmitAst => {
+                    "Emit the abstract syntax tree (AST) of the current component output by the parser"
+                }
+                Self::EmitBindings => {
+                    "Emit the (typed) bindings of the current component after type checking"
+                }
+                Self::EmitHir => {
+                    "Emit the high-level intermediate representation (HIR) of the current component output by the resolver"
+                }
                 Self::EmitLoAst => "Emit the lowered AST (Lo-AST) of the current component",
                 Self::EmitTokens => "Emit the tokens of the current component output by the lexer",
-                Self::EmitUntypedBindings => "Emit the (untyped) bindings of the current component after name resolution",
+                Self::EmitUntypedBindings => {
+                    "Emit the (untyped) bindings of the current component after name resolution"
+                }
                 Self::Internals => "Enable internal language and library features",
                 Self::LexOnly => "Halt the execution after lexing the current component",
                 Self::LowerOnly => "Halt the execution after lowering the current component",
                 Self::ParseOnly => "Halt the execution after parsing the current component",
-                Self::ResolveOnly => "Halt the execution after resolving the names of the current component",
+                Self::ResolveOnly => {
+                    "Halt the execution after resolving the names of the current component"
+                }
                 Self::Timing => "Print the time of each pass through the current component",
             }
         }
@@ -970,8 +955,12 @@ mod unstable {
 
         fn help(self) -> &'static str {
             match self {
-                Self::AsciiDoc => "Interpret documentation comments as AsciiDoc when generating documentation",
-                Self::LoremIpsum(_) => "Replace the documentation of every declaration with ‘amount’ paragraphs of Lorem Ipsum",
+                Self::AsciiDoc => {
+                    "Interpret documentation comments as AsciiDoc when generating documentation"
+                }
+                Self::LoremIpsum(_) => {
+                    "Replace the documentation of every declaration with ‘amount’ paragraphs of Lorem Ipsum"
+                }
             }
         }
     }
@@ -989,11 +978,8 @@ mod unstable {
                 "asciidoc" => Self::AsciiDoc,
                 "lorem-ipsum" => {
                     return Ok(Self::LoremIpsum(
-                        value
-                            .map(str::parse)
-                            .transpose()
-                            .map_err(|_| ParseError::InvalidSyntax)?,
-                    ))
+                        value.map(str::parse).transpose().map_err(|_| ParseError::InvalidSyntax)?,
+                    ));
                 }
                 _ => return Err(ParseError::UndefinedOption),
             };
@@ -1048,9 +1034,7 @@ mod unstable {
         type Iter = impl Iterator<Item = Self>;
 
         fn elements() -> Self::Iter {
-            A::elements()
-                .map(Self::Left)
-                .chain(B::elements().map(Self::Right))
+            A::elements().map(Self::Left).chain(B::elements().map(Self::Right))
         }
     }
 

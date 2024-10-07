@@ -1,5 +1,5 @@
 use crate::{DeclarationIndex, Identifier};
-use diagnostics::{error::Result, Diagnostic, ErrorCode, Substitution};
+use diagnostics::{Diagnostic, ErrorCode, Substitution, error::Result};
 use num_traits::{CheckedDiv, CheckedSub};
 use span::{Span, Spanning};
 use std::fmt;
@@ -360,133 +360,76 @@ impl Function {
         let mut arguments = arguments.into_iter();
         match self {
             Self::NatAdd => {
-                let Some(Nat(x)) = arguments.next() else {
-                    unreachable!()
-                };
-                let Some(Nat(y)) = arguments.next() else {
-                    unreachable!()
-                };
+                let Some(Nat(x)) = arguments.next() else { unreachable!() };
+                let Some(Nat(y)) = arguments.next() else { unreachable!() };
                 (x + y).into()
             }
             Self::NatSubtract => {
-                let Some(Nat(x)) = arguments.next() else {
-                    unreachable!()
-                };
-                let Some(Nat(y)) = arguments.next() else {
-                    unreachable!()
-                };
+                let Some(Nat(x)) = arguments.next() else { unreachable!() };
+                let Some(Nat(y)) = arguments.next() else { unreachable!() };
                 x.checked_sub(&y).into()
             }
             Self::NatUncheckedSubtract => {
-                let Some(Nat(x)) = arguments.next() else {
-                    unreachable!()
-                };
-                let Some(Nat(y)) = arguments.next() else {
-                    unreachable!()
-                };
+                let Some(Nat(x)) = arguments.next() else { unreachable!() };
+                let Some(Nat(y)) = arguments.next() else { unreachable!() };
                 (x - y).into()
             }
             Self::NatMultiply => {
-                let Some(Nat(x)) = arguments.next() else {
-                    unreachable!()
-                };
-                let Some(Nat(y)) = arguments.next() else {
-                    unreachable!()
-                };
+                let Some(Nat(x)) = arguments.next() else { unreachable!() };
+                let Some(Nat(y)) = arguments.next() else { unreachable!() };
                 (x * y).into()
             }
             Self::NatDivide => {
-                let Some(Nat(x)) = arguments.next() else {
-                    unreachable!()
-                };
-                let Some(Nat(y)) = arguments.next() else {
-                    unreachable!()
-                };
+                let Some(Nat(x)) = arguments.next() else { unreachable!() };
+                let Some(Nat(y)) = arguments.next() else { unreachable!() };
                 x.checked_div(&y).into()
             }
             Self::NatEqual => {
-                let Some(Nat(x)) = arguments.next() else {
-                    unreachable!()
-                };
-                let Some(Nat(y)) = arguments.next() else {
-                    unreachable!()
-                };
+                let Some(Nat(x)) = arguments.next() else { unreachable!() };
+                let Some(Nat(y)) = arguments.next() else { unreachable!() };
                 (x == y).into()
             }
             Self::NatLess => {
-                let Some(Nat(x)) = arguments.next() else {
-                    unreachable!()
-                };
-                let Some(Nat(y)) = arguments.next() else {
-                    unreachable!()
-                };
+                let Some(Nat(x)) = arguments.next() else { unreachable!() };
+                let Some(Nat(y)) = arguments.next() else { unreachable!() };
                 (x < y).into()
             }
             Self::NatLessEqual => {
-                let Some(Nat(x)) = arguments.next() else {
-                    unreachable!()
-                };
-                let Some(Nat(y)) = arguments.next() else {
-                    unreachable!()
-                };
+                let Some(Nat(x)) = arguments.next() else { unreachable!() };
+                let Some(Nat(y)) = arguments.next() else { unreachable!() };
                 (x <= y).into()
             }
             Self::NatGreater => {
-                let Some(Nat(x)) = arguments.next() else {
-                    unreachable!()
-                };
-                let Some(Nat(y)) = arguments.next() else {
-                    unreachable!()
-                };
+                let Some(Nat(x)) = arguments.next() else { unreachable!() };
+                let Some(Nat(y)) = arguments.next() else { unreachable!() };
                 (x > y).into()
             }
             Self::NatGreaterEqual => {
-                let Some(Nat(x)) = arguments.next() else {
-                    unreachable!()
-                };
-                let Some(Nat(y)) = arguments.next() else {
-                    unreachable!()
-                };
+                let Some(Nat(x)) = arguments.next() else { unreachable!() };
+                let Some(Nat(y)) = arguments.next() else { unreachable!() };
                 (x >= y).into()
             }
             Self::NatDisplay => {
-                let Some(Nat(x)) = arguments.next() else {
-                    unreachable!()
-                };
+                let Some(Nat(x)) = arguments.next() else { unreachable!() };
                 x.to_string().into()
             }
             Self::TextConcat => {
-                let Some(Text(x)) = arguments.next() else {
-                    unreachable!()
-                };
-                let Some(Text(y)) = arguments.next() else {
-                    unreachable!()
-                };
+                let Some(Text(x)) = arguments.next() else { unreachable!() };
+                let Some(Text(y)) = arguments.next() else { unreachable!() };
                 (x + &y).into()
             }
             Self::Nat32Add => {
-                let Some(Nat32(x)) = arguments.next() else {
-                    unreachable!()
-                };
-                let Some(Nat32(y)) = arguments.next() else {
-                    unreachable!()
-                };
+                let Some(Nat32(x)) = arguments.next() else { unreachable!() };
+                let Some(Nat32(y)) = arguments.next() else { unreachable!() };
                 (x + y).into()
             }
             Self::Nat32Successor => {
-                let Some(Nat32(x)) = arguments.next() else {
-                    unreachable!()
-                };
+                let Some(Nat32(x)) = arguments.next() else { unreachable!() };
                 (x + 1).into()
             }
             Self::IoPrint => {
-                let Some(Text(message)) = arguments.next() else {
-                    unreachable!()
-                };
-                crate::interfaceable::Value::IO {
-                    index: 0,
-                    arguments: vec![message.into()],
-                }
+                let Some(Text(message)) = arguments.next() else { unreachable!() };
+                crate::interfaceable::Value::IO { index: 0, arguments: vec![message.into()] }
             }
         }
     }
@@ -550,9 +493,8 @@ impl Bindings {
         style: DefinitionStyle<'_>,
         attribute: Span,
     ) -> Result<Binding, Diagnostic> {
-        let special = style
-            .as_name(binder)
-            .and_then(|(namespace, name)| Binding::parse(namespace, name));
+        let special =
+            style.as_name(binder).and_then(|(namespace, name)| Binding::parse(namespace, name));
         let Some(special) = special.filter(|special| special.kind() == kind) else {
             return Err(Diagnostic::error()
                 .code(match kind {
@@ -604,9 +546,7 @@ impl Bindings {
                     Kind::Intrinsic => ErrorCode::E040,
                     Kind::Known => ErrorCode::E039,
                 })
-                .message(format!(
-                    "the {kind} binding ‘{special}’ is defined multiple times"
-                ))
+                .message(format!("the {kind} binding ‘{special}’ is defined multiple times"))
                 .span(binder, "redefinition")
                 .label(previous, "previous definition"));
         }
@@ -642,9 +582,9 @@ pub enum DefinitionStyle<'a, T = Atom> {
 impl<'a> DefinitionStyle<'a> {
     fn as_path(&self, binder: Identifier) -> String {
         match self {
-            Self::Implicit { namespace } => namespace.map_or(binder.to_string(), |namespace| {
-                format!("{namespace}.{binder}")
-            }),
+            Self::Implicit { namespace } => {
+                namespace.map_or(binder.to_string(), |namespace| format!("{namespace}.{binder}"))
+            }
             Self::Explicit { name } => name.to_string(),
         }
     }

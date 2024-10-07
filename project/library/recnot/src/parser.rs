@@ -1,13 +1,13 @@
 use crate::{
+    BareValue, Record, Value,
     lexer::{
         self, Token, TokenExt,
         TokenName::{self, *},
     },
-    BareValue, Record, Value,
 };
 use diagnostics::{
-    error::{Health, Outcome, Result},
     Diagnostic, ErrorCode, Reporter,
+    error::{Health, Outcome, Result},
 };
 use span::{Affinity, SourceFileIndex, SourceMap, Span, Spanned, Spanning};
 use std::sync::RwLock;
@@ -52,14 +52,7 @@ impl<'a> Parser<'a> {
         map: &'a RwLock<SourceMap>,
         reporter: &'a Reporter,
     ) -> Self {
-        Self {
-            file,
-            tokens,
-            index: 0,
-            health: Health::Untainted,
-            map,
-            reporter,
-        }
+        Self { file, tokens, index: 0, health: Health::Untainted, map, reporter }
     }
 
     fn current_token(&self) -> &Token {
@@ -111,10 +104,8 @@ impl<'a> Parser<'a> {
     }
 
     fn has_top_level_record_entries(&self) -> bool {
-        matches!(
-            self.current_token().name(),
-            Identifier | False | True | Text
-        ) && self.succeeding_token().name() == Colon
+        matches!(self.current_token().name(), Identifier | False | True | Text)
+            && self.succeeding_token().name() == Colon
             || self.current_token().name() == EndOfInput
     }
 
@@ -128,10 +119,7 @@ impl<'a> Parser<'a> {
     fn parse_top_level_record_entries(&mut self) -> Result<Value> {
         let record = self.parse_record_entries(EndOfInput)?;
 
-        Ok(Value::new(
-            self.map.read().unwrap()[self.file].span(),
-            BareValue::Record(record),
-        ))
+        Ok(Value::new(self.map.read().unwrap()[self.file].span(), BareValue::Record(record)))
     }
 
     /// Parse a value.

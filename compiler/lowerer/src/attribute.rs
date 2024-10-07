@@ -1,13 +1,13 @@
 use crate::{Lowerer, Options};
 use ast::Path;
 use diagnostics::{
+    Diagnostic, ErrorCode, Reporter,
     error::{Health, Outcome, Result},
     reporter::ErasedReportedError,
-    Diagnostic, ErrorCode, Reporter,
 };
 use lo_ast::{
-    attribute::{Predicate, Query, Special, Target},
     AttributeName, Attributes, BareAttribute,
+    attribute::{Predicate, Query, Special, Target},
 };
 use session::Session;
 use span::{Span, Spanned, Spanning};
@@ -112,10 +112,7 @@ impl Lowerer<'_> {
 
         for attribute in attributes.filter(Predicate(|attribute| !attribute.is_implemented())) {
             Diagnostic::error()
-                .message(format!(
-                    "the attribute ‘{}’ is not supported yet",
-                    attribute.bare.name()
-                ))
+                .message(format!("the attribute ‘{}’ is not supported yet", attribute.bare.name()))
                 .unlabeled_span(attribute)
                 .handle(&mut *self);
         }
@@ -164,10 +161,7 @@ trait AttributeExt: Sized {
 
 impl AttributeExt for lo_ast::Attribute {
     fn parse(attribute: &ast::Attribute, options: &Options, session: &Session<'_>) -> Result<Self> {
-        Ok(Self::new(
-            attribute.span,
-            BareAttribute::parse(attribute, options, session)?,
-        ))
+        Ok(Self::new(attribute.span, BareAttribute::parse(attribute, options, session)?))
     }
 }
 
@@ -413,7 +407,7 @@ trait AttributeArgumentExt {
     ) -> Result<Atom, AttributeParsingError>;
 
     fn path(&self, name: Option<Atom>, reporter: &Reporter)
-        -> Result<&Path, AttributeParsingError>;
+    -> Result<&Path, AttributeParsingError>;
 }
 
 impl AttributeArgumentExt for ast::AttributeArgument {
@@ -589,9 +583,7 @@ mod error {
     ) -> Diagnostic {
         Diagnostic::error()
             .code(ErrorCode::E028)
-            .message(format!(
-                "found named argument ‘{actual}’ but expected ‘{expected}’"
-            ))
+            .message(format!("found named argument ‘{actual}’ but expected ‘{expected}’"))
             .unlabeled_span(actual)
     }
 

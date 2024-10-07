@@ -3,9 +3,8 @@ use index_map::IndexMap;
 use std::{io, ops::Range, path::Path, sync::Arc};
 use unicode_width::UnicodeWidthStr;
 use utility::{
-    default, obtain,
+    ComponentIndex, default, obtain,
     path::{CanonicalPath, CanonicalPathBuf},
-    ComponentIndex,
 };
 
 #[cfg(test)]
@@ -46,11 +45,7 @@ impl SourceMap {
     fn next_offset(&self) -> ByteIndex {
         const PADDING: u32 = 1;
 
-        self.files
-            .last()
-            .map(|file| file.span().end)
-            .unwrap_or_default()
-            + PADDING
+        self.files.last().map(|file| file.span().end).unwrap_or_default() + PADDING
     }
 
     /// Open a file given its path and add it as a [`SourceFile`] to the map.
@@ -81,8 +76,7 @@ impl SourceMap {
         source: Arc<String>,
         component: Option<ComponentIndex>,
     ) -> SourceFileIndex {
-        self.files
-            .insert(SourceFile::new(name, source, self.next_offset(), component))
+        self.files.insert(SourceFile::new(name, source, self.next_offset(), component))
     }
 
     pub fn add_str(&mut self, name: impl Into<FileName>, source: &str) -> SourceFileIndex {
@@ -93,17 +87,12 @@ impl SourceMap {
         debug_assert!(span != default());
 
         // @Task do binary search (by span)
-        self.files
-            .values()
-            .find(|file| file.span().contains(span.start))
-            .unwrap()
+        self.files.values().find(|file| file.span().contains(span.start)).unwrap()
     }
 
     // @Beacon @Temporary
     pub fn file_by_path(&self, path: &CanonicalPath) -> Option<&SourceFile> {
-        self.files
-            .values()
-            .find(|file| file.name.path() == Some(path))
+        self.files.values().find(|file| file.name.path() == Some(path))
     }
 
     /// Resolve a span to the string content it points to.
@@ -134,18 +123,12 @@ impl SourceMap {
                 if first_line.is_some() {
                     // the first line of the highlight has been found
                     // prepare for finding the final line (which might coincide with the first)
-                    current_line.highlight = Some(InterimHighlight {
-                        start: index,
-                        end: None,
-                    });
+                    current_line.highlight = Some(InterimHighlight { start: index, end: None });
                 }
             }
 
             if index == span.start {
-                current_line.highlight = Some(InterimHighlight {
-                    start: index,
-                    end: None,
-                });
+                current_line.highlight = Some(InterimHighlight { start: index, end: None });
             }
 
             if index == span.end {
@@ -188,10 +171,7 @@ impl SourceMap {
             }
 
             if index == span.start {
-                current_line.highlight = Some(InterimHighlight {
-                    start: index,
-                    end: None,
-                });
+                current_line.highlight = Some(InterimHighlight { start: index, end: None });
             }
 
             if index == span.end {
@@ -232,12 +212,7 @@ impl SourceMap {
 
         impl InterimLine {
             fn new(line_number: u32) -> Self {
-                Self {
-                    number: line_number,
-                    start: None,
-                    end: None,
-                    highlight: None,
-                }
+                Self { number: line_number, start: None, end: None, highlight: None }
             }
 
             fn reset(&mut self, line_number: u32) -> Self {

@@ -6,14 +6,14 @@ use std::{
     collections::BTreeSet,
     mem,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc, Mutex, RwLock, RwLockReadGuard,
+        atomic::{AtomicBool, Ordering},
     },
 };
 use utility::{
-    default,
-    paint::{epaint, ColorChoice},
-    pluralize, Conjunction, ListingExt,
+    Conjunction, ListingExt, default,
+    paint::{ColorChoice, epaint},
+    pluralize,
 };
 
 // @Task diagnostic formatting options

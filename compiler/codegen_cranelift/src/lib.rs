@@ -2,15 +2,16 @@
 use cranelift::{
     frontend::{FunctionBuilder, FunctionBuilderContext},
     prelude::{
+        AbiParam, InstBuilder, Signature,
         isa::CallConv,
         settings::{self, Flags},
-        types, AbiParam, InstBuilder, Signature,
+        types,
     },
 };
 use cranelift_module::{Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule};
-use diagnostics::{error::Result, Diagnostic};
-use session::{Session, OUTPUT_FOLDER_NAME};
+use diagnostics::{Diagnostic, error::Result};
+use session::{OUTPUT_FOLDER_NAME, Session};
 use std::{
     path::{Path, PathBuf},
     process::Command,
@@ -43,18 +44,11 @@ fn compile(
 ) -> PathBuf {
     let program_entry_name = PROGRAM_ENTRY.to_str();
 
-    let isa = cranelift_native::builder()
-        .unwrap()
-        .finish(Flags::new(settings::builder()))
-        .unwrap();
+    let isa = cranelift_native::builder().unwrap().finish(Flags::new(settings::builder())).unwrap();
 
     let mut module = ObjectModule::new(
-        ObjectBuilder::new(
-            isa,
-            program_entry_name,
-            cranelift_module::default_libcall_names(),
-        )
-        .unwrap(),
+        ObjectBuilder::new(isa, program_entry_name, cranelift_module::default_libcall_names())
+            .unwrap(),
     );
     let mut context = module.make_context();
 

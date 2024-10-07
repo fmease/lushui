@@ -1,7 +1,7 @@
 use crate::Identifier;
 use span::{Span, Spanned, Spanning};
 use std::fmt;
-use utility::{smallvec, SmallVec};
+use utility::{SmallVec, smallvec};
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Path {
@@ -15,19 +15,13 @@ impl Path {
     pub fn hung(hanger: Hanger, segments: SmallVec<Identifier, 1>) -> Self {
         debug_assert_ne!(segments.len(), 0);
 
-        Self {
-            hanger: Some(hanger),
-            segments,
-        }
+        Self { hanger: Some(hanger), segments }
     }
 
     pub fn unhung(segments: SmallVec<Identifier, 1>) -> Self {
         debug_assert_ne!(segments.len(), 0);
 
-        Self {
-            hanger: None,
-            segments,
-        }
+        Self { hanger: None, segments }
     }
 
     pub fn join(mut self, other: Self) -> Result<Self, Hanger> {
@@ -41,8 +35,7 @@ impl Path {
     }
 
     pub fn is_bare_hanger(&self, hanger: BareHanger) -> bool {
-        self.hanger
-            .map_or(false, |some_hanger| some_hanger.bare == hanger)
+        self.hanger.map_or(false, |some_hanger| some_hanger.bare == hanger)
             && self.segments.is_empty()
     }
 
@@ -65,19 +58,13 @@ impl fmt::Debug for Path {
 
 impl From<Identifier> for Path {
     fn from(identifier: Identifier) -> Self {
-        Self {
-            hanger: None,
-            segments: smallvec![identifier],
-        }
+        Self { hanger: None, segments: smallvec![identifier] }
     }
 }
 
 impl From<Hanger> for Path {
     fn from(hanger: Hanger) -> Self {
-        Self {
-            hanger: Some(hanger),
-            segments: SmallVec::new(),
-        }
+        Self { hanger: Some(hanger), segments: SmallVec::new() }
     }
 }
 
@@ -87,11 +74,7 @@ impl Spanning for Path {
         if let Some(head) = &self.hanger {
             head.span().merge(&self.segments.last())
         } else {
-            self.segments
-                .first()
-                .unwrap()
-                .span()
-                .merge(self.segments.last().unwrap())
+            self.segments.first().unwrap().span().merge(self.segments.last().unwrap())
         }
     }
 }

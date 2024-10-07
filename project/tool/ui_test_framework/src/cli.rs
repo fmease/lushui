@@ -1,12 +1,12 @@
-use crate::{failure::DiffView, CompilerBuildMode, Gilding, Inspecting};
+use crate::{CompilerBuildMode, Gilding, Inspecting, failure::DiffView};
 use clap::{
-    builder::{PathBufValueParser, TypedValueParser},
     Arg, ArgAction, Command,
+    builder::{PathBufValueParser, TypedValueParser},
 };
 use derivation::Elements;
 use diagnostics::{Diagnostic, Reporter};
 use std::{ffi::OsStr, num::NonZeroUsize, path::PathBuf, time::Duration};
-use utility::{paint::ColorChoice, FormatError};
+use utility::{FormatError, paint::ColorChoice};
 
 pub(crate) fn arguments() -> Result<Arguments, ()> {
     let available_parallelism =
@@ -36,15 +36,9 @@ pub(crate) fn arguments() -> Result<Arguments, ()> {
                 .action(ArgAction::SetTrue)
                 .help("Build the Lushui compiler in release mode, with optimizations"),
         )
-        .arg(
-            Arg::new(option::GILD)
-                .long("gild")
-                .short('g')
-                .action(ArgAction::SetTrue)
-                .help(
-                    "Update the golden files of all included failing tests to the current compiler output",
-                )
-        )
+        .arg(Arg::new(option::GILD).long("gild").short('g').action(ArgAction::SetTrue).help(
+            "Update the golden files of all included failing tests to the current compiler output",
+        ))
         .arg(
             Arg::new(option::TIMEOUT)
                 .long("timeout")
@@ -83,10 +77,7 @@ pub(crate) fn arguments() -> Result<Arguments, ()> {
     let mut paths = Vec::new();
     let mut success = true;
 
-    for path in matches
-        .get_many::<PathBuf>(argument::PATHS)
-        .unwrap_or_default()
-    {
+    for path in matches.get_many::<PathBuf>(argument::PATHS).unwrap_or_default() {
         match path.canonicalize() {
             Ok(path) => paths.push(path),
             Err(error) => {
@@ -113,18 +104,11 @@ pub(crate) fn arguments() -> Result<Arguments, ()> {
         } else {
             CompilerBuildMode::Debug
         },
-        gilding: if matches.get_flag(option::GILD) {
-            Gilding::Yes
-        } else {
-            Gilding::No
-        },
+        gilding: if matches.get_flag(option::GILD) { Gilding::Yes } else { Gilding::No },
         paths,
         timeout: matches.get_one(option::TIMEOUT).copied(),
         number_test_threads: *matches.get_one(option::NUMBER_TEST_THREADS).unwrap(),
-        diff_view: matches
-            .get_one(option::DIFF_VIEW)
-            .copied()
-            .unwrap_or_default(),
+        diff_view: matches.get_one(option::DIFF_VIEW).copied().unwrap_or_default(),
         inspecting: if matches.get_flag(option::INSPECT) {
             Inspecting::Yes
         } else {
@@ -233,9 +217,9 @@ impl TypedValueParser for DiffViewParser {
     }
 
     fn possible_values(&self) -> Option<Box<dyn Iterator<Item = clap::builder::PossibleValue>>> {
-        Some(Box::new(DiffView::elements().map(|format| {
-            clap::builder::PossibleValue::new(format.name())
-        })))
+        Some(Box::new(
+            DiffView::elements().map(|format| clap::builder::PossibleValue::new(format.name())),
+        ))
     }
 }
 

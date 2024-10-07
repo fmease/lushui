@@ -2,16 +2,16 @@
 
 use ast::Render;
 use cli::{Backend, BuildMode, Command, PassRestriction};
-use diagnostics::{error::Result, reporter::ErasedReportedError, Diagnostic, ErrorCode, Reporter};
+use diagnostics::{Diagnostic, ErrorCode, Reporter, error::Result, reporter::ErasedReportedError};
 use hir_format::Display as _;
 use index_map::IndexMap;
 use lo_ast::Display as _;
 use package::{find_package, resolve_file, resolve_package};
 use resolver::ProgramEntryExt;
 use session::{
+    Context, Session,
     package::ManifestPath,
     unit::{BuildUnit, ComponentType},
-    Context, Session,
 };
 use span::SourceMap;
 use std::{
@@ -19,14 +19,13 @@ use std::{
     io::Write,
     path::Path,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc, RwLock,
+        atomic::{AtomicBool, Ordering},
     },
 };
 use utility::{
-    default, displayed,
-    paint::{epaint, paint, AnsiColor, ColorChoice},
-    ComponentIndex, FormatError, PROGRAM_ENTRY,
+    ComponentIndex, FormatError, PROGRAM_ENTRY, default, displayed,
+    paint::{AnsiColor, ColorChoice, epaint, paint},
 };
 
 mod cli;
@@ -51,10 +50,7 @@ pub fn main() -> Result {
     let reported_any_errors = reported_any_errors.load(Ordering::SeqCst);
 
     if let Err(error) = result {
-        assert!(
-            reported_any_errors,
-            "an error occurred but nothing was reported"
-        );
+        assert!(reported_any_errors, "an error occurred but nothing was reported");
         return Err(error);
     }
 
@@ -123,13 +119,7 @@ fn execute_command(
                 }
             };
 
-            build_units(
-                components,
-                &mode,
-                &options.general,
-                global_options,
-                &mut context,
-            )
+            build_units(components, &mode, &options.general, global_options, &mut context)
         }
         BuildFile { mode, options } => {
             // intentionally not `!path.is_file()` to exclude broken symlinks
@@ -157,13 +147,7 @@ fn execute_command(
                 reporter,
             )?;
 
-            build_units(
-                components,
-                &mode,
-                &options.general,
-                global_options,
-                &mut context,
-            )
+            build_units(components, &mode, &options.general, global_options, &mut context)
         }
         #[cfg(feature = "lsp")]
         Serve => {
@@ -197,9 +181,8 @@ fn build_units(
     context: &mut Context,
 ) -> Result {
     for unit in units.into_values() {
-        context.at(unit, |unit, session| {
-            build_unit(unit, mode, options, global_options, session)
-        })?;
+        context
+            .at(unit, |unit, session| build_unit(unit, mode, options, global_options, session))?;
     }
 
     if let BuildMode::Document { options } = mode
@@ -273,28 +256,22 @@ fn build_unit(
     // @Task don't unconditionally halt execution on failure here but continue (with tainted health)
     // and mark the component as "erroneous" (not yet implemented) so we can print more errors.
     // "Erroneous" components should not lead to further errors in the name resolver etc.
-    let file = session
-        .map()
-        .load(path.bare, Some(unit.index))
-        .map_err(|error| {
-            use std::fmt::Write;
+    let file = session.map().load(path.bare, Some(unit.index)).map_err(|error| {
+        use std::fmt::Write;
 
-            let mut message = format!(
-                "could not load the {} component ‘{}’",
-                unit.type_, unit.name,
-            );
-            if let Some(package) = session.package() {
-                write!(message, " in package ‘{}’", session[package].name).unwrap();
-            }
+        let mut message = format!("could not load the {} component ‘{}’", unit.type_, unit.name,);
+        if let Some(package) = session.package() {
+            write!(message, " in package ‘{}’", session[package].name).unwrap();
+        }
 
-            // @Task improve message, add label
-            Diagnostic::error()
-                .message(message)
-                .path(path.bare.to_path_buf())
-                .unlabeled_span(path)
-                .note(error.format())
-                .report(session.reporter())
-        })?;
+        // @Task improve message, add label
+        Diagnostic::error()
+            .message(message)
+            .path(path.bare.to_path_buf())
+            .unlabeled_span(path)
+            .note(error.format())
+            .report(session.reporter())
+    })?;
 
     time! {
         //! Lexing
@@ -317,11 +294,7 @@ fn build_unit(
     }
 
     if unit.is_root(session) && options.emit_ast {
-        epaint(
-            |painter| component_root.render(default(), painter),
-            global_options.color,
-        )
-        .unwrap();
+        epaint(|painter| component_root.render(default(), painter), global_options.color).unwrap();
         eprintln!();
     }
 

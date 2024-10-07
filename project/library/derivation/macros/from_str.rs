@@ -1,6 +1,6 @@
 use crate::{
     format::FormatAttribute,
-    utility::{ensure_variant_is_fieldless, HelperAttribute, TokenStream1, TokenStream2},
+    utility::{HelperAttribute, TokenStream1, TokenStream2, ensure_variant_is_fieldless},
 };
 use quote::quote;
 use syn::Error;

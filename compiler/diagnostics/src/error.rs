@@ -1,6 +1,6 @@
 //! Error handling mechanisms.
 
-use crate::{reporter::ErasedReportedError, Diagnostic};
+use crate::{Diagnostic, reporter::ErasedReportedError};
 use utility::default;
 
 pub type Result<T = (), E = ErasedReportedError> = std::result::Result<T, E>;
@@ -139,11 +139,7 @@ impl<Bare: PossiblyErroneous, Attributes: Default> PossiblyErroneous
     for span::item::Item<Bare, Attributes>
 {
     fn error(error: ErasedReportedError) -> Self {
-        Self {
-            bare: Bare::error(error),
-            span: default(),
-            attributes: default(),
-        }
+        Self { bare: Bare::error(error), span: default(), attributes: default() }
     }
 }
 

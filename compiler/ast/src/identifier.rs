@@ -1,5 +1,5 @@
 use crate::{Expression, Path};
-use lexer::{word::Word, CharExt};
+use lexer::{CharExt, word::Word};
 use span::{Span, Spanned, Spanning};
 use std::hash::Hash;
 use utility::Atom;

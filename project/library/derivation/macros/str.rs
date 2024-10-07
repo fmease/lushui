@@ -5,8 +5,8 @@ use crate::{
 use proc_macro2::Span;
 use quote::quote;
 use syn::{
-    parse::{Nothing, Parse, ParseStream},
     Error, Fields, Ident,
+    parse::{Nothing, Parse, ParseStream},
 };
 
 // @Task check if the type derives Copy and if so, pass self by value not by reference
@@ -60,9 +60,7 @@ pub(crate) struct StrAttribute {
 
 impl Default for StrAttribute {
     fn default() -> Self {
-        Self {
-            method: Ident::new("name", Span::call_site()),
-        }
+        Self { method: Ident::new("name", Span::call_site()) }
     }
 }
 

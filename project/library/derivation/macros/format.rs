@@ -1,7 +1,7 @@
 use crate::utility::HelperAttribute;
 use syn::{
-    parse::{Nothing, Parse, ParseStream},
     Error, Ident,
+    parse::{Nothing, Parse, ParseStream},
 };
 
 pub(crate) struct FormatAttribute {

@@ -2,22 +2,22 @@
 // @Task Where possible, continue type checking on errors
 
 use diagnostics::{
+    Diagnostic, ErrorCode,
     error::{Handler, Health, Result, Stain},
     reporter::ErasedReportedError,
-    Diagnostic, ErrorCode,
 };
 use hir::{
-    special::{self, Type},
     AttributeName, Declaration, EntityKind, Expression, Identifier,
+    special::{self, Type},
 };
 use hir_format::Display;
 use interpreter::{BareDefinition, Definition, FunctionScope, Interpreter};
 use joinery::JoinableIterator;
 use session::{
-    component::{IdentifierExt, LocalDeclarationIndexExt},
     Session,
+    component::{IdentifierExt, LocalDeclarationIndexExt},
 };
-use utility::{displayed, pluralize, OwnedOrBorrowed::*, QuoteExt};
+use utility::{OwnedOrBorrowed::*, QuoteExt, displayed, pluralize};
 
 pub mod interpreter;
 
@@ -27,9 +27,7 @@ pub fn check(declaration: &Declaration, session: &mut Session<'_>) -> Result {
     typer
         .start_infer_types_in_declaration(declaration, Context::default())
         .stain(&mut typer.health);
-    typer
-        .infer_types_of_out_of_order_bindings()
-        .stain(&mut typer.health);
+    typer.infer_types_of_out_of_order_bindings().stain(&mut typer.health);
 
     typer.health.into()
 }
@@ -48,11 +46,7 @@ struct Typer<'sess, 'ctx> {
 
 impl<'sess, 'ctx> Typer<'sess, 'ctx> {
     fn new(session: &'sess mut Session<'ctx>) -> Self {
-        Self {
-            session,
-            out_of_order_bindings: Vec::new(),
-            health: Health::Untainted,
-        }
+        Self { session, out_of_order_bindings: Vec::new(), health: Health::Untainted }
     }
 
     fn interpreter(&self) -> Interpreter<'_> {
@@ -89,22 +83,16 @@ impl<'sess, 'ctx> Typer<'sess, 'ctx> {
                 // @Question don't return early??
                 self.evaluate_definition(Definition {
                     attributes: declaration.attributes.clone(),
-                    bare: BareDefinition::Data {
-                        binder: type_.binder,
-                        type_: type_.type_.clone(),
-                    },
+                    bare: BareDefinition::Data { binder: type_.binder, type_: type_.type_.clone() },
                 })?;
 
                 if let Some(constructors) = &type_.constructors {
                     let health = &mut Health::Untainted;
 
                     for constructor in constructors {
-                        self.start_infer_types_in_declaration(
-                            constructor,
-                            Context {
-                                owning_data_type: Some(type_.binder),
-                            },
-                        )
+                        self.start_infer_types_in_declaration(constructor, Context {
+                            owning_data_type: Some(type_.binder),
+                        })
                         .stain(health);
                     }
 
@@ -149,11 +137,7 @@ impl<'sess, 'ctx> Typer<'sess, 'ctx> {
         use BareDefinition::*;
 
         match definition.clone().bare {
-            Function {
-                binder,
-                type_,
-                value,
-            } => {
+            Function { binder, type_, value } => {
                 let value = value.unwrap();
 
                 if let Err(error) = self.it_is_a_type(&type_, &FunctionScope::Module) {
@@ -180,11 +164,7 @@ impl<'sess, 'ctx> Typer<'sess, 'ctx> {
                                 |typer| {
                                     typer.carry_out_definition(Definition {
                                         attributes,
-                                        bare: Function {
-                                            binder,
-                                            type_,
-                                            value: None,
-                                        },
+                                        bare: Function { binder, type_, value: None },
                                     });
                                 },
                             );
@@ -206,11 +186,7 @@ impl<'sess, 'ctx> Typer<'sess, 'ctx> {
 
                 self.carry_out_definition(Definition {
                     attributes: definition.attributes,
-                    bare: Function {
-                        binder,
-                        type_: inferred_type,
-                        value: Some(value),
-                    },
+                    bare: Function { binder, type_: inferred_type, value: Some(value) },
                 });
             }
             Data { binder, type_ } => {
@@ -233,11 +209,7 @@ impl<'sess, 'ctx> Typer<'sess, 'ctx> {
                     bare: Data { binder, type_ },
                 });
             }
-            Constructor {
-                binder,
-                type_,
-                owner_data_type: data,
-            } => {
+            Constructor { binder, type_, owner_data_type: data } => {
                 if let Err(error) = self.it_is_a_type(&type_, &FunctionScope::Module) {
                     return self.handle_definition_error(error, &type_, None, definition, |_| ());
                 };
@@ -251,11 +223,7 @@ impl<'sess, 'ctx> Typer<'sess, 'ctx> {
 
                 self.carry_out_definition(Definition {
                     attributes: definition.attributes,
-                    bare: Constructor {
-                        binder,
-                        type_,
-                        owner_data_type: data,
-                    },
+                    bare: Constructor { binder, type_, owner_data_type: data },
                 });
             }
             IntrinsicFunction { binder, type_ } => {
@@ -283,11 +251,7 @@ impl<'sess, 'ctx> Typer<'sess, 'ctx> {
         use BareDefinition::*;
 
         match definition.bare {
-            Function {
-                binder,
-                type_,
-                value,
-            } => {
+            Function { binder, type_, value } => {
                 let index = binder.local_declaration_index(self.session).unwrap();
                 let entity = &mut self.session[index];
                 // @Question can't we just remove the bodiless check as intrinsic functions
@@ -295,10 +259,7 @@ impl<'sess, 'ctx> Typer<'sess, 'ctx> {
                 // IntrinsicFunction?
                 debug_assert!(entity.is_untyped() || entity.is_bodiless_function());
 
-                entity.kind = EntityKind::Function {
-                    type_,
-                    expression: value,
-                };
+                entity.kind = EntityKind::Function { type_, expression: value };
             }
             Data { binder, type_ } => {
                 let index = binder.local_declaration_index(self.session).unwrap();
@@ -311,11 +272,7 @@ impl<'sess, 'ctx> Typer<'sess, 'ctx> {
                     constructors: Vec::new(),
                 };
             }
-            Constructor {
-                binder,
-                type_,
-                owner_data_type: data,
-            } => {
+            Constructor { binder, type_, owner_data_type: data } => {
                 let index = binder.local_declaration_index(self.session).unwrap();
                 let entity = &mut self.session[index];
                 debug_assert!(entity.is_untyped());
@@ -333,14 +290,8 @@ impl<'sess, 'ctx> Typer<'sess, 'ctx> {
                 let index = binder.local_declaration_index(self.session).unwrap();
                 debug_assert!(self.session[index].is_untyped());
 
-                let function = self
-                    .session
-                    .specials()
-                    .get(index.global(self.session))
-                    .unwrap();
-                let special::Binding::Function(function) = function else {
-                    unreachable!()
-                };
+                let function = self.session.specials().get(index.global(self.session)).unwrap();
+                let special::Binding::Function(function) = function else { unreachable!() };
 
                 self.session[index].kind = EntityKind::IntrinsicFunction { function, type_ };
             }
@@ -437,18 +388,13 @@ expected type ‘{}’
             Binding(binding) if self.session.specials().is(binding.0, Type::Type) => {
                 self.session.require_special(Type::Type, None)?.to_item()
             }
-            Binding(binding) => self
-                .interpreter()
-                .look_up_type(binding.0, scope)
-                .ok_or(OutOfOrderBinding)?,
-            Number(number) => self
-                .session
-                .require_special(number.type_(), Some(expression.span))?
-                .to_item(),
-            Text(_) => self
-                .session
-                .require_special(Type::Text, Some(expression.span))?
-                .to_item(),
+            Binding(binding) => {
+                self.interpreter().look_up_type(binding.0, scope).ok_or(OutOfOrderBinding)?
+            }
+            Number(number) => {
+                self.session.require_special(number.type_(), Some(expression.span))?.to_item()
+            }
+            Text(_) => self.session.require_special(Type::Text, Some(expression.span))?.to_item(),
             PiType(literal) => {
                 // ensure domain and codomain are are well-typed
                 // @Question why do we need to this? shouldn't this be already handled if
@@ -623,41 +569,44 @@ expected type ‘_ -> _’
                                 .session
                                 .require_special(number.type_(), Some(case.pattern.span))?
                                 .to_item();
-                            self.it_is_actual(&subject_type, &number_type, scope)
-                                .map_err(|error| {
+                            self.it_is_actual(&subject_type, &number_type, scope).map_err(
+                                |error| {
                                     self.handle_case_analysis_type_mismatch(
                                         error,
                                         &case.pattern,
                                         &analysis.scrutinee,
                                     )
-                                })?;
+                                },
+                            )?;
                         }
                         Text(_) => {
                             let text_type = self
                                 .session
                                 .require_special(Type::Text, Some(case.pattern.span))?
                                 .to_item();
-                            self.it_is_actual(&subject_type, &text_type, scope)
-                                .map_err(|error| {
+                            self.it_is_actual(&subject_type, &text_type, scope).map_err(
+                                |error| {
                                     self.handle_case_analysis_type_mismatch(
                                         error,
                                         &case.pattern,
                                         &analysis.scrutinee,
                                     )
-                                })?;
+                                },
+                            )?;
                         }
                         Binding(binding) => {
                             let constructor_type =
                                 self.interpreter().look_up_type(binding.0, scope).unwrap();
 
-                            self.it_is_actual(&subject_type, &constructor_type, scope)
-                                .map_err(|error| {
+                            self.it_is_actual(&subject_type, &constructor_type, scope).map_err(
+                                |error| {
                                     self.handle_case_analysis_type_mismatch(
                                         error,
                                         &case.pattern,
                                         &analysis.scrutinee,
                                     )
-                                })?;
+                                },
+                            )?;
                         }
                         LetBinding(_) => {
                             // @Temporary @Beacon @Bug error prone (once we try to impl deappl)
@@ -741,16 +690,11 @@ expected type ‘_ -> _’
                 // @Note this is so ugly!
                 hir::Identifier::new(
                     record.type_.bare,
-                    self.session[record.type_.bare]
-                        .source
-                        .respan(record.type_.span),
+                    self.session[record.type_.bare].source.respan(record.type_.span),
                 )
                 .to_item()
             }
-            IO(_) => self
-                .session
-                .require_special(Type::IO, Some(expression.span))?
-                .to_item(),
+            IO(_) => self.session.require_special(Type::IO, Some(expression.span))?.to_item(),
             Error(_) => expression.clone(),
         })
     }
@@ -788,21 +732,13 @@ but got type ‘{}’",
         scope: &FunctionScope<'_>,
     ) -> Result<(), Error> {
         let type_ = self.infer_type_of_expression(expression, scope)?;
-        self.it_is_actual(
-            &self.session.require_special(Type::Type, None)?.to_item(),
-            &type_,
-            scope,
-        )
+        self.it_is_actual(&self.session.require_special(Type::Type, None)?.to_item(), &type_, scope)
     }
 
     fn is_a_type(&self, expression: &Expression, scope: &FunctionScope<'_>) -> Result<bool, Error> {
         let type_ = self.infer_type_of_expression(expression, scope)?;
-        self.is_actual(
-            &self.session.require_special(Type::Type, None)?.to_item(),
-            &type_,
-            scope,
-        )
-        .map_err(Into::into)
+        self.is_actual(&self.session.require_special(Type::Type, None)?.to_item(), &type_, scope)
+            .map_err(Into::into)
     }
 
     /// Assert that two expression are equal under evaluation/normalization.
@@ -858,10 +794,7 @@ but got type ‘{}’",
         let codomain = constructor.innermost_codomain();
         let callee = codomain.innermost_callee();
 
-        if self
-            .interpreter()
-            .equals(type_, callee, &FunctionScope::Module)?
-        {
+        if self.interpreter().equals(type_, callee, &FunctionScope::Module)? {
             Ok(())
         } else {
             Err(Diagnostic::error()

@@ -12,19 +12,19 @@
 
 // @Beacon @Task use weak-normal form extensively again!!!
 
-use super::{missing_annotation_error, Expression};
+use super::{Expression, missing_annotation_error};
 use diagnostics::{
+    Diagnostic,
     error::{PossiblyErroneous, Result},
     reporter::ErasedReportedError,
-    Diagnostic,
 };
 use hir::{
-    interfaceable, special::Type, Attributes, DeBruijnIndex, Identifier, Substitution::Shift,
-    ValueView,
+    Attributes, DeBruijnIndex, Identifier, Substitution::Shift, ValueView, interfaceable,
+    special::Type,
 };
 use hir_format::Display;
 use resolver::ProgramEntryExt;
-use session::{interfaceable::InterfaceableBindingExt, Session};
+use session::{Session, interfaceable::InterfaceableBindingExt};
 use std::fmt;
 use utility::debugged;
 
@@ -190,13 +190,7 @@ impl<'a> Interpreter<'a> {
                     Expression::new(
                         expression.attributes.clone(),
                         expression.span,
-                        hir::PiType {
-                            kind: pi.kind,
-                            binder: pi.binder,
-                            domain,
-                            codomain,
-                        }
-                        .into(),
+                        hir::PiType { kind: pi.kind, binder: pi.binder, domain, codomain }.into(),
                     )
                 }
                 Form::WeakHeadNormal => expression.clone(),
@@ -341,11 +335,8 @@ impl<'a> Interpreter<'a> {
                         Expression::new(
                             expression.attributes.clone(),
                             expression.span,
-                            hir::IntrinsicApplication {
-                                callee: application.callee,
-                                arguments,
-                            }
-                            .into(),
+                            hir::IntrinsicApplication { callee: application.callee, arguments }
+                                .into(),
                         )
                     })
             }
@@ -384,11 +375,7 @@ impl<'a> Interpreter<'a> {
                         }
                     }
 
-                    Some(
-                        function
-                            .evaluate(value_arguments)
-                            .into_expression(self.session)?,
-                    )
+                    Some(function.evaluate(value_arguments).into_expression(self.session)?)
                 } else {
                     None
                 })
@@ -493,7 +480,7 @@ impl<'a> Interpreter<'a> {
                     .message("field projections are not implemented yet")
                     .unlabeled_span(expression0)
                     .unlabeled_span(expression1)
-                    .report(self.session.reporter()))
+                    .report(self.session.reporter()));
             }
             // @Task probably should just be `true` once we support errors in subexpressions
             (Error(_), _) | (_, Error(_)) => {
@@ -623,23 +610,14 @@ impl Substitute for Expression {
                 Expression::new(
                     self.attributes.clone(),
                     self.span,
-                    hir::PiType {
-                        kind: pi.kind,
-                        binder: pi.binder,
-                        domain,
-                        codomain,
-                    }
-                    .into(),
+                    hir::PiType { kind: pi.kind, binder: pi.binder, domain, codomain }.into(),
                 )
             }
             (Lambda(lambda), substitution) => {
                 let domain = lambda.domain.clone().map(|type_| {
                     Expression::bare(
-                        hir::Substituted {
-                            expression: type_,
-                            substitution: substitution.clone(),
-                        }
-                        .into(),
+                        hir::Substituted { expression: type_, substitution: substitution.clone() }
+                            .into(),
                     )
                 });
 
@@ -757,11 +735,7 @@ impl Compose for hir::Substitution {
             (substitution0, Use(substitution1, expression)) => Use(
                 Box::new(substitution0.clone().compose(*substitution1)),
                 Expression::bare(
-                    hir::Substituted {
-                        substitution: substitution0,
-                        expression,
-                    }
-                    .into(),
+                    hir::Substituted { substitution: substitution0, expression }.into(),
                 ),
             ),
         }
@@ -811,24 +785,10 @@ pub(crate) struct Definition {
 
 #[derive(Clone)]
 pub(crate) enum BareDefinition {
-    Function {
-        binder: Identifier,
-        type_: Expression,
-        value: Option<Expression>,
-    },
-    Data {
-        binder: Identifier,
-        type_: Expression,
-    },
-    Constructor {
-        binder: Identifier,
-        type_: Expression,
-        owner_data_type: Identifier,
-    },
-    IntrinsicFunction {
-        binder: Identifier,
-        type_: Expression,
-    },
+    Function { binder: Identifier, type_: Expression, value: Option<Expression> },
+    Data { binder: Identifier, type_: Expression },
+    Constructor { binder: Identifier, type_: Expression, owner_data_type: Identifier },
+    IntrinsicFunction { binder: Identifier, type_: Expression },
 }
 
 // only used to report "cyclic" types (currently treated as a bug)
@@ -837,11 +797,7 @@ impl Display for Definition {
         use BareDefinition::*;
 
         match &self.bare {
-            Function {
-                binder,
-                type_,
-                value,
-            } => {
+            Function { binder, type_, value } => {
                 let mut compound = f.debug_struct("Value");
                 compound
                     .field("binder", binder)
@@ -857,11 +813,7 @@ impl Display for Definition {
                 .field("binder", binder)
                 .field("type", &debugged(|f| type_.write(session, f)))
                 .finish(),
-            Constructor {
-                binder,
-                type_,
-                owner_data_type: data,
-            } => f
+            Constructor { binder, type_, owner_data_type: data } => f
                 .debug_struct("Constructor")
                 .field("binder", binder)
                 .field("type", &debugged(|f| type_.write(session, f)))
@@ -892,17 +844,11 @@ pub(crate) enum FunctionScope<'a> {
 
 impl<'a> FunctionScope<'a> {
     pub(crate) fn extend_with_parameter(&'a self, type_: &'a Expression) -> Self {
-        Self::FunctionParameter {
-            parent: self,
-            type_,
-        }
+        Self::FunctionParameter { parent: self, type_ }
     }
 
     pub(crate) fn extend_with_pattern_binders(&'a self, types: Vec<&'a Expression>) -> Self {
-        Self::PatternBinders {
-            parent: self,
-            types,
-        }
+        Self::PatternBinders { parent: self, types }
     }
 
     pub(super) fn look_up_type(&self, index: DeBruijnIndex) -> Expression {
@@ -925,12 +871,7 @@ impl<'a> FunctionScope<'a> {
                 }
             }
             Self::PatternBinders { parent, types } => {
-                match types
-                    .iter()
-                    .rev()
-                    .zip(depth..)
-                    .find(|(_, depth)| *depth == index.0)
-                {
+                match types.iter().rev().zip(depth..).find(|(_, depth)| *depth == index.0) {
                     Some((type_, depth)) => Expression::bare(
                         hir::Substituted {
                             // @Task verify this shift

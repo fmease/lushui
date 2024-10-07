@@ -3,7 +3,7 @@ use hir::{DeclarationIndex, Entity, LocalDeclarationIndex};
 use index_map::IndexMap;
 use lexer::word::Word;
 use std::sync::Arc;
-use utility::{default, ComponentIndex, HashMap};
+use utility::{ComponentIndex, HashMap, default};
 
 /// A sealed container of modules regarded as one unit.
 pub struct Component {
@@ -28,13 +28,7 @@ impl Component {
         content: Option<Arc<String>>,
         dependencies: HashMap<Word, ComponentIndex>,
     ) -> Self {
-        Self {
-            name,
-            index,
-            content,
-            dependencies,
-            bindings: default(),
-        }
+        Self { name, index, content, dependencies, bindings: default() }
     }
 
     #[cfg(feature = "test")]
@@ -81,10 +75,7 @@ impl Component {
     }
 
     pub fn outline(&self) -> ComponentOutline {
-        ComponentOutline {
-            name: self.name,
-            index: self.index,
-        }
+        ComponentOutline { name: self.name, index: self.index }
     }
 }
 

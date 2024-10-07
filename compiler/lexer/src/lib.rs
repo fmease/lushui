@@ -1,14 +1,14 @@
 //! The lexical analyzer (lexer).
 #![feature(decl_macro, int_roundings, let_chains, stmt_expr_attributes)]
 
+use BareToken::*;
 use span::{FileName, LocalByteIndex, LocalSpan, SourceFile, SourceMap, Span, Spanned};
 use std::{cmp::Ordering, iter::Peekable, mem, str::CharIndices, sync::Arc};
 use token::{
     BareToken, Bracket, BracketKind, BracketOrientation, Indentation, IndentationError, Spaces,
     Token,
 };
-use utility::{self as _, default, Atom, GetFromEndExt};
-use BareToken::*;
+use utility::{self as _, Atom, GetFromEndExt, default};
 
 #[cfg(test)]
 mod test;
@@ -131,10 +131,7 @@ impl<'a> Lexer<'a> {
         }
         self.add(EndOfInput);
 
-        Outcome {
-            tokens: self.tokens,
-            errors: self.errors,
-        }
+        Outcome { tokens: self.tokens, errors: self.errors }
     }
 
     fn add_opening_bracket(&mut self, bracket: BracketKind) {
@@ -295,10 +292,8 @@ impl<'a> Lexer<'a> {
 
     // @Task recover from tabs (treat them as 4 spaces) and emit a custom error
     fn lex_indentation(&mut self) {
-        let is_start_of_indented_section = self
-            .tokens
-            .last()
-            .map_or(false, |token| token.bare.introduces_indented_section());
+        let is_start_of_indented_section =
+            self.tokens.last().map_or(false, |token| token.bare.introduces_indented_section());
 
         // Squash consecutive line breaks into a single one.
         // This leads to more legible and fewer diagnostics later in the parser in case the
@@ -309,9 +304,8 @@ impl<'a> Lexer<'a> {
         self.add(LineBreak);
         let mut has_removed_line_break = false;
 
-        self.local_span = self
-            .index()
-            .map_or_else(|| self.file.local_span().end(), LocalSpan::empty);
+        self.local_span =
+            self.index().map_or_else(|| self.file.local_span().end(), LocalSpan::empty);
 
         let mut spaces = Spaces(0);
         self.take_while_with(|character| character == ' ', || spaces.0 += 1);
@@ -344,9 +338,7 @@ impl<'a> Lexer<'a> {
                 self.tokens.pop();
                 has_removed_line_break = true;
                 self.add(BareToken::Indentation);
-                self.sections.enter(Section::Indented {
-                    brackets: self.brackets.stack.len(),
-                });
+                self.sections.enter(Section::Indented { brackets: self.brackets.stack.len() });
             }
         } else {
             // Remove the line break again if the next line is indented or if we are in a section
@@ -355,10 +347,7 @@ impl<'a> Lexer<'a> {
             if change == Ordering::Greater
                 || change == Ordering::Equal && !section.line_breaks_are_terminators()
                 || change == Ordering::Less
-                    && !self
-                        .sections
-                        .get(indentation.0)
-                        .line_breaks_are_terminators()
+                    && !self.sections.get(indentation.0).line_breaks_are_terminators()
             {
                 // (*) Remove the line break again.
                 self.tokens.pop();
@@ -522,9 +511,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn peek_with_index(&mut self) -> Option<(LocalByteIndex, char)> {
-        self.characters
-            .peek()
-            .map(|&(index, character)| (index.try_into().unwrap(), character))
+        self.characters.peek().map(|&(index, character)| (index.try_into().unwrap(), character))
     }
 
     fn index(&mut self) -> Option<LocalByteIndex> {
@@ -576,13 +563,7 @@ impl<'a> Lexer<'a> {
 fn lex_string(source: String) -> Outcome {
     let mut map = SourceMap::default();
     let file = map.add(FileName::Anonymous, Arc::new(source), None);
-    Lexer::new(
-        &map[file],
-        &Options {
-            keep_comments: true,
-        },
-    )
-    .lex()
+    Lexer::new(&map[file], &Options { keep_comments: true }).lex()
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]

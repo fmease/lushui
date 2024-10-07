@@ -3,7 +3,7 @@ use crate::{
     synonym::Terminator,
 };
 use ast::{Attributes, Declaration, Identifier};
-use diagnostics::{error::Result, Diagnostic};
+use diagnostics::{Diagnostic, error::Result};
 use lexer::token::BareToken::*;
 use span::{PossiblySpanning, Span, Spanning};
 
@@ -120,24 +120,12 @@ impl Parser<'_> {
         let parameters = span.merging(self.parse_parameters()?);
         let type_ = span.merging(self.parse_optional_type_annotation()?);
 
-        let body = if self.consume(Equals) {
-            Some(span.merging(self.parse_expression()?))
-        } else {
-            None
-        };
+        let body =
+            if self.consume(Equals) { Some(span.merging(self.parse_expression()?)) } else { None };
 
         self.parse_terminator()?;
 
-        Ok(ast::Item::new(
-            attributes,
-            span,
-            ast::Function {
-                binder,
-                parameters,
-                type_,
-                body,
-            },
-        ))
+        Ok(ast::Item::new(attributes, span, ast::Function { binder, parameters, type_, body }))
     }
 
     /// Finish parsing a [data declaration] given the span of the already parsed leading keyword.
@@ -198,14 +186,7 @@ impl Parser<'_> {
         Ok(Declaration::new(
             attributes,
             span.merge(&declarations),
-            ast::Data {
-                kind,
-                binder,
-                parameters,
-                type_,
-                declarations,
-            }
-            .into(),
+            ast::Data { kind, binder, parameters, type_, declarations }.into(),
         ))
     }
 
@@ -235,11 +216,7 @@ impl Parser<'_> {
                 self.advance();
             }
 
-            return Ok(Declaration::new(
-                attributes,
-                span,
-                ast::BareDeclaration::ModuleHeader,
-            ));
+            return Ok(Declaration::new(attributes, span, ast::BareDeclaration::ModuleHeader));
         }
 
         let binder = span.merging(self.parse_word()?);
@@ -257,12 +234,7 @@ impl Parser<'_> {
                 Ok(Declaration::new(
                     attributes,
                     span,
-                    ast::Module {
-                        binder,
-                        file: self.file,
-                        declarations: None,
-                    }
-                    .into(),
+                    ast::Module { binder, file: self.file, declarations: None }.into(),
                 ))
             }
             Of => {
@@ -276,12 +248,8 @@ impl Parser<'_> {
                 Ok(Declaration::new(
                     attributes,
                     span,
-                    ast::Module {
-                        binder,
-                        file: self.file,
-                        declarations: Some(declarations),
-                    }
-                    .into(),
+                    ast::Module { binder, file: self.file, declarations: Some(declarations) }
+                        .into(),
                 ))
             }
             _ => {
@@ -326,11 +294,7 @@ impl Parser<'_> {
         let bindings = self.parse_use_path_tree()?;
         self.parse_terminator()?;
 
-        Ok(Declaration::new(
-            attributes,
-            span.merge(&bindings),
-            ast::Use { bindings }.into(),
-        ))
+        Ok(Declaration::new(attributes, span.merge(&bindings), ast::Use { bindings }.into()))
     }
 
     /// Finish parsing a given-declaration given the span of the already parsed leading `given` keyword.
@@ -397,13 +361,7 @@ impl Parser<'_> {
         Ok(Declaration::new(
             attributes,
             span.merge(&body),
-            ast::Given {
-                binder,
-                parameters,
-                type_,
-                body,
-            }
-            .into(),
+            ast::Given { binder, parameters, type_, body }.into(),
         ))
     }
 }

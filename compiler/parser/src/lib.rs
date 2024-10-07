@@ -32,7 +32,7 @@
 
 use ast::{Declaration, Identifier};
 use base::Parser;
-use diagnostics::{error::Result, Diagnostic, ErrorCode, Reporter};
+use diagnostics::{Diagnostic, ErrorCode, Reporter, error::Result};
 use lexer::word::Word;
 use span::{SourceFileIndex, SourceMap, Spanned};
 
@@ -53,21 +53,12 @@ pub fn parse_root_module_file(
     reporter: &Reporter,
 ) -> Result<Declaration> {
     // @Task don't use unwrap(), handle errors properly
-    let name = map[file]
-        .name()
-        .path()
-        .unwrap()
-        .file_stem()
-        .unwrap()
-        .to_str()
-        .unwrap();
+    let name = map[file].name().path().unwrap().file_stem().unwrap().to_str().unwrap();
 
     let binder = Word::parse(name.to_owned()).map_err(|()| {
         Diagnostic::error()
             .code(ErrorCode::E036)
-            .message(format!(
-                "the name of the root module ‘{name}’ is not a valid word"
-            ))
+            .message(format!("the name of the root module ‘{name}’ is not a valid word"))
             .report(reporter)
     })?;
     let binder = Spanned::bare(binder).into();
@@ -83,13 +74,7 @@ pub fn parse_module_file(
     map: &SourceMap,
     reporter: &Reporter,
 ) -> Result<Declaration> {
-    parse(
-        tokens,
-        |parser| parser.parse_top_level(binder),
-        file,
-        map,
-        reporter,
-    )
+    parse(tokens, |parser| parser.parse_top_level(binder), file, map, reporter)
 }
 
 pub fn parse_path(
@@ -126,7 +111,7 @@ fn parse<T>(
 mod error {
     #[allow(clippy::wildcard_imports)] // private inline module
     use super::*;
-    use lexer::token::{IndentationError, INDENTATION};
+    use lexer::token::{INDENTATION, IndentationError};
 
     pub(super) fn invalid_token(error: lexer::Error) -> Diagnostic {
         use lexer::BareError::*;
@@ -134,10 +119,7 @@ mod error {
         match error.bare {
             InvalidIndentation(difference, indentation_error) => Diagnostic::error()
                 .code(ErrorCode::E046)
-                .message(format!(
-                    "invalid indentation consisting of {} spaces",
-                    difference.0
-                ))
+                .message(format!("invalid indentation consisting of {} spaces", difference.0))
                 .unlabeled_span(error.span)
                 .note(match indentation_error {
                     IndentationError::Misaligned => {
@@ -152,19 +134,14 @@ mod error {
                 let message = format!("found invalid character U+{:04X} ‘{token}’", token as u32);
 
                 // @Task code
-                Diagnostic::error()
-                    .message(message)
-                    .span(error.span, "unexpected token")
+                Diagnostic::error().message(message).span(error.span, "unexpected token")
             }
             UnbalancedBracket(bracket) => Diagnostic::error()
                 .code(ErrorCode::E044)
                 .message(format!("unbalanced {} bracket", bracket.kind))
                 .span(
                     error.span,
-                    format!(
-                        "has no matching {} {} bracket",
-                        !bracket.orientation, bracket.kind
-                    ),
+                    format!("has no matching {} {} bracket", !bracket.orientation, bracket.kind),
                 ),
             // @Task improve message, mention closing it with quotes
             UnterminatedTextLiteral => Diagnostic::error()

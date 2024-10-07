@@ -30,12 +30,7 @@ impl Lowerer<'_> {
                 lo_ast::Pattern::new(
                     attributes,
                     pattern.span,
-                    lo_ast::Application {
-                        callee,
-                        kind: application.kind,
-                        argument,
-                    }
-                    .into(),
+                    lo_ast::Application { callee, kind: application.kind, argument }.into(),
                 )
             }
             SequenceLiteral(sequence) => lo_ast::Pattern::new(
@@ -44,10 +39,7 @@ impl Lowerer<'_> {
                 ast::SequenceLiteral {
                     path: sequence.path,
                     elements: sequence.elements.map(|elements| {
-                        elements
-                            .into_iter()
-                            .map(|element| self.lower_pattern(element))
-                            .collect()
+                        elements.into_iter().map(|element| self.lower_pattern(element)).collect()
                     }),
                 }
                 .into(),
