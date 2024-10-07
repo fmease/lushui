@@ -13,9 +13,8 @@ use generic::Locality::*;
 use std::ops::{Add, Range, Sub};
 
 pub use source_map::{FileName, SourceFile, SourceFileIndex, SourceMap};
-pub use spanned::Spanned;
+pub use spanned::{Affinity, Spanned};
 pub use spanning::{PossiblySpanning, Spanning};
-pub use weakly_spanned::WeaklySpanned;
 
 pub mod binder;
 pub mod item;
@@ -423,74 +422,87 @@ mod spanning {
     }
 }
 
-// @Task combine Spanned, WeaklySpanned via parameter <const I: Influence = {Weak, Strong}>
-
 mod spanned {
-    use super::{Span, Spanning, WeaklySpanned};
-    use std::{fmt, hash::Hash, ops::Deref};
+    use super::{Span, Spanning};
+    use std::{
+        borrow::Borrow,
+        cmp::Ordering,
+        fmt,
+        hash::{Hash, Hasher},
+        marker::ConstParamTy,
+        ops::Deref,
+    };
     use utility::default;
 
-    #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-    pub struct Spanned<Bare> {
+    #[derive(Clone, Copy)]
+    pub struct Spanned<Bare, const AFFINITY: Affinity = { Affinity::Strong }> {
         pub bare: Bare,
         pub span: Span,
     }
 
-    impl<Bare> Spanned<Bare> {
-        pub const fn new(span: Span, bare: Bare) -> Self {
-            Self { bare, span }
-        }
-
+    impl<Bare, const AFFINITY: Affinity> Spanned<Bare, AFFINITY> {
         pub fn bare(bare: Bare) -> Self {
-            Self::new(default(), bare)
+            Self {
+                span: default(),
+                bare,
+            }
         }
 
-        pub fn map<U>(self, mapper: impl FnOnce(Bare) -> U) -> Spanned<U> {
-            Spanned::new(self.span, mapper(self.bare))
+        pub fn map<Output>(self, mapper: impl FnOnce(Bare) -> Output) -> Spanned<Output, AFFINITY> {
+            Spanned {
+                span: self.span,
+                bare: mapper(self.bare),
+            }
         }
 
-        pub fn remap<U>(self, bare: U) -> Spanned<U> {
-            Spanned::new(self.span, bare)
+        pub fn remap<Output>(self, bare: Output) -> Spanned<Output, AFFINITY> {
+            Spanned {
+                span: self.span,
+                bare,
+            }
         }
 
-        #[must_use]
-        pub fn transform(mut self, mapper: impl FnOnce(Span) -> Span) -> Self {
-            self.span = mapper(self.span);
-            self
+        pub fn transform(self, mapper: impl FnOnce(Span) -> Span) -> Self {
+            Self {
+                span: mapper(self.span),
+                ..self
+            }
         }
 
-        pub const fn as_ref(&self) -> Spanned<&Bare> {
-            Spanned::new(self.span, &self.bare)
+        pub const fn as_ref(&self) -> Spanned<&Bare, AFFINITY> {
+            Spanned {
+                span: self.span,
+                bare: &self.bare,
+            }
         }
 
-        pub fn as_mut(&mut self) -> Spanned<&mut Bare> {
-            Spanned::new(self.span, &mut self.bare)
+        pub fn as_mut(&mut self) -> Spanned<&mut Bare, AFFINITY> {
+            Spanned {
+                span: self.span,
+                bare: &mut self.bare,
+            }
         }
 
-        pub fn as_deref(&self) -> Spanned<&Bare::Target>
+        pub fn as_deref(&self) -> Spanned<&Bare::Target, AFFINITY>
         where
             Bare: Deref,
         {
-            Spanned::new(self.span, &self.bare)
-        }
-
-        pub fn weak(self) -> WeaklySpanned<Bare> {
-            WeaklySpanned {
-                bare: self.bare,
+            Spanned {
                 span: self.span,
+                bare: &self.bare,
             }
         }
     }
 
-    impl<Bare> Spanned<&Bare> {
-        pub fn copied(self) -> Spanned<Bare>
+    impl<Bare, const AFFINITY: Affinity> Spanned<&Bare, AFFINITY> {
+        pub fn copied(self) -> Spanned<Bare, AFFINITY>
         where
             Bare: Copy,
         {
             self.map(|value| *value)
         }
 
-        pub fn cloned(self) -> Spanned<Bare>
+        pub fn cloned(self) -> Spanned<Bare, AFFINITY>
         where
             Bare: Clone,
         {
@@ -498,21 +510,114 @@ mod spanned {
         }
     }
 
-    impl<Bare> Spanning for Spanned<Bare> {
+    impl<Bare, const AFFINITY: Affinity> Spanning for Spanned<Bare, AFFINITY> {
         fn span(&self) -> Span {
             self.span
         }
     }
 
-    impl<Bare: fmt::Debug> fmt::Debug for Spanned<Bare> {
+    impl<Bare: fmt::Debug, const AFFINITY: Affinity> fmt::Debug for Spanned<Bare, AFFINITY> {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            // FIXME: Use `@` instead of ` `.
             write!(f, "{:?} {:?}", self.bare, self.span)
         }
     }
 
-    impl<Bare: fmt::Display> fmt::Display for Spanned<Bare> {
+    impl<Bare: fmt::Display, const AFFINITY: Affinity> fmt::Display for Spanned<Bare, AFFINITY> {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             self.bare.fmt(f)
+        }
+    }
+
+    impl<Bare> Spanned<Bare> {
+        pub const fn new(span: Span, bare: Bare) -> Self {
+            Self { span, bare }
+        }
+
+        pub fn weaken(self) -> Spanned<Bare, { Affinity::Weak }> {
+            Spanned {
+                bare: self.bare,
+                span: self.span,
+            }
+        }
+    }
+
+    impl<Bare> Spanned<Bare, { Affinity::Weak }> {
+        pub fn strengthen(self) -> Spanned<Bare> {
+            Spanned {
+                bare: self.bare,
+                span: self.span,
+            }
+        }
+    }
+
+    impl<Bare: PartialEq> PartialEq for Spanned<Bare> {
+        fn eq(&self, other: &Self) -> bool {
+            self.span == other.span && self.bare == other.bare
+        }
+    }
+
+    impl<Bare: PartialEq> PartialEq for Spanned<Bare, { Affinity::Weak }> {
+        fn eq(&self, other: &Self) -> bool {
+            self.bare == other.bare
+        }
+    }
+
+    impl<Bare: Eq> Eq for Spanned<Bare> {}
+
+    impl<Bare: Eq> Eq for Spanned<Bare, { Affinity::Weak }> {}
+
+    impl<Bare: PartialOrd> PartialOrd for Spanned<Bare> {
+        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+            match self.span.partial_cmp(&other.span) {
+                Some(Ordering::Equal) => self.bare.partial_cmp(&other.bare),
+                ordering => ordering,
+            }
+        }
+    }
+
+    impl<Bare: PartialOrd> PartialOrd for Spanned<Bare, { Affinity::Weak }> {
+        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+            self.bare.partial_cmp(&other.bare)
+        }
+    }
+
+    impl<Bare: Ord> Ord for Spanned<Bare> {
+        fn cmp(&self, other: &Self) -> Ordering {
+            self.span
+                .cmp(&other.span)
+                .then_with(|| self.bare.cmp(&other.bare))
+        }
+    }
+
+    impl<Bare: Ord> Ord for Spanned<Bare, { Affinity::Weak }> {
+        fn cmp(&self, other: &Self) -> Ordering {
+            self.bare.cmp(&other.bare)
+        }
+    }
+
+    impl<Bare: Hash> Hash for Spanned<Bare> {
+        fn hash<H: Hasher>(&self, state: &mut H) {
+            self.span.hash(state);
+            self.bare.hash(state);
+        }
+    }
+
+    impl<Bare: Hash> Hash for Spanned<Bare, { Affinity::Weak }> {
+        fn hash<H: Hasher>(&self, state: &mut H) {
+            self.bare.hash(state);
+        }
+    }
+
+    impl<Bare> Borrow<Bare> for Spanned<Bare, { Affinity::Weak }> {
+        default fn borrow(&self) -> &Bare {
+            &self.bare
+        }
+    }
+
+    impl Borrow<str> for Spanned<String, { Affinity::Weak }> {
+        fn borrow(&self) -> &str {
+            &self.bare
         }
     }
 
@@ -522,107 +627,10 @@ mod spanned {
             bare: $bare,
         }
     }
-}
 
-mod weakly_spanned {
-    use super::{Span, Spanned, Spanning};
-    use std::{
-        borrow::Borrow,
-        fmt,
-        hash::{Hash, Hasher},
-        ops::Deref,
-    };
-
-    #[derive(Clone, Copy)]
-    pub struct WeaklySpanned<Bare> {
-        pub bare: Bare,
-        pub span: Span,
-    }
-
-    impl<Bare> WeaklySpanned<Bare> {
-        pub fn new(span: Span, bare: Bare) -> Self {
-            Self { bare, span }
-        }
-
-        pub fn map_span(self, mapper: impl FnOnce(Span) -> Span) -> Self {
-            Self {
-                bare: self.bare,
-                span: mapper(self.span),
-            }
-        }
-
-        pub fn as_ref(&self) -> WeaklySpanned<&Bare> {
-            WeaklySpanned::new(self.span, &self.bare)
-        }
-
-        pub fn as_deref(&self) -> WeaklySpanned<&Bare::Target>
-        where
-            Bare: Deref,
-        {
-            WeaklySpanned::new(self.span, &self.bare)
-        }
-
-        pub fn strong(self) -> Spanned<Bare> {
-            Spanned {
-                bare: self.bare,
-                span: self.span,
-            }
-        }
-    }
-
-    impl<Bare> Spanning for WeaklySpanned<Bare> {
-        fn span(&self) -> Span {
-            self.span
-        }
-    }
-
-    impl<Bare: PartialEq> PartialEq for WeaklySpanned<Bare> {
-        fn eq(&self, other: &Self) -> bool {
-            self.bare == other.bare
-        }
-    }
-
-    impl<Bare: Eq> Eq for WeaklySpanned<Bare> {}
-
-    impl<Bare: PartialOrd> PartialOrd for WeaklySpanned<Bare> {
-        fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-            self.bare.partial_cmp(&other.bare)
-        }
-    }
-
-    impl<Bare: Ord> Ord for WeaklySpanned<Bare> {
-        fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-            self.bare.cmp(&other.bare)
-        }
-    }
-
-    impl<Bare: Hash> Hash for WeaklySpanned<Bare> {
-        fn hash<H: Hasher>(&self, state: &mut H) {
-            self.bare.hash(state);
-        }
-    }
-
-    impl<Bare> Borrow<Bare> for WeaklySpanned<Bare> {
-        default fn borrow(&self) -> &Bare {
-            &self.bare
-        }
-    }
-
-    impl Borrow<str> for WeaklySpanned<String> {
-        fn borrow(&self) -> &str {
-            &self.bare
-        }
-    }
-
-    impl<Bare: fmt::Debug> fmt::Debug for WeaklySpanned<Bare> {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "{:?} {:?}", self.bare, self.span)
-        }
-    }
-
-    impl<Bare: fmt::Display> fmt::Display for WeaklySpanned<Bare> {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            self.bare.fmt(f)
-        }
+    #[derive(PartialEq, Eq, ConstParamTy)]
+    pub enum Affinity {
+        Strong,
+        Weak,
     }
 }

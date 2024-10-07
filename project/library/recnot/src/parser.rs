@@ -9,7 +9,7 @@ use diagnostics::{
     error::{Health, Outcome, Result},
     Diagnostic, ErrorCode, Reporter,
 };
-use span::{SourceFileIndex, SourceMap, Span, Spanning, WeaklySpanned};
+use span::{Affinity, SourceFileIndex, SourceMap, Span, Spanned, Spanning};
 use std::sync::RwLock;
 
 #[cfg(test)]
@@ -274,7 +274,7 @@ impl<'a> Parser<'a> {
     /// ```ebnf
     /// Record-Entry ::= Record-Key ":" Value
     /// ```
-    fn parse_record_entry(&mut self) -> Result<(WeaklySpanned<String>, Value)> {
+    fn parse_record_entry(&mut self) -> Result<(Spanned<String, { Affinity::Weak }>, Value)> {
         let key = self.parse_record_key()?;
         self.consume(Colon)?;
         let value = self.parse_value()?;
@@ -290,7 +290,7 @@ impl<'a> Parser<'a> {
     /// Record-Key ::= #Identifier | Keyword | #Text
     /// Keyword ::= "false" | "true"
     /// ```
-    fn parse_record_key(&mut self) -> Result<WeaklySpanned<String>> {
+    fn parse_record_key(&mut self) -> Result<Spanned<String, { Affinity::Weak }>> {
         let span = self.current_token().span;
         let key = match self.current_token().name() {
             Identifier => {
@@ -321,6 +321,6 @@ impl<'a> Parser<'a> {
             }
         };
 
-        Ok(WeaklySpanned::new(span, key))
+        Ok(Spanned::new(span, key).weaken())
     }
 }

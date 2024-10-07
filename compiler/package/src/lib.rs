@@ -15,7 +15,7 @@ use session::{
     unit::{BuildUnit, ComponentType},
     Context,
 };
-use span::{SourceMap, Spanned, WeaklySpanned};
+use span::{Affinity, SourceMap, Spanned};
 use std::{
     ops::{Index, IndexMut},
     path::{Path, PathBuf},
@@ -361,7 +361,7 @@ impl BuildQueue {
         &mut self,
         dependent_component_name: Word,
         dependent_path: ManifestPath,
-        component_exonym: WeaklySpanned<Word>,
+        component_exonym: Spanned<Word, { Affinity::Weak }>,
         declaration: &Spanned<DependencyDeclaration>,
     ) -> Result<ComponentIndex, error::DependencyResolutionError> {
         let dependency = match self.resolve_dependency_declaration(
@@ -394,7 +394,7 @@ impl BuildQueue {
         let component_endonym = declaration
             .bare
             .component
-            .unwrap_or_else(|| component_exonym.strong());
+            .unwrap_or_else(|| component_exonym.strengthen());
 
         // @Question do we want to a allow declarations of the form ‘<secondary-lib>: { … }’ w/o an explicit ‘component: <secondary-lib>’?
 
@@ -550,7 +550,7 @@ impl BuildQueue {
         let library = match manifest
             .components
             .as_ref()
-            .and_then(|components| components.bare.get(&component_endonym.weak()))
+            .and_then(|components| components.bare.get(&component_endonym.weaken()))
         {
             Some(component) if component.bare.type_.bare == ComponentType::Library => {
                 &component.bare

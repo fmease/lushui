@@ -10,7 +10,7 @@
 //! * negative numbers
 use derivation::Discriminant;
 use diagnostics::{error::Result, reporter::ErasedReportedError, Diagnostic, ErrorCode, Reporter};
-use span::{SourceFileIndex, SourceMap, Span, Spanned, Spanning, WeaklySpanned};
+use span::{Affinity, SourceFileIndex, SourceMap, Span, Spanned, Spanning};
 use std::{fmt, sync::RwLock};
 use utility::{obtain, HashMap};
 
@@ -19,7 +19,7 @@ mod parser;
 pub mod lexer;
 
 pub type Value = Spanned<BareValue>;
-pub type Record<K = String, V = Value> = HashMap<WeaklySpanned<K>, V>;
+pub type Record<K = String, V = Value> = HashMap<Spanned<K, { Affinity::Weak }>, V>;
 
 pub fn parse(file: SourceFileIndex, map: &RwLock<SourceMap>, reporter: &Reporter) -> Result<Value> {
     let tokens = lexer::lex(&map.read().unwrap()[file], &lexer::Options::default());
