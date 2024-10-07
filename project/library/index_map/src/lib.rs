@@ -72,12 +72,12 @@ impl<I, T> IndexMap<I, T> {
 impl<I: Index, T> IndexMap<I, T> {
     #[must_use]
     pub fn next_index(&self) -> I {
-        I::new(self.values.len())
+        wrap(self.values.len())
     }
 
     #[must_use]
     pub fn last_index(&self) -> Option<I> {
-        Some(I::new(self.values.len().checked_sub(1)?))
+        Some(wrap(self.values.len().checked_sub(1)?))
     }
 
     pub fn insert(&mut self, value: T) -> I {
@@ -93,15 +93,15 @@ impl<I: Index, T> IndexMap<I, T> {
     }
 
     pub fn get(&self, index: I) -> Option<&T> {
-        self.values.get(index.value())
+        self.values.get(unwrap(index))
     }
 
     pub fn get_mut(&mut self, index: I) -> Option<&mut T> {
-        self.values.get_mut(index.value())
+        self.values.get_mut(unwrap(index))
     }
 
     pub fn indices(&self) -> impl Iterator<Item = I> {
-        (0..self.len()).map(I::new)
+        (0..self.len()).map(wrap)
     }
 }
 
@@ -111,9 +111,7 @@ use iter::{IntoIter, Iter, IterMut};
 mod iter {
     use super::{Index, IndexMap, map};
 
-    // FIXME: Shouldn't rustc be smart enough to imply `T: 'a`? Is this related to
-    // the `implied_bounds(ty::Weak)` oversight of mine?
-    // https://github.com/rust-lang/rust/pull/122340
+    // FIXME: Shouldn't rustc be smart enough to imply `T: 'a`?
 
     pub type IntoIter<I: Index, T> = impl Iterator<Item = (I, T)>;
     pub type Iter<'a, I: Index, T: 'a> = impl Iterator<Item = (I, &'a T)>;
@@ -176,13 +174,13 @@ impl<I: Index, T> std::ops::Index<I> for IndexMap<I, T> {
     type Output = T;
 
     fn index(&self, index: I) -> &Self::Output {
-        &self.values[index.value()]
+        &self.values[unwrap(index)]
     }
 }
 
 impl<I: Index, T> std::ops::IndexMut<I> for IndexMap<I, T> {
     fn index_mut(&mut self, index: I) -> &mut Self::Output {
-        &mut self.values[index.value()]
+        &mut self.values[unwrap(index)]
     }
 }
 
@@ -220,11 +218,32 @@ impl<'a, I: Index, T> IntoIterator for &'a mut IndexMap<I, T> {
 }
 
 fn map<I: Index, T>((index, value): (usize, T)) -> (I, T) {
-    (I::new(index), value)
+    (wrap(index), value)
+}
+
+fn wrap<I: Index>(index: usize) -> I {
+    I::new(index.try_into().unwrap(), Guard::THE)
+}
+
+fn unwrap<I: Index>(index: I) -> usize {
+    index.into_inner(Guard::THE).try_into().unwrap()
 }
 
 pub trait Index {
-    fn new(index: usize) -> Self;
+    type Representation: TryFrom<usize, Error: fmt::Debug> + TryInto<usize, Error: fmt::Debug>;
 
-    fn value(self) -> usize;
+    /// This function is only meant to be called by the `index_map` crate (hence the guard).
+    fn new(index: Self::Representation, _: Guard) -> Self;
+
+    /// This function is only meant to be called by the `index_map` crate (hence the guard).
+    fn into_inner(self, _: Guard) -> Self::Representation;
+}
+
+// Of course, this guard is not foolproof[^1] but that's fine. It's only meant to be a reminder.
+// [^1]: An adversarial impl may "steal" the guard, store it somewhere (via a global variable)
+//       and subsequently retrieve it from almost anywhere.
+pub struct Guard(());
+
+impl Guard {
+    const THE: Self = Self(());
 }

@@ -39,7 +39,7 @@ impl Component {
         const NAME: &str = "test";
         let name = Word::new_unchecked(NAME.into());
 
-        let mut component = Self::new(name, ComponentIndex(0), None, HashMap::default());
+        let mut component = Self::new(name, ComponentIndex::mock(), None, HashMap::default());
         component.bindings.insert(Entity {
             source: Spanned::bare(name).into(),
             parent: None,

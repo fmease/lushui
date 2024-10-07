@@ -28,13 +28,12 @@ impl Identifier {
         Item::common(self.span(), Binding(self).into())
     }
 
-    // @Note bad name
     pub fn to_innermost(self) -> Self {
-        Self::new(DeBruijnIndex(0), self.source)
+        Self::new(DeBruijnIndex::INNERMOST, self.source)
     }
 
     pub fn is_innermost(self) -> bool {
-        self.index == DeBruijnIndex(0).into()
+        self.index == DeBruijnIndex::INNERMOST.into()
     }
 
     pub fn shift(self, amount: usize) -> Self {
@@ -94,14 +93,14 @@ pub enum Index {
 impl Index {
     pub fn shift(self, amount: usize) -> Self {
         match self {
-            Self::DeBruijn(index) => DeBruijnIndex(index.0 + amount).into(),
+            Self::DeBruijn(index) => index.shift(amount).into(),
             index => index,
         }
     }
 
     pub fn unshift(self) -> Self {
         match self {
-            Self::DeBruijn(index) => DeBruijnIndex(index.0.saturating_sub(1)).into(),
+            Self::DeBruijn(index) => index.unshift().into(),
             index => index,
         }
     }
@@ -141,12 +140,14 @@ pub struct DeclarationIndex(u64);
 
 impl DeclarationIndex {
     pub fn new(component_index: ComponentIndex, local_index: LocalDeclarationIndex) -> Self {
-        Self((u64::from(component_index.0) << LocalDeclarationIndex::BIT_WIDTH) | local_index.0)
+        let index = (u64::from(component_index.into_inner()) << LocalDeclarationIndex::BIT_WIDTH)
+            | local_index.0;
+        Self(index)
     }
 
     pub fn component(self) -> ComponentIndex {
         #[allow(clippy::cast_possible_truncation)]
-        ComponentIndex((self.0 >> LocalDeclarationIndex::BIT_WIDTH) as _)
+        ComponentIndex::new_unchecked((self.0 >> LocalDeclarationIndex::BIT_WIDTH) as _)
     }
 
     pub fn local_unchecked(self) -> LocalDeclarationIndex {
@@ -188,18 +189,33 @@ impl fmt::Debug for LocalDeclarationIndex {
 }
 
 impl index_map::Index for LocalDeclarationIndex {
-    fn new(index: usize) -> Self {
-        Self::new(index as u64)
+    type Representation = u64;
+
+    fn new(index: Self::Representation, _: index_map::Guard) -> Self {
+        Self::new(index)
     }
 
-    fn value(self) -> usize {
-        self.0.try_into().unwrap()
+    fn into_inner(self, _: index_map::Guard) -> Self::Representation {
+        self.0
     }
 }
 
 /// De Bruijn index — index for bindings defined by function parameters.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct DeBruijnIndex(pub usize);
+
+impl DeBruijnIndex {
+    pub const INNERMOST: Self = Self(0);
+
+    pub fn shift(self, amount: usize) -> Self {
+        Self(self.0 + amount)
+    }
+
+    pub fn unshift(self) -> Self {
+        // FIXME: Should this really be saturating? Shouldn't we just panic?
+        Self(self.0.saturating_sub(1)).into()
+    }
+}
 
 impl fmt::Debug for DeBruijnIndex {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

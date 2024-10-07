@@ -204,7 +204,6 @@ impl Context {
 
     #[cfg(feature = "test")]
     pub fn mock() -> Self {
-        use index_map::Index;
         use utility::paint::ColorChoice;
 
         let map: Arc<RwLock<SourceMap>> = default();
@@ -215,7 +214,7 @@ impl Context {
             component_packages: default(),
             root_component: ComponentOutline {
                 name: Word::new_unchecked("test".into()),
-                index: ComponentIndex::new(0),
+                index: ComponentIndex::mock(),
             },
             specials: default(),
             map: map.clone(),

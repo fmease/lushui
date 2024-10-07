@@ -1,7 +1,6 @@
 //! The definition of the textual representation(s) of the AST.
 
 use super::{Identifier, ParameterKind};
-use index_map::Index as _;
 use joinery::JoinableIterator;
 use span::{SourceFileIndex, Span, Spanned, Spanning};
 use std::{
@@ -62,9 +61,8 @@ mod struct_ {
 
         pub(super) fn name(mut self, name: &str) -> Self {
             self.result = self.result.and_then(|()| {
-                self.painter.set(palette::NAME.on_default().bold())?;
-                write!(self.painter, "{name}")?;
-                self.painter.unset()
+                self.painter
+                    .scope(palette::NAME.on_default().bold(), |painter| write!(painter, "{name}"))
             });
 
             self
@@ -85,9 +83,7 @@ mod struct_ {
                     write!(self.painter, "{}", self.indentation)?;
                 }
 
-                self.painter.set(palette::FIELD)?;
-                write!(self.painter, "{name}")?;
-                self.painter.unset()?;
+                self.painter.scope(palette::FIELD, |painter| write!(painter, "{name}"))?;
                 write!(self.painter, ": ")?;
                 field.render(self.indentation, self.painter)
             });
@@ -109,11 +105,7 @@ impl<T: Render> Render for Option<T> {
     fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
         match self {
             Some(value) => value.render(indentation, painter),
-            None => {
-                painter.set(palette::SPECIAL_SYMBOL)?;
-                write!(painter, "none")?;
-                painter.unset()
-            }
+            None => painter.scope(palette::SPECIAL_SYMBOL, |painter| write!(painter, "none")),
         }
     }
 }
@@ -121,9 +113,7 @@ impl<T: Render> Render for Option<T> {
 impl<T: Render> Render for [T] {
     fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
         if self.is_empty() {
-            painter.set(palette::SPECIAL_SYMBOL)?;
-            write!(painter, "empty")?;
-            return painter.unset();
+            return painter.scope(palette::SPECIAL_SYMBOL, |painter| write!(painter, "empty"));
         }
 
         let mut struct_ = Struct::new(indentation, painter);
@@ -156,9 +146,7 @@ impl<T: Render, U: Render> Render for (T, U) {
 
 impl Render for Span {
     fn render(&self, _: Indentation, painter: &mut Painter) -> io::Result<()> {
-        painter.set(palette::SPAN)?;
-        write!(painter, "{self:?}")?;
-        painter.unset()
+        painter.scope(palette::SPAN, |painter| write!(painter, "{self:?}"))
     }
 }
 
@@ -180,9 +168,7 @@ impl<I: Render> Render for super::Item<I> {
             let indentation = indentation.increased();
             writeln!(painter)?;
             write!(painter, "{indentation}")?;
-            painter.set(palette::FIELD)?;
-            write!(painter, "attributes")?;
-            painter.unset()?;
+            painter.scope(palette::FIELD, |painter| write!(painter, "attributes"))?;
             write!(painter, ":")?;
             self.attributes.render(indentation, painter)?;
         }
@@ -240,11 +226,8 @@ impl Render for super::Module {
 }
 
 impl Render for SourceFileIndex {
-    fn render(&self, indentation: Indentation, painter: &mut Painter) -> io::Result<()> {
-        Struct::new(indentation, painter).name("Source-File-Index").finish()?;
-        painter.set(palette::VERBATIM)?;
-        write!(painter, " {}", self.value())?;
-        painter.unset()
+    fn render(&self, _: Indentation, painter: &mut Painter) -> io::Result<()> {
+        painter.scope(palette::VERBATIM, |painter| write!(painter, " {self:?}"))
     }
 }
 
@@ -315,11 +298,7 @@ impl Render for super::BareExpression {
             Self::DoBlock(do_) => do_.render(indentation, painter),
             Self::SequenceLiteral(sequence) => sequence.render(indentation, painter),
             Self::RecordLiteral(record) => record.render(indentation, painter),
-            Self::Error(_) => {
-                painter.set(palette::INVALID)?;
-                write!(painter, "invalid")?;
-                painter.unset()
-            }
+            Self::Error(_) => painter.scope(palette::INVALID, |painter| write!(painter, "invalid")),
         }
     }
 }
@@ -561,9 +540,7 @@ impl Render for super::LocalBinder {
             Self::Named(binder) => binder.render(indentation, painter),
             Self::Discarded(span) => {
                 span.render(indentation, painter)?;
-                painter.set(palette::SPECIAL_SYMBOL)?;
-                write!(painter, " discarded")?;
-                painter.unset()
+                painter.scope(palette::SPECIAL_SYMBOL, |painter| write!(painter, " discarded"))
             }
         }
     }
@@ -644,9 +621,7 @@ impl Render for Identifier {
         self.span().render(indentation, painter)?;
         write!(painter, " ")?;
         Struct::new(indentation, painter).name("Identifier").finish()?;
-        painter.set(palette::VERBATIM)?;
-        write!(painter, " {self}")?;
-        painter.unset()
+        painter.scope(palette::VERBATIM, |painter| write!(painter, " {self}"))
     }
 }
 
@@ -686,9 +661,7 @@ impl Render for super::BareAttributeArgument {
         match self {
             Self::NumberLiteral(number) => {
                 Struct::new(indentation, painter).name("Number-Literal").finish()?;
-                painter.set(palette::VERBATIM)?;
-                write!(painter, " {number}")?;
-                painter.unset()
+                painter.scope(palette::VERBATIM, |painter| write!(painter, " {number}"))
             }
             Self::TextLiteral(text) => {
                 Struct::new(indentation, painter).name("Text-Literal").finish()?;
@@ -749,9 +722,9 @@ fn render_text_literal_part(content: &str, painter: &mut Painter) -> io::Result<
     }
 
     for line in lines {
-        painter.set(palette::SPECIAL_SYMBOL_INSIDE_VERBATIM)?;
-        write!(painter, "{LINE_BREAK}")?;
-        painter.unset()?;
+        painter.scope(palette::SPECIAL_SYMBOL_INSIDE_VERBATIM, |painter| {
+            write!(painter, "{LINE_BREAK}")
+        })?;
 
         write!(painter, "{line}")?;
     }

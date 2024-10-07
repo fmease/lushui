@@ -871,7 +871,7 @@ impl<'a> FunctionScope<'a> {
                 }
             }
             Self::PatternBinders { parent, types } => {
-                match types.iter().rev().zip(depth..).find(|(_, depth)| *depth == index.0) {
+                match types.iter().rev().zip(depth..).find(|&(_, depth)| depth == index.0) {
                     Some((type_, depth)) => Expression::bare(
                         hir::Substituted {
                             // @Task verify this shift

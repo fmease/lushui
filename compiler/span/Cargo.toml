@@ -6,6 +6,7 @@ publish = false
 
 [features]
 lsp = []
+test = []
 
 [dependencies]
 index_map = { path = "../../project/library/index_map" }

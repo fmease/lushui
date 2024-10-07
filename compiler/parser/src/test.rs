@@ -10,7 +10,6 @@ use ast::{
     Parameters, Path, Pattern, Render, UsePathTree,
 };
 use diagnostics::{Reporter, error::Result};
-use index_map::Index as _;
 use lexer::lex;
 use span::{FileName, SourceFileIndex, SourceMap, Span, Spanned, span};
 use std::sync::{Arc, RwLock};
@@ -56,10 +55,6 @@ fn parse_declaration(source: &str) -> Result<Declaration> {
 /// The name of the module returned by [`parse_declaration`].
 fn test_module_name() -> Identifier {
     identifier("test", default())
-}
-
-fn test_file_index() -> SourceFileIndex {
-    SourceFileIndex::new(0)
 }
 
 fn assert_eq<BareItem>(actual: Result<Item<BareItem>>, expected: Result<Item<BareItem>>)
@@ -597,7 +592,7 @@ fn use_as_plain() {
             span(1, 25),
             ast::Module {
                 binder: test_module_name(),
-                file: test_file_index(),
+                file: SourceFileIndex::mock(),
                 declarations: Some(vec![Declaration::common(
                     span(1, 24),
                     ast::Use {
@@ -637,7 +632,7 @@ main =
             span(1, 78),
             ast::Module {
                 binder: test_module_name(),
-                file: test_file_index(),
+                file: SourceFileIndex::mock(),
                 declarations: Some(vec![Declaration::common(
                     span(1, 78),
                     ast::Function {
@@ -710,7 +705,7 @@ main = case x of
             span(1, 62),
             ast::Module {
                 binder: test_module_name(),
-                file: test_file_index(),
+                file: SourceFileIndex::mock(),
                 declarations: Some(vec![Declaration::common(
                     span(1, 62),
                     ast::Function {

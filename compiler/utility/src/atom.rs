@@ -1,12 +1,12 @@
 use crate::HashMap;
-use index_map::{Index, IndexMap};
+use index_map::IndexMap;
 use std::{
     fmt,
     iter::zip,
     sync::{LazyLock, Mutex},
 };
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, index_map::Index)]
 pub struct Atom(u32);
 
 impl Atom {
@@ -24,16 +24,6 @@ impl From<&str> for Atom {
 impl From<String> for Atom {
     fn from(value: String) -> Self {
         Interner::the().lock().unwrap().intern_owned(value)
-    }
-}
-
-impl Index for Atom {
-    fn new(index: usize) -> Self {
-        Self(index.try_into().unwrap())
-    }
-
-    fn value(self) -> usize {
-        self.0 as _
     }
 }
 

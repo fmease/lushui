@@ -312,22 +312,30 @@ impl<F: FnOnce(&mut fmt::Formatter<'_>) -> fmt::Result> fmt::Display for Formatt
 }
 
 // @Note this has to reside in this crate since crate `span` depends on this definition
-#[derive(PartialEq, Eq, Clone, Copy, Hash)]
-pub struct ComponentIndex(pub u16);
+#[derive(PartialEq, Eq, Clone, Copy, Hash, index_map::Index)]
+pub struct ComponentIndex(u16);
+
+// FIXME: Remove these associated functions once we've moved `ComponentIndex` back to
+//        the HIR crate (or something similar). Only `DeclarationIndex` should have
+//        access to the underlying numeric index.
+impl ComponentIndex {
+    #[cfg(feature = "test")]
+    pub fn mock() -> Self {
+        Self(0)
+    }
+
+    pub fn new_unchecked(index: u16) -> Self {
+        Self(index)
+    }
+
+    pub fn into_inner(self) -> u16 {
+        self.0
+    }
+}
 
 impl fmt::Debug for ComponentIndex {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}c", self.0)
-    }
-}
-
-impl index_map::Index for ComponentIndex {
-    fn new(index: usize) -> Self {
-        Self(index.try_into().unwrap())
-    }
-
-    fn value(self) -> usize {
-        self.0 as _
     }
 }
 

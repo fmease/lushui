@@ -272,6 +272,13 @@ impl std::ops::Index<SourceFileIndex> for SourceMap {
 #[derive(Debug, PartialEq, Eq, Clone, Copy, index_map::Index)]
 pub struct SourceFileIndex(usize);
 
+impl SourceFileIndex {
+    #[cfg(feature = "test")]
+    pub fn mock() -> Self {
+        Self(0)
+    }
+}
+
 #[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct LinesWithHighlight<'a> {

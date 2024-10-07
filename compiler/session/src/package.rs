@@ -56,7 +56,7 @@ pub enum PossiblyUnresolvedComponent {
 
 // @Task make this type more ergonomic to use
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, index_map::Index)]
 pub struct ManifestPath(u32);
 
 impl ManifestPath {
@@ -90,16 +90,6 @@ impl From<&CanonicalPath> for ManifestPath {
 impl From<CanonicalPathBuf> for ManifestPath {
     fn from(path: CanonicalPathBuf) -> Self {
         Interner::the().lock().unwrap().intern_owned(path)
-    }
-}
-
-impl index_map::Index for ManifestPath {
-    fn new(index: usize) -> Self {
-        Self(index.try_into().unwrap())
-    }
-
-    fn value(self) -> usize {
-        self.0 as _
     }
 }
 

@@ -109,6 +109,16 @@ impl Painter {
         Ok(())
     }
 
+    pub fn scope(
+        &mut self,
+        style: impl IntoStyle,
+        inner: impl FnOnce(&mut Self) -> io::Result<()>,
+    ) -> io::Result<()> {
+        self.set(style)?;
+        inner(self)?;
+        self.unset()
+    }
+
     pub fn buffer(self) -> Vec<u8> {
         match self.writer {
             Writer::Bytes(bytes) => bytes,

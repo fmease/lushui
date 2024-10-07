@@ -7,7 +7,6 @@ publish = false
 
 [dependencies]
 diagnostics = { path = "../diagnostics" }
-index_map = { path = "../../project/library/index_map" }
 joinery = "3.1.0"
 lexer = { path = "../lexer" }
 span = { path = "../span" }

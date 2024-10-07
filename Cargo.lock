@@ -95,7 +95,6 @@ name = "ast"
 version = "0.0.0"
 dependencies = [
  "diagnostics",
- "index_map",
  "joinery",
  "lexer",
  "span",
@@ -772,6 +771,7 @@ dependencies = [
 name = "index_map_derive"
 version = "0.0.0"
 dependencies = [
+ "proc-macro2",
  "quote",
  "syn 2.0.66",
 ]
@@ -1107,7 +1107,6 @@ version = "0.0.0"
 dependencies = [
  "ast",
  "diagnostics",
- "index_map",
  "lexer",
  "span",
  "utility",

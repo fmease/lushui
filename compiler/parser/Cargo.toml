@@ -13,4 +13,4 @@ span = { path = "../span" }
 utility = { path = "../utility" }
 
 [dev-dependencies]
-index_map = { path = "../../project/library/index_map" }
+span = { path = "../span", features = ["test"] }
