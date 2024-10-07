@@ -114,8 +114,9 @@ that I intend to further my skills by tackling big and challenging tasks entirel
 
 The compiler is mainly written in https://www.rust-lang.org/[Rust] and
 it uses Rust's official package manager https://doc.rust-lang.org/cargo/[Cargo].
-We require the (latest) _nightly_ version of the Rust compiler `rustc`.
-With https://github.com/rust-lang/rustup/[`rustup`], just execute `rustup install nightly`.
+We require a _nightly_ version of the Rust compiler `rustc`.
+For the exact version, see the `rust-toolchain.toml` in the project root.
+https://github.com/rust-lang/rustup/[`rustup`] will pick it up automatically.
 
 To build the Lushui compiler with all (Cargo) features, run:
 
