@@ -27,7 +27,7 @@ impl BuildUnit {
     /// Test if this component is the standard library `core`.
     // @Temporary
     pub fn is_core_library(&self, session: &Session<'_>) -> bool {
-        session.package_of(self.index).map_or(false, |package| {
+        session.package_of(self.index).is_some_and(|package| {
             session[package].is_core() && self.type_ == ComponentType::Library
         })
     }

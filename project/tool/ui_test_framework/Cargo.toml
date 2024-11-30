@@ -2,7 +2,7 @@
 name = "ui_test_framework"
 version = "0.1.0"
 description = "A golden UI testing framework for the Lushui compiler"
-edition = "2021"
+edition = "2024"
 publish = false
 
 [dependencies]

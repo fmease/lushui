@@ -213,7 +213,7 @@ impl DeBruijnIndex {
 
     pub fn unshift(self) -> Self {
         // FIXME: Should this really be saturating? Shouldn't we just panic?
-        Self(self.0.saturating_sub(1)).into()
+        Self(self.0.saturating_sub(1))
     }
 }
 

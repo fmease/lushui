@@ -35,7 +35,7 @@ impl Path {
     }
 
     pub fn is_bare_hanger(&self, hanger: BareHanger) -> bool {
-        self.hanger.map_or(false, |some_hanger| some_hanger.bare == hanger)
+        self.hanger.is_some_and(|some_hanger| some_hanger.bare == hanger)
             && self.segments.is_empty()
     }
 

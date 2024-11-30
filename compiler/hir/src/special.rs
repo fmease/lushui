@@ -567,7 +567,7 @@ impl Bindings {
     }
 
     pub fn is(&self, binder: Identifier, special: impl Into<Binding>) -> bool {
-        self.get(special).map_or(false, |special| special == binder)
+        self.get(special).is_some_and(|special| special == binder)
     }
 }
 

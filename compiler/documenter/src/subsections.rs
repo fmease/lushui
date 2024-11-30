@@ -505,7 +505,7 @@ impl<'a> Subsubsection<'a> for ReservedSymbol<'a> {
 #[derive(Default)]
 pub(crate) struct Attributes(pub(crate) Vec<AttributeName>);
 
-impl<'a> Subsection<'a> for Attributes {
+impl Subsection<'_> for Attributes {
     const ID: &'static str = "attributes";
     const TITLE: &'static str = "Attributes";
 

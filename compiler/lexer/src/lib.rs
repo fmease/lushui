@@ -293,7 +293,7 @@ impl<'a> Lexer<'a> {
     // @Task recover from tabs (treat them as 4 spaces) and emit a custom error
     fn lex_indentation(&mut self) {
         let is_start_of_indented_section =
-            self.tokens.last().map_or(false, |token| token.bare.introduces_indented_section());
+            self.tokens.last().is_some_and(|token| token.bare.introduces_indented_section());
 
         // Squash consecutive line breaks into a single one.
         // This leads to more legible and fewer diagnostics later in the parser in case the
@@ -638,7 +638,7 @@ impl Sections {
         self.0.pop().unwrap_or_default()
     }
 
-    fn exit_all(&mut self) -> impl Iterator<Item = Section> {
+    fn exit_all(&mut self) -> impl Iterator<Item = Section> + use<> {
         mem::take(&mut self.0).into_iter().rev()
     }
 }

@@ -2,7 +2,7 @@
 name = "driver"
 version = "0.0.0"
 description = "The entry point of the compiler"
-edition = "2021"
+edition = "2024"
 publish = false
 
 [features]

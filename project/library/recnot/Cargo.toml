@@ -2,7 +2,7 @@
 name = "recnot"
 version = "0.0.0"
 description = "Deserialization support for the Recnot configuration language"
-edition = "2021"
+edition = "2024"
 publish = false
 
 [dependencies]

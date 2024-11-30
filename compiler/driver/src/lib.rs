@@ -488,8 +488,7 @@ fn set_panic_hook() {
             .unwrap_or("unknown cause")
             .to_owned();
 
-        let backtrace = std::env::var("LUSHUI_BACKTRACE")
-            .map_or(false, |variable| variable != "0")
+        let backtrace = std::env::var("LUSHUI_BACKTRACE").is_ok_and(|variable| variable != "0")
             .then(std::backtrace::Backtrace::force_capture);
 
         Diagnostic::bug()

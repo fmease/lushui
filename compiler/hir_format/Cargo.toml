@@ -2,7 +2,7 @@
 name = "hir_format"
 version = "0.0.0"
 description = "Formatting procedures for HIR data types"
-edition = "2021"
+edition = "2024"
 publish = false
 
 [dependencies]

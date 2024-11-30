@@ -2,7 +2,7 @@
 name = "lexer"
 version = "0.0.0"
 description = "The lexical analyzer (lexer)"
-edition = "2021"
+edition = "2024"
 publish = false
 
 [dependencies]

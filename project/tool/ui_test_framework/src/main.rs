@@ -1,4 +1,4 @@
-#![feature(const_option, let_chains, str_split_remainder, extract_if)]
+#![feature(let_chains, str_split_remainder, extract_if)]
 
 use configuration::{Configuration, Mode, TestTag, Timeout};
 use failure::{FailedTest, Failure};

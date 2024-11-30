@@ -104,7 +104,7 @@ struct Interner {
 
 impl Interner {
     fn the() -> &'static Mutex<Self> {
-        static SELF: LazyLock<Mutex<Interner>> = LazyLock::new(|| default());
+        static SELF: LazyLock<Mutex<Interner>> = LazyLock::new(default);
 
         &SELF
     }

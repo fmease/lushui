@@ -54,7 +54,7 @@ impl<const S: Severity> Diagnostic<S> {
         self
     }
 
-    fn _span(mut self, spanning: impl Spanning, label: Option<Str>, role: Role) -> Self {
+    fn highlight(mut self, spanning: impl Spanning, label: Option<Str>, role: Role) -> Self {
         self.untagged.highlights.insert(Highlight {
             span: spanning.span(),
             label: label.map(Into::into),
@@ -65,26 +65,26 @@ impl<const S: Severity> Diagnostic<S> {
 
     /// Reference and label a code snippet as one of the focal points of the diagnostic.
     pub fn span(self, spanning: impl Spanning, label: impl Into<Str>) -> Self {
-        self._span(spanning, Some(label.into()), Role::Primary)
+        self.highlight(spanning, Some(label.into()), Role::Primary)
     }
 
     /// Reference a code snippet as one of the focal points of the diagnostic.
     pub fn unlabeled_span(self, spanning: impl Spanning) -> Self {
-        self._span(spanning, None, Role::Primary)
+        self.highlight(spanning, None, Role::Primary)
     }
 
     /// Reference and label a code snippet as auxiliary information for the diagnostic.
     pub fn label(self, spanning: impl Spanning, label: impl Into<Str>) -> Self {
-        self._span(spanning, Some(label.into()), Role::Secondary)
+        self.highlight(spanning, Some(label.into()), Role::Secondary)
     }
 
     #[cfg(test)]
     fn unlabeled_secondary_span(self, spanning: impl Spanning) -> Self {
-        self._span(spanning, None, Role::Secondary)
+        self.highlight(spanning, None, Role::Secondary)
     }
 
     #[allow(clippy::needless_pass_by_value)] // irrelevant
-    fn _spans<I>(mut self, spannings: I, label: Option<Str>, role: Role) -> Self
+    fn highlights<I>(mut self, spannings: I, label: Option<Str>, role: Role) -> Self
     where
         I: Iterator<Item: Spanning>,
     {
@@ -102,7 +102,7 @@ impl<const S: Severity> Diagnostic<S> {
     where
         I: IntoIterator<Item: Spanning>,
     {
-        self._spans(spannings.into_iter(), Some(label.into()), Role::Primary)
+        self.highlights(spannings.into_iter(), Some(label.into()), Role::Primary)
     }
 
     /// Reference several equally important code snippets.
@@ -110,7 +110,7 @@ impl<const S: Severity> Diagnostic<S> {
     where
         I: IntoIterator<Item: Spanning>,
     {
-        self._spans(spannings.into_iter(), None, Role::Primary)
+        self.highlights(spannings.into_iter(), None, Role::Primary)
     }
 
     fn subdiagnostic(mut self, severity: Subseverity, message: Str) -> Self {

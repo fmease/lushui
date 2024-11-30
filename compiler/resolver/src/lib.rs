@@ -1726,7 +1726,7 @@ impl<'a> Resolver<'a> {
                         .iter()
                         .rev()
                         .zip(depth..)
-                        .find(|(&binder, _)| binder == identifier)
+                        .find(|&(&binder, _)| binder == identifier)
                     {
                         Some((_, depth)) => Ok(Identifier::new(DeBruijnIndex(depth), identifier)),
                         None => self.resolve_path_inside_function_with_depth(
@@ -1894,7 +1894,7 @@ impl<'a> Resolver<'a> {
         let similarly_named_namespace = self.find_similarly_named_declaration(
             binder.to_str(),
             |entity| {
-                entity.namespace().map_or(false, |namespace| {
+                entity.namespace().is_some_and(|namespace| {
                     namespace.binders.iter().any(|&index| self.session[index].source == subbinder)
                 })
             },

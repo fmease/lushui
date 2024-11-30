@@ -1,7 +1,7 @@
 #!/usr/bin/env -S cargo -Zscript
 ---
 [package]
-edition = "2021"
+edition = "2024"
 ---
 //! Extract `grammar` snippets from the parser.
 

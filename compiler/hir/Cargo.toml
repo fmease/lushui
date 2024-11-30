@@ -2,7 +2,7 @@
 name = "hir"
 version = "0.0.0"
 description = "The Lushui high-level intermediate representation (HIR)"
-edition = "2021"
+edition = "2024"
 publish = false
 
 [dependencies]

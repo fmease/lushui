@@ -100,7 +100,8 @@ impl<I: Index, T> IndexMap<I, T> {
         self.values.get_mut(unwrap(index))
     }
 
-    pub fn indices(&self) -> impl Iterator<Item = I> {
+    // FIXME: Relax to `use<I>` once rustc supports that.
+    pub fn indices(&self) -> impl Iterator<Item = I> + use<I, T> {
         (0..self.len()).map(wrap)
     }
 }

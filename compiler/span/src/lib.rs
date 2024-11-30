@@ -497,7 +497,7 @@ mod spanned {
 
     impl<Bare> Spanned<Bare> {
         pub const fn new(span: Span, bare: Bare) -> Self {
-            Self { span, bare }
+            Self { bare, span }
         }
 
         pub fn weaken(self) -> Spanned<Bare, { Affinity::Weak }> {

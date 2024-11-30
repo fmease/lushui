@@ -2,7 +2,7 @@
 name = "resolver"
 version = "0.0.0"
 description = "The name resolver"
-edition = "2021"
+edition = "2024"
 publish = false
 
 [dependencies]

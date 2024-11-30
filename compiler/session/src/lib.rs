@@ -49,7 +49,7 @@ impl<'ctx> Session<'ctx> {
     }
 
     pub fn in_root_package(&self, component: ComponentIndex) -> bool {
-        self.package_of(component).map_or(false, |package| self.root_package() == Some(package))
+        self.package_of(component).is_some_and(|package| self.root_package() == Some(package))
     }
 
     pub fn define(&mut self, entity: hir::Entity) -> LocalDeclarationIndex {

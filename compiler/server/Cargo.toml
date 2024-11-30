@@ -2,7 +2,7 @@
 name = "server"
 version = "0.0.0"
 description = "The LSP-based language server"
-edition = "2021"
+edition = "2024"
 publish = false
 
 [dependencies]

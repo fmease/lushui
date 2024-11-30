@@ -2,7 +2,7 @@
 name = "codegen_cranelift"
 version = "0.0.0"
 description = "The Cranelift backend generating CLIF"
-edition = "2021"
+edition = "2024"
 publish = false
 
 [dependencies]
