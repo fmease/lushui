@@ -228,6 +228,7 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
         ])
         .get_matches();
 
+    // FIXME: Use clap's `remove_*` methods to avoid unnessary cloning.
     let command = match matches.subcommand().unwrap() {
         (
             command @ (subcommand::BUILD

@@ -191,7 +191,7 @@ pub trait ListingExt {
 
 impl<I> ListingExt for I
 where
-    I: Iterator<Item: Clone + fmt::Display> + Clone,
+    I: Iterator<Item: Clone + fmt::Display>,
 {
     fn list(self, conjunction: Conjunction) -> String {
         let mut this = self.peekable();
@@ -203,8 +203,9 @@ where
                 if this.peek().is_some() {
                     result += ", ";
                 } else {
-                    use std::fmt::Write;
-                    write!(result, " {conjunction} ").unwrap();
+                    result += " ";
+                    result += conjunction.to_str();
+                    result += " ";
                 }
             }
 
@@ -222,12 +223,12 @@ pub enum Conjunction {
     Or,
 }
 
-impl fmt::Display for Conjunction {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
+impl Conjunction {
+    const fn to_str(self) -> &'static str {
+        match self {
             Self::And => "and",
             Self::Or => "or",
-        })
+        }
     }
 }
 

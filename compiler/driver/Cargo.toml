@@ -12,7 +12,7 @@ lsp = ["dep:server", "dep:tokio"]
 
 [dependencies]
 ast = { path = "../ast" }
-clap = { version = "4.3.8", features = ["deprecated", "string"] }
+clap.workspace = true
 codegen_cranelift = { path = "../codegen_cranelift", optional = true }
 codegen_llvm = { path = "../codegen_llvm", optional = true }
 derivation = { path = "../../project/library/derivation" }

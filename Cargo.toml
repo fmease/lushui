@@ -9,3 +9,6 @@ members = [
 ]
 default-members = ["compiler/main"]
 resolver = "2"
+
+[workspace.dependencies]
+clap = { version = "4.5.23", features = ["deprecated", "string"] }

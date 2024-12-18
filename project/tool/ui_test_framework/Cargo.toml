@@ -6,7 +6,7 @@ edition = "2024"
 publish = false
 
 [dependencies]
-clap = { version = "4.3.8", features = ["deprecated", "string"] }
+clap.workspace = true
 derivation = { path = "../../library/derivation" }
 diagnostics = { path = "../../../compiler/diagnostics" }
 joinery = "3.1.0"
