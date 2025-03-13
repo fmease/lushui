@@ -11,5 +11,3 @@ crate-type = ["staticlib"]
 # [profile.release]
 # strip = true
 # debug = false
-
-[dependencies]

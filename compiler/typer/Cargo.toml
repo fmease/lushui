@@ -9,7 +9,7 @@ publish = false
 diagnostics = { path = "../diagnostics" }
 hir = { path = "../hir" }
 hir_format = { path = "../hir_format" }
-joinery = "3.1.0"
+joinery.workspace = true
 resolver = { path = "../resolver" }
 session = { path = "../session" }
 utility = { path = "../utility" }

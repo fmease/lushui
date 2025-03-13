@@ -7,7 +7,7 @@ publish = false
 
 [dependencies]
 diagnostics = { path = "../diagnostics" }
-joinery = "3.1.0"
+joinery.workspace = true
 lexer = { path = "../lexer" }
 span = { path = "../span" }
 utility = { path = "../utility" }

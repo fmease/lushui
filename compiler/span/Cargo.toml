@@ -10,5 +10,5 @@ test = []
 
 [dependencies]
 index_map = { path = "../../project/library/index_map" }
-unicode-width = "0.1.10"
+unicode-width.workspace = true
 utility = { path = "../utility" }

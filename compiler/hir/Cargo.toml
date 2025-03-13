@@ -9,8 +9,8 @@ publish = false
 ast = { path = "../ast" }
 diagnostics = { path = "../diagnostics" }
 index_map = { path = "../../project/library/index_map" }
-joinery = "3.1.0"
+joinery.workspace = true
 lo_ast = { path = "../lo_ast" }
-num-traits = "0.2.15"
+num-traits = "0.2.19"
 span = { path = "../span" }
 utility = { path = "../utility" }

@@ -9,12 +9,12 @@ publish = false
 clap.workspace = true
 derivation = { path = "../../library/derivation" }
 diagnostics = { path = "../../../compiler/diagnostics" }
-joinery = "3.1.0"
+joinery.workspace = true
 lexer = { path = "../../../compiler/lexer" }
 pathdiff = "0.2.1"
 recnot = { path = "../../library/recnot" }
 span = { path = "../../../compiler/span" }
-terminal_size = "0.2.5"
-unicode-width = "0.1.10"
+terminal_size = "0.4.2"
+unicode-width.workspace = true
 utility = { path = "../../../compiler/utility" }
-walkdir = "2.3.3"
+walkdir = "2.5.0"

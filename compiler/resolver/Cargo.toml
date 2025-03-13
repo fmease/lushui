@@ -15,6 +15,6 @@ lexer = { path = "../lexer" }
 lo_ast = { path = "../lo_ast" }
 session = { path = "../session" }
 span = { path = "../span" }
-strsim = "0.10.0"
-unicode-width = "0.1.10"
+strsim = "0.11.1"
+unicode-width.workspace = true
 utility = { path = "../utility" }

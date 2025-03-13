@@ -7,7 +7,7 @@ publish = false
 
 [dependencies]
 ast = { path = "../ast" }
-bitflags = "2.3.2"
+bitflags = "2.9.0"
 derivation = { path = "../../project/library/derivation" }
 diagnostics = { path = "../diagnostics" }
 lexer = { path = "../lexer" }
