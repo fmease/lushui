@@ -124,12 +124,10 @@ fn parse_components(
 
         components.insert(
             name,
-            Spanned::new(span, ComponentManifest {
-                type_,
-                public,
-                path: path.map(Into::into),
-                dependencies,
-            }),
+            Spanned::new(
+                span,
+                ComponentManifest { type_, public, path: path.map(Into::into), dependencies },
+            ),
         );
     }
 
@@ -219,14 +217,17 @@ fn parse_dependencies(
 
         dependencies.insert(
             exonym,
-            Spanned::new(span, DependencyDeclaration {
-                component: component_endonym,
-                provider,
-                version: version.map(|version| version.map(VersionRequirement)),
-                path: path.map(|path| path.map(Into::into).with_text_content_span(map)),
-                package,
-                public,
-            }),
+            Spanned::new(
+                span,
+                DependencyDeclaration {
+                    component: component_endonym,
+                    provider,
+                    version: version.map(|version| version.map(VersionRequirement)),
+                    path: path.map(|path| path.map(Into::into).with_text_content_span(map)),
+                    package,
+                    public,
+                },
+            ),
         );
     }
 

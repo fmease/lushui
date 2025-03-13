@@ -267,7 +267,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
             Use(_) => {}
             // @Question how should we handle that?
             Error(_) => todo!(),
-        };
+        }
     }
 
     /// Finish compiling the given declaration.
@@ -298,9 +298,10 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
                         let start_block = self.context.append_basic_block(unary_function, "start");
                         self.builder.position_at_end(start_block);
 
-                        let value = self.compile_expression(&lambda.body, vec![
-                            unary_function.get_nth_param(0).unwrap(),
-                        ]);
+                        let value = self.compile_expression(
+                            &lambda.body,
+                            vec![unary_function.get_nth_param(0).unwrap()],
+                        );
 
                         self.builder.build_return(value.as_ref().map(|value| value as _)).unwrap();
                     }
@@ -318,7 +319,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
             Use(_) => {}
             // @Question how should we handle that?
             Error(_) => todo!(),
-        };
+        }
     }
 
     fn name(&self, index: DeclarationIndex) -> Str {

@@ -1,4 +1,4 @@
-#![feature(let_chains, str_split_remainder, extract_if)]
+#![feature(let_chains, str_split_remainder)]
 
 use configuration::{Configuration, Mode, TestTag, Timeout};
 use failure::{FailedTest, Failure};
@@ -165,7 +165,7 @@ fn try_main() -> Result<(), ()> {
 
     if !failed_tests.is_empty() {
         let invalid_tests: BTreeSet<_> = failed_tests
-            .extract_if(|test| {
+            .extract_if(.., |test| {
                 matches!(
                     test.failure,
                     Failure::InvalidTest { .. } | Failure::InvalidConfiguration(_)
@@ -297,11 +297,14 @@ fn handle_test_folder_entry(
     // disallow symbolic links for now
     if entry.file_type().is_symlink() {
         print_file_status(path, Status::Invalid, None).unwrap();
-        failed_tests.push(FailedTest::new(path.to_owned(), Failure::InvalidTest {
-            message: "symbolic links are not allowed".into(),
-            note: None,
-            span: None,
-        }));
+        failed_tests.push(FailedTest::new(
+            path.to_owned(),
+            Failure::InvalidTest {
+                message: "symbolic links are not allowed".into(),
+                note: None,
+                span: None,
+            },
+        ));
         statistics.invalid += 1;
         return;
     }
@@ -323,11 +326,14 @@ fn handle_test_folder_entry(
             && !path.with_extension("recnot").exists()
         {
             print_file_status(path, Status::Invalid, None).unwrap();
-            failed_tests.push(FailedTest::new(path.to_owned(), Failure::InvalidTest {
-                message: "the golden file does not have a corresponding test file".into(),
-                note: None,
-                span: None,
-            }));
+            failed_tests.push(FailedTest::new(
+                path.to_owned(),
+                Failure::InvalidTest {
+                    message: "the golden file does not have a corresponding test file".into(),
+                    note: None,
+                    span: None,
+                },
+            ));
             statistics.invalid += 1;
         }
 
@@ -336,15 +342,18 @@ fn handle_test_folder_entry(
 
     let Ok(type_) = classify_test(path) else {
         print_file_status(path, Status::Invalid, None).unwrap();
-        failed_tests.push(FailedTest::new(path.to_owned(), Failure::InvalidTest {
-            message: "the file extension is not supported".into(),
-            note: Some(
-                "the file extension has to be one of \
+        failed_tests.push(FailedTest::new(
+            path.to_owned(),
+            Failure::InvalidTest {
+                message: "the file extension is not supported".into(),
+                note: Some(
+                    "the file extension has to be one of \
                      ‘lushui’, ‘recnot’, ‘stderr’ or ‘stdout’"
-                    .into(),
-            ),
-            span: None,
-        }));
+                        .into(),
+                ),
+                span: None,
+            },
+        ));
         statistics.invalid += 1;
         return;
     };
@@ -398,13 +407,16 @@ fn handle_test_folder_entry(
     const TIMEOUT_EXIT_STATUS: i32 = 124;
 
     if let Some(TIMEOUT_EXIT_STATUS) = output.status.code() {
-        failed_tests.push(FailedTest::new(path.to_owned(), Failure::Timeout {
-            global: arguments.timeout,
-            local: match configuration.timeout {
-                Timeout::Inherited => None,
-                Timeout::Overwritten(duration) => Some(duration.unwrap()),
+        failed_tests.push(FailedTest::new(
+            path.to_owned(),
+            Failure::Timeout {
+                global: arguments.timeout,
+                local: match configuration.timeout {
+                    Timeout::Inherited => None,
+                    Timeout::Overwritten(duration) => Some(duration.unwrap()),
+                },
             },
-        }));
+        ));
         failed = true;
     } else {
         match (configuration.tag, output.status.success()) {
@@ -558,11 +570,14 @@ fn validate_auxiliary_file(
     // @Beacon @Task make the list of users compulsively non-empty in
     //               crate::configuration
     if users.is_empty() {
-        failures.push(FailedTest::new(path.to_owned(), Failure::InvalidTest {
-            message: "the auxiliary file does not declare its users".into(),
-            note: None,
-            span: None,
-        }));
+        failures.push(FailedTest::new(
+            path.to_owned(),
+            Failure::InvalidTest {
+                message: "the auxiliary file does not declare its users".into(),
+                note: None,
+                span: None,
+            },
+        ));
         return Err(());
     }
     // @Note validation not (yet) that sophisticated
@@ -584,18 +599,21 @@ fn validate_auxiliary_file(
     if !invalid_users.is_empty() {
         let user_count = invalid_users.len();
 
-        failures.push(FailedTest::new(path.to_owned(), Failure::InvalidTest {
-            message: format!(
-                "the alleged {} {} of the auxiliary file {} not exist",
-                pluralize!(user_count, "user"),
-                invalid_users.into_iter().map(|user| format!("‘{user}’")).join_with(", "),
-                pluralize!(user_count, "does", "do"),
-            )
-            .into(),
-            note: None,
-            // @Task actually point to the undefined user
-            span: None,
-        }));
+        failures.push(FailedTest::new(
+            path.to_owned(),
+            Failure::InvalidTest {
+                message: format!(
+                    "the alleged {} {} of the auxiliary file {} not exist",
+                    pluralize!(user_count, "user"),
+                    invalid_users.into_iter().map(|user| format!("‘{user}’")).join_with(", "),
+                    pluralize!(user_count, "does", "do"),
+                )
+                .into(),
+                note: None,
+                // @Task actually point to the undefined user
+                span: None,
+            },
+        ));
 
         return Err(());
     }

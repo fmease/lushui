@@ -254,10 +254,13 @@ impl Lowerer<'_> {
 
         match parameter.bare.type_ {
             Some(type_) => self.lower_expression(type_),
-            None => lo_ast::Expression::common(parameter.span.end(), match parameter.bare.kind {
-                ast::ParameterKind::Implicit if BIDIR_TYCK => ast::Wildcard::Silent.into(),
-                _ => lo_ast::BareExpression::Type,
-            }),
+            None => lo_ast::Expression::common(
+                parameter.span.end(),
+                match parameter.bare.kind {
+                    ast::ParameterKind::Implicit if BIDIR_TYCK => ast::Wildcard::Silent.into(),
+                    _ => lo_ast::BareExpression::Type,
+                },
+            ),
         }
     }
 }

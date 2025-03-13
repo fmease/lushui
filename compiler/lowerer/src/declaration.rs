@@ -113,7 +113,7 @@ impl Lowerer<'_> {
             )
             .handle(self),
             _ => {}
-        };
+        }
     }
 
     fn lower_data(
@@ -199,7 +199,7 @@ the body containing a set of constructors
             )
             .handle(self),
             _ => {}
-        };
+        }
     }
 
     fn lower_constructors(
@@ -599,7 +599,7 @@ the body containing a set of constructors
                 match attributes.get::<{ AttributeName::Location }>() {
                     Some(location) => {
                         let mut inline_modules = inline_modules.as_slice();
-                        _ = inline_modules.take_last();
+                        _ = inline_modules.split_off_last();
 
                         path.extend(inline_modules);
                         path.push(location.bare.to_str());
@@ -608,7 +608,7 @@ the body containing a set of constructors
                         path.extend(inline_modules);
                         path.push(module.binder.to_str());
                     }
-                };
+                }
 
                 path.set_extension(FILE_EXTENSION);
 
@@ -642,7 +642,7 @@ the body containing a set of constructors
         let mut inline_modules_for_child = InlineModules::default();
         if is_inline_module {
             inline_modules_for_child.extend(inline_modules.clone());
-        };
+        }
         inline_modules_for_child.push(module.binder.to_str());
 
         let mut lowered_declarations = Vec::new();
@@ -881,9 +881,10 @@ fn synthesize_constructee(
     // a parameter shadowing it.
     let mut type_ = lo_ast::Expression::common(
         span,
-        ast::Path::hung(ast::Hanger::new(span, ast::BareHanger::Self_), smallvec![
-            binder.respan(span)
-        ])
+        ast::Path::hung(
+            ast::Hanger::new(span, ast::BareHanger::Self_),
+            smallvec![binder.respan(span)],
+        )
         .into(),
     );
 
@@ -892,12 +893,15 @@ fn synthesize_constructee(
             type_.span,
             lo_ast::Application {
                 kind: parameter.bare.kind,
-                argument: lo_ast::Expression::common(type_.span, match parameter.bare.binder {
-                    Some(ast::LocalBinder::Named(binder)) => {
-                        Path::from(binder.respan(type_.span)).into()
-                    }
-                    _ => DeBruijnLevel(level).into(),
-                }),
+                argument: lo_ast::Expression::common(
+                    type_.span,
+                    match parameter.bare.binder {
+                        Some(ast::LocalBinder::Named(binder)) => {
+                            Path::from(binder.respan(type_.span)).into()
+                        }
+                        _ => DeBruijnLevel(level).into(),
+                    },
+                ),
                 callee: type_,
             }
             .into(),

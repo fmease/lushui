@@ -159,7 +159,7 @@ impl<'a> Lexer<'a> {
 
         if let Err(error) = self.brackets.close(Spanned::new(self.span(), bracket)) {
             self.errors.push(error);
-        };
+        }
         self.advance();
     }
 
@@ -357,7 +357,7 @@ impl<'a> Lexer<'a> {
             if change == Ordering::Greater {
                 self.sections.enter(Section::Continued);
             }
-        };
+        }
 
         if change == Ordering::Less {
             // Remove syntactically legal but superfluous line breaks that

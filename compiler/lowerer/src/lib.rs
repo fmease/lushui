@@ -16,7 +16,7 @@
 //!   exclusivity rules
 //! * checks if the required type annotations on top-level declarations are present
 //! * gates a lot of unsupported features
-#![feature(decl_macro, slice_take, min_specialization, if_let_guard, iter_collect_into, let_chains)]
+#![feature(decl_macro, min_specialization, if_let_guard, iter_collect_into, let_chains)]
 
 // @Task ungate named arguments but validate them in the resolver (and/or typer)
 // @Task disallow conflicting parameter names

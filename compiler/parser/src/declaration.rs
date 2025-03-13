@@ -271,7 +271,7 @@ impl Parser<'_> {
                 .message("modules may not have parameters")
                 .unlabeled_span(parameters)
                 .report(self.reporter));
-        };
+        }
         Ok(())
     }
 

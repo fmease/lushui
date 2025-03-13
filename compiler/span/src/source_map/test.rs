@@ -27,15 +27,18 @@ fn lines_single_line_highlight() {
     let mut map = SourceMap::default();
     map.add_str(Anonymous, "abcdefghijklmnopq\n");
 
-    assert_eq!(map.lines_with_highlight(span(4, 7)), LinesWithHighlight {
-        file: &Anonymous,
-        first: LineWithHighlight {
-            number: 1,
-            content: "abcdefghijklmnopq",
-            highlight: Highlight { start: 4, end: 7, width: 3, prefix_width: 3 },
-        },
-        last: None,
-    });
+    assert_eq!(
+        map.lines_with_highlight(span(4, 7)),
+        LinesWithHighlight {
+            file: &Anonymous,
+            first: LineWithHighlight {
+                number: 1,
+                content: "abcdefghijklmnopq",
+                highlight: Highlight { start: 4, end: 7, width: 3, prefix_width: 3 },
+            },
+            last: None,
+        }
+    );
 }
 
 #[test]
@@ -43,15 +46,18 @@ fn lines_single_line_highlight_no_trailing_line_break() {
     let mut map = SourceMap::default();
     map.add_str(Anonymous, "abcdefghijklmnopq");
 
-    assert_eq!(map.lines_with_highlight(span(4, 7)), LinesWithHighlight {
-        file: &Anonymous,
-        first: LineWithHighlight {
-            number: 1,
-            content: "abcdefghijklmnopq",
-            highlight: Highlight { start: 4, end: 7, width: 3, prefix_width: 3 }
-        },
-        last: None,
-    });
+    assert_eq!(
+        map.lines_with_highlight(span(4, 7)),
+        LinesWithHighlight {
+            file: &Anonymous,
+            first: LineWithHighlight {
+                number: 1,
+                content: "abcdefghijklmnopq",
+                highlight: Highlight { start: 4, end: 7, width: 3, prefix_width: 3 }
+            },
+            last: None,
+        }
+    );
 }
 
 #[test]
@@ -59,15 +65,18 @@ fn lines_single_character_highlight() {
     let mut map = SourceMap::default();
     map.add_str(Anonymous, "空#\n");
 
-    assert_eq!(map.lines_with_highlight(span(4, 5)), LinesWithHighlight {
-        file: &Anonymous,
-        first: LineWithHighlight {
-            number: 1,
-            content: "空#",
-            highlight: Highlight { start: 2, end: 3, width: 1, prefix_width: 2 }
-        },
-        last: None,
-    });
+    assert_eq!(
+        map.lines_with_highlight(span(4, 5)),
+        LinesWithHighlight {
+            file: &Anonymous,
+            first: LineWithHighlight {
+                number: 1,
+                content: "空#",
+                highlight: Highlight { start: 2, end: 3, width: 1, prefix_width: 2 }
+            },
+            last: None,
+        }
+    );
 }
 
 #[test]
@@ -75,30 +84,36 @@ fn lines_single_wide_character_highlight() {
     let mut map = SourceMap::default();
     map.add_str(Anonymous, "#空\n");
 
-    assert_eq!(map.lines_with_highlight(span(2, 5)), LinesWithHighlight {
-        file: &Anonymous,
-        first: LineWithHighlight {
-            number: 1,
-            content: "#空",
-            highlight: Highlight { start: 2, end: 3, width: 2, prefix_width: 1 }
-        },
-        last: None,
-    });
+    assert_eq!(
+        map.lines_with_highlight(span(2, 5)),
+        LinesWithHighlight {
+            file: &Anonymous,
+            first: LineWithHighlight {
+                number: 1,
+                content: "#空",
+                highlight: Highlight { start: 2, end: 3, width: 2, prefix_width: 1 }
+            },
+            last: None,
+        }
+    );
 }
 #[test]
 fn lines_single_wide_character_highlight_no_trailing_line_break() {
     let mut map = SourceMap::default();
     map.add_str(Anonymous, "#空");
 
-    assert_eq!(map.lines_with_highlight(span(2, 5)), LinesWithHighlight {
-        file: &Anonymous,
-        first: LineWithHighlight {
-            number: 1,
-            content: "#空",
-            highlight: Highlight { start: 2, end: 3, width: 2, prefix_width: 1 }
-        },
-        last: None,
-    });
+    assert_eq!(
+        map.lines_with_highlight(span(2, 5)),
+        LinesWithHighlight {
+            file: &Anonymous,
+            first: LineWithHighlight {
+                number: 1,
+                content: "#空",
+                highlight: Highlight { start: 2, end: 3, width: 2, prefix_width: 1 }
+            },
+            last: None,
+        }
+    );
 }
 
 #[test]
@@ -106,15 +121,18 @@ fn lines_single_line_highlight_multi_line_source() {
     let mut map = SourceMap::default();
     map.add_str(Anonymous, "buffer\n空\n空it__\nbuffer\n");
 
-    assert_eq!(map.lines_with_highlight(span(15, 17)), LinesWithHighlight {
-        file: &Anonymous,
-        first: LineWithHighlight {
-            number: 3,
-            content: "空it__",
-            highlight: Highlight { start: 2, end: 4, width: 2, prefix_width: 2 }
-        },
-        last: None,
-    });
+    assert_eq!(
+        map.lines_with_highlight(span(15, 17)),
+        LinesWithHighlight {
+            file: &Anonymous,
+            first: LineWithHighlight {
+                number: 3,
+                content: "空it__",
+                highlight: Highlight { start: 2, end: 4, width: 2, prefix_width: 2 }
+            },
+            last: None,
+        }
+    );
 }
 
 #[test]
@@ -122,19 +140,22 @@ fn lines_multi_line_highlight() {
     let mut map = SourceMap::default();
     map.add_str(Anonymous, "alpha\nbeta\n第三\ndelta\nepsilon\n");
 
-    assert_eq!(map.lines_with_highlight(span(8, 21)), LinesWithHighlight {
-        file: &Anonymous,
-        first: LineWithHighlight {
-            number: 2,
-            content: "beta",
-            highlight: Highlight { start: 2, end: 5, width: 3, prefix_width: 1 }
-        },
-        last: Some(LineWithHighlight {
-            number: 4,
-            content: "delta",
-            highlight: Highlight { start: 1, end: 3, width: 2, prefix_width: 0 }
-        }),
-    });
+    assert_eq!(
+        map.lines_with_highlight(span(8, 21)),
+        LinesWithHighlight {
+            file: &Anonymous,
+            first: LineWithHighlight {
+                number: 2,
+                content: "beta",
+                highlight: Highlight { start: 2, end: 5, width: 3, prefix_width: 1 }
+            },
+            last: Some(LineWithHighlight {
+                number: 4,
+                content: "delta",
+                highlight: Highlight { start: 1, end: 3, width: 2, prefix_width: 0 }
+            }),
+        }
+    );
 }
 
 #[test]
@@ -142,19 +163,22 @@ fn lines_multi_line_highlight_no_trailing_line_break() {
     let mut map = SourceMap::default();
     map.add_str(Anonymous, "alpha\nbeta\n第三\ndelta\nepsilon");
 
-    assert_eq!(map.lines_with_highlight(span(10, 15)), LinesWithHighlight {
-        file: &Anonymous,
-        first: LineWithHighlight {
-            number: 2,
-            content: "beta",
-            highlight: Highlight { start: 4, end: 5, width: 1, prefix_width: 3 },
-        },
-        last: Some(LineWithHighlight {
-            number: 3,
-            content: "第三",
-            highlight: Highlight { start: 1, end: 2, width: 2, prefix_width: 0 }
-        }),
-    });
+    assert_eq!(
+        map.lines_with_highlight(span(10, 15)),
+        LinesWithHighlight {
+            file: &Anonymous,
+            first: LineWithHighlight {
+                number: 2,
+                content: "beta",
+                highlight: Highlight { start: 4, end: 5, width: 1, prefix_width: 3 },
+            },
+            last: Some(LineWithHighlight {
+                number: 3,
+                content: "第三",
+                highlight: Highlight { start: 1, end: 2, width: 2, prefix_width: 0 }
+            }),
+        }
+    );
 }
 
 #[test]
@@ -162,15 +186,18 @@ fn lines_highlight_line_break() {
     let mut map = SourceMap::default();
     map.add_str(Anonymous, "buffer\n");
 
-    assert_eq!(map.lines_with_highlight(span(7, 8)), LinesWithHighlight {
-        file: &Anonymous,
-        first: LineWithHighlight {
-            number: 1,
-            content: "buffer",
-            highlight: Highlight { start: 7, end: 7, width: 0, prefix_width: 6 }
-        },
-        last: None,
-    });
+    assert_eq!(
+        map.lines_with_highlight(span(7, 8)),
+        LinesWithHighlight {
+            file: &Anonymous,
+            first: LineWithHighlight {
+                number: 1,
+                content: "buffer",
+                highlight: Highlight { start: 7, end: 7, width: 0, prefix_width: 6 }
+            },
+            last: None,
+        }
+    );
 }
 
 #[test]
@@ -178,15 +205,18 @@ fn lines_zero_length_highlight() {
     let mut map = SourceMap::default();
     map.add_str(Anonymous, ".:.:.:\n");
 
-    assert_eq!(map.lines_with_highlight(span(2, 2)), LinesWithHighlight {
-        file: &Anonymous,
-        first: LineWithHighlight {
-            number: 1,
-            content: ".:.:.:",
-            highlight: Highlight { start: 2, end: 2, width: 0, prefix_width: 1 }
-        },
-        last: None,
-    });
+    assert_eq!(
+        map.lines_with_highlight(span(2, 2)),
+        LinesWithHighlight {
+            file: &Anonymous,
+            first: LineWithHighlight {
+                number: 1,
+                content: ".:.:.:",
+                highlight: Highlight { start: 2, end: 2, width: 0, prefix_width: 1 }
+            },
+            last: None,
+        }
+    );
 }
 
 /// The trailing line break should not move the highlighted end of input
@@ -196,15 +226,18 @@ fn lines_end_of_input_highlight() {
     let mut map = SourceMap::default();
     map.add_str(Anonymous, "content\n");
 
-    assert_eq!(map.lines_with_highlight(span(9, 9)), LinesWithHighlight {
-        file: &Anonymous,
-        first: LineWithHighlight {
-            number: 1,
-            content: "content",
-            highlight: Highlight { start: 9, end: 9, width: 0, prefix_width: 7 }
-        },
-        last: None,
-    });
+    assert_eq!(
+        map.lines_with_highlight(span(9, 9)),
+        LinesWithHighlight {
+            file: &Anonymous,
+            first: LineWithHighlight {
+                number: 1,
+                content: "content",
+                highlight: Highlight { start: 9, end: 9, width: 0, prefix_width: 7 }
+            },
+            last: None,
+        }
+    );
 }
 
 #[test]
@@ -212,15 +245,18 @@ fn lines_end_of_input_highlight_no_trailing_line_break() {
     let mut map = SourceMap::default();
     map.add_str(Anonymous, "content");
 
-    assert_eq!(map.lines_with_highlight(span(8, 8)), LinesWithHighlight {
-        file: &Anonymous,
-        first: LineWithHighlight {
-            number: 1,
-            content: "content",
-            highlight: Highlight { start: 8, end: 8, width: 0, prefix_width: 7 }
-        },
-        last: None,
-    });
+    assert_eq!(
+        map.lines_with_highlight(span(8, 8)),
+        LinesWithHighlight {
+            file: &Anonymous,
+            first: LineWithHighlight {
+                number: 1,
+                content: "content",
+                highlight: Highlight { start: 8, end: 8, width: 0, prefix_width: 7 }
+            },
+            last: None,
+        }
+    );
 }
 
 #[test]
@@ -228,15 +264,18 @@ fn lines_end_of_input_highlight_empty_file() {
     let mut map = SourceMap::default();
     map.add_str(Anonymous, "");
 
-    assert_eq!(map.lines_with_highlight(span(1, 1)), LinesWithHighlight {
-        file: &Anonymous,
-        first: LineWithHighlight {
-            number: 1,
-            content: "",
-            highlight: Highlight { start: 1, end: 1, width: 0, prefix_width: 0 }
-        },
-        last: None,
-    });
+    assert_eq!(
+        map.lines_with_highlight(span(1, 1)),
+        LinesWithHighlight {
+            file: &Anonymous,
+            first: LineWithHighlight {
+                number: 1,
+                content: "",
+                highlight: Highlight { start: 1, end: 1, width: 0, prefix_width: 0 }
+            },
+            last: None,
+        }
+    );
 }
 
 #[test]
@@ -244,19 +283,22 @@ fn lines_highlight_containing_trailing_line_break() {
     let mut map = SourceMap::default();
     map.add_str(Anonymous, "alpha\nbeta\n");
 
-    assert_eq!(map.lines_with_highlight(span(1, 12)), LinesWithHighlight {
-        file: &Anonymous,
-        first: LineWithHighlight {
-            number: 1,
-            content: "alpha",
-            highlight: Highlight { start: 1, end: 6, width: 5, prefix_width: 0 }
-        },
-        last: Some(LineWithHighlight {
-            number: 2,
-            content: "beta",
-            highlight: Highlight { start: 1, end: 6, width: 4, prefix_width: 0 }
-        }),
-    });
+    assert_eq!(
+        map.lines_with_highlight(span(1, 12)),
+        LinesWithHighlight {
+            file: &Anonymous,
+            first: LineWithHighlight {
+                number: 1,
+                content: "alpha",
+                highlight: Highlight { start: 1, end: 6, width: 5, prefix_width: 0 }
+            },
+            last: Some(LineWithHighlight {
+                number: 2,
+                content: "beta",
+                highlight: Highlight { start: 1, end: 6, width: 4, prefix_width: 0 }
+            }),
+        }
+    );
 }
 
 #[test]

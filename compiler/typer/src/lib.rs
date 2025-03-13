@@ -90,9 +90,10 @@ impl<'sess, 'ctx> Typer<'sess, 'ctx> {
                     let health = &mut Health::Untainted;
 
                     for constructor in constructors {
-                        self.start_infer_types_in_declaration(constructor, Context {
-                            owning_data_type: Some(type_.binder),
-                        })
+                        self.start_infer_types_in_declaration(
+                            constructor,
+                            Context { owning_data_type: Some(type_.binder) },
+                        )
                         .stain(health);
                     }
 
@@ -142,7 +143,7 @@ impl<'sess, 'ctx> Typer<'sess, 'ctx> {
 
                 if let Err(error) = self.it_is_a_type(&type_, &FunctionScope::Module) {
                     return self.handle_definition_error(error, &type_, None, definition, |_| ());
-                };
+                }
 
                 let type_ = self.interpreter().evaluate_expression(
                     &type_,
@@ -182,7 +183,7 @@ impl<'sess, 'ctx> Typer<'sess, 'ctx> {
                         definition,
                         |_| (),
                     );
-                };
+                }
 
                 self.carry_out_definition(Definition {
                     attributes: definition.attributes,
@@ -192,7 +193,7 @@ impl<'sess, 'ctx> Typer<'sess, 'ctx> {
             Data { binder, type_ } => {
                 if let Err(error) = self.it_is_a_type(&type_, &FunctionScope::Module) {
                     return self.handle_definition_error(error, &type_, None, definition, |_| ());
-                };
+                }
 
                 let type_ = self.interpreter().evaluate_expression(
                     &type_,
@@ -212,7 +213,7 @@ impl<'sess, 'ctx> Typer<'sess, 'ctx> {
             Constructor { binder, type_, owner_data_type: data } => {
                 if let Err(error) = self.it_is_a_type(&type_, &FunctionScope::Module) {
                     return self.handle_definition_error(error, &type_, None, definition, |_| ());
-                };
+                }
 
                 let type_ = self.interpreter().evaluate_expression(
                     &type_,
@@ -229,7 +230,7 @@ impl<'sess, 'ctx> Typer<'sess, 'ctx> {
             IntrinsicFunction { binder, type_ } => {
                 if let Err(error) = self.it_is_a_type(&type_, &FunctionScope::Module) {
                     return self.handle_definition_error(error, &type_, None, definition, |_| ());
-                };
+                }
 
                 let type_ = self.interpreter().evaluate_expression(
                     &type_,
@@ -551,7 +552,7 @@ expected type ‘_ -> _’
                         "encountered unsupported type to be case-analysed type={}",
                         self.display(&subject_type)
                     ),
-                };
+                }
 
                 let mut type_of_previous_body = None::<Expression>;
 

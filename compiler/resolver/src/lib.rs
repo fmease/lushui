@@ -630,7 +630,7 @@ impl<'sess, 'ctx> ResolverMut<'sess, 'ctx> {
                 {
                     self.health.taint(error);
                     continue;
-                };
+                }
             }
 
             if let EntityKind::Use { target: target_index } = entity.kind {
@@ -840,10 +840,14 @@ impl<'a> Resolver<'a> {
                 Result::from(*health)?;
 
                 self.resolve_sequence_literal(
-                    hir::Item::new(expression.attributes, expression.span, ast::SequenceLiteral {
-                        path: sequence.path,
-                        elements: Spanned::new(sequence.elements.span, elements),
-                    }),
+                    hir::Item::new(
+                        expression.attributes,
+                        expression.span,
+                        ast::SequenceLiteral {
+                            path: sequence.path,
+                            elements: Spanned::new(sequence.elements.span, elements),
+                        },
+                    ),
                     scope,
                 )?
             }
@@ -961,10 +965,14 @@ impl<'a> Resolver<'a> {
                 }
 
                 self.resolve_sequence_literal(
-                    hir::Item::new(pattern.attributes, pattern.span, ast::SequenceLiteral {
-                        path: sequence.path,
-                        elements: Spanned::new(sequence.elements.span, elements),
-                    }),
+                    hir::Item::new(
+                        pattern.attributes,
+                        pattern.span,
+                        ast::SequenceLiteral {
+                            path: sequence.path,
+                            elements: Spanned::new(sequence.elements.span, elements),
+                        },
+                    ),
                     scope,
                 )?
             }

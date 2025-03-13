@@ -149,9 +149,10 @@ mod tests {
 
     #[test]
     fn cycle_size_two() {
-        assert_eq!(find_cycles(&HashMap::from_iter([(5, 90), (90, 5)])), vec![Cycle::from_iter([
-            &5, &90
-        ])],);
+        assert_eq!(
+            find_cycles(&HashMap::from_iter([(5, 90), (90, 5)])),
+            vec![Cycle::from_iter([&5, &90])],
+        );
     }
 
     #[test]

@@ -377,9 +377,12 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
         let mut container = Element::div("container");
 
         let subsections = subsections::Subsections::reserved_identifiers();
-        container.add_child(sidebar(&subsections, url_prefix, default(), vec![
-            self.session.root_component().name,
-        ]));
+        container.add_child(sidebar(
+            &subsections,
+            url_prefix,
+            default(),
+            vec![self.session.root_component().name],
+        ));
 
         // main content
         {
@@ -414,9 +417,12 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
         let mut container = Element::div("container");
 
         let subsections = subsections::Subsections::attributes();
-        container.add_child(sidebar(&subsections, url_prefix, default(), vec![
-            self.session.root_component().name,
-        ]));
+        container.add_child(sidebar(
+            &subsections,
+            url_prefix,
+            default(),
+            vec![self.session.root_component().name],
+        ));
 
         // main content
         {
@@ -453,9 +459,12 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
         let mut body = Element::new("body").child(ledge(url_prefix, Some(package), None));
         let mut container = Element::div("container");
 
-        container.add_child(sidebar(&default(), url_prefix, default(), vec![
-            self.session.root_component().name,
-        ]));
+        container.add_child(sidebar(
+            &default(),
+            url_prefix,
+            default(),
+            vec![self.session.root_component().name],
+        ));
 
         // main content
         {

@@ -44,7 +44,7 @@ pub(crate) fn ensure_variant_is_fieldless(fields: &Fields, macro_name: &str) -> 
             fields,
             format!("variant may not have fields when deriving `derivation::{macro_name}`"),
         ));
-    };
+    }
 
     Ok(())
 }

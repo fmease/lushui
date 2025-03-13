@@ -7,7 +7,7 @@ use span::FileName;
 use std::{
     cell::RefCell,
     fs::{self, File},
-    io::{BufWriter, Error, ErrorKind, Read, Write},
+    io::{BufWriter, Error, Read, Write},
     path::{Path, PathBuf},
     process::Command,
     sync::{
@@ -219,7 +219,7 @@ impl<'scope> Asciidoctor<'scope> {
         let status = self.process.status()?;
 
         if !status.success() {
-            return Err(Error::new(ErrorKind::Other, "AsciiDoctor did not exit successfully"));
+            return Err(Error::other("AsciiDoctor did not exit successfully"));
         }
 
         let mut output = String::new();

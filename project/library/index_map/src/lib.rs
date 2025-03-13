@@ -104,32 +104,15 @@ impl<I: Index, T> IndexMap<I, T> {
     pub fn indices(&self) -> impl Iterator<Item = I> + use<I, T> {
         (0..self.len()).map(wrap)
     }
-}
 
-use iter::{IntoIter, Iter, IterMut};
+    #[define_opaque(Iter)]
+    pub fn iter(&self) -> Iter<'_, I, T> {
+        self.values.iter().enumerate().map(map)
+    }
 
-// FIXME: Inline this module once `type_alias_impl_trait` supports `#[define]` (..).
-mod iter {
-    use super::{Index, IndexMap, map};
-
-    // FIXME: Shouldn't rustc be smart enough to imply `T: 'a`?
-
-    pub type IntoIter<I: Index, T> = impl Iterator<Item = (I, T)>;
-    pub type Iter<'a, I: Index, T: 'a> = impl Iterator<Item = (I, &'a T)>;
-    pub type IterMut<'a, I: Index, T: 'a> = impl Iterator<Item = (I, &'a mut T)>;
-
-    impl<I: Index, T> IndexMap<I, T> {
-        pub(super) fn into_iter(self) -> IntoIter<I, T> {
-            self.values.into_iter().enumerate().map(map)
-        }
-
-        pub fn iter(&self) -> Iter<'_, I, T> {
-            self.values.iter().enumerate().map(map)
-        }
-
-        pub fn iter_mut(&mut self) -> IterMut<'_, I, T> {
-            self.values.iter_mut().enumerate().map(map)
-        }
+    #[define_opaque(IterMut)]
+    pub fn iter_mut(&mut self) -> IterMut<'_, I, T> {
+        self.values.iter_mut().enumerate().map(map)
     }
 }
 
@@ -195,8 +178,9 @@ impl<I: Index, T> IntoIterator for IndexMap<I, T> {
     type Item = (I, T);
     type IntoIter = IntoIter<I, T>;
 
+    #[define_opaque(IntoIter)]
     fn into_iter(self) -> Self::IntoIter {
-        self.into_iter()
+        self.values.into_iter().enumerate().map(map)
     }
 }
 
@@ -217,6 +201,10 @@ impl<'a, I: Index, T> IntoIterator for &'a mut IndexMap<I, T> {
         self.iter_mut()
     }
 }
+
+pub type IntoIter<I: Index, T> = impl Iterator<Item = (I, T)>;
+pub type Iter<'a, I: Index, T: 'a> = impl Iterator<Item = (I, &'a T)>;
+pub type IterMut<'a, I: Index, T: 'a> = impl Iterator<Item = (I, &'a mut T)>;
 
 fn map<I: Index, T>((index, value): (usize, T)) -> (I, T) {
     (wrap(index), value)

@@ -50,7 +50,7 @@ impl TestSuiteSummary {
             }
 
             painter.unset()?;
-        };
+        }
         writeln!(painter)?;
 
         write!(painter, "    {} ", self.statistics.passed)?;

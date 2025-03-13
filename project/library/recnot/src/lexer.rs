@@ -196,7 +196,7 @@ impl<'a> Lexer<'a> {
                 }));
                 self.errors.push(Error::NumberExceedsSizeLimit(Spanned::new(self.span(), error)));
             }
-        };
+        }
     }
 
     fn span(&self) -> Span {

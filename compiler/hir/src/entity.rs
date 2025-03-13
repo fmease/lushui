@@ -33,7 +33,7 @@ pub struct Entity {
 
 impl Entity {
     pub const fn is_untyped(&self) -> bool {
-        matches!(self.kind, UntypedFunction | UntypedDataType { .. } | UntypedConstructor { .. })
+        matches!(self.kind, UntypedFunction | UntypedDataType { .. } | UntypedConstructor)
     }
 
     /// Test if the entity is a (typed or untyped) function.
@@ -48,7 +48,7 @@ impl Entity {
 
     /// Test if the entity is a (typed or untyped) constructor.
     pub const fn is_constructor(&self) -> bool {
-        matches!(self.kind, UntypedConstructor { .. } | Constructor { .. })
+        matches!(self.kind, UntypedConstructor | Constructor { .. })
     }
 
     pub const fn is_module(&self) -> bool {
@@ -118,7 +118,7 @@ impl Entity {
             | IntrinsicFunction { .. } => ValueView::Neutral,
             UntypedFunction
             | UntypedDataType { .. }
-            | UntypedConstructor { .. }
+            | UntypedConstructor
             | Module { .. }
             | Use { .. }
             | UnresolvedUse => unreachable!(),

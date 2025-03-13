@@ -173,142 +173,178 @@ fn shebang_lookalike_not_first_line() {
 
 #[test]
 fn identifiers() {
-    assert_lex_eq!("alpha alpha0 _alpha al6ha_beta_", vec![
-        Token::new(span(1, 6), Word("alpha".into())),
-        Token::new(span(7, 13), Word("alpha0".into())),
-        Token::new(span(14, 20), Word("_alpha".into())),
-        Token::new(span(21, 32), Word("al6ha_beta_".into())),
-        Token::new(span(32, 32), EndOfInput),
-    ],);
+    assert_lex_eq!(
+        "alpha alpha0 _alpha al6ha_beta_",
+        vec![
+            Token::new(span(1, 6), Word("alpha".into())),
+            Token::new(span(7, 13), Word("alpha0".into())),
+            Token::new(span(14, 20), Word("_alpha".into())),
+            Token::new(span(21, 32), Word("al6ha_beta_".into())),
+            Token::new(span(32, 32), EndOfInput),
+        ],
+    );
 }
 
 #[test]
 fn dashed_identifiers() {
-    assert_lex_eq!("ALPH4-G4MM4 alpha-gamma _-_ alpha-0", vec![
-        Token::new(span(1, 12), Word("ALPH4-G4MM4".into())),
-        Token::new(span(13, 24), Word("alpha-gamma".into())),
-        Token::new(span(25, 28), Word("_-_".into())),
-        Token::new(span(29, 36), Word("alpha-0".into())),
-        Token::new(span(36, 36), EndOfInput),
-    ],);
+    assert_lex_eq!(
+        "ALPH4-G4MM4 alpha-gamma _-_ alpha-0",
+        vec![
+            Token::new(span(1, 12), Word("ALPH4-G4MM4".into())),
+            Token::new(span(13, 24), Word("alpha-gamma".into())),
+            Token::new(span(25, 28), Word("_-_".into())),
+            Token::new(span(29, 36), Word("alpha-0".into())),
+            Token::new(span(36, 36), EndOfInput),
+        ],
+    );
 }
 
 #[test]
 fn weird_dashed_identifiers() {
-    assert_lex_eq!("alpha- alpha-: alpha--beta--- -no --no-no", vec![
-        Token::new(span(1, 7), Word("alpha-".into())),
-        Token::new(span(8, 14), Word("alpha-".into())),
-        Token::new(span(14, 15), Colon),
-        Token::new(span(16, 30), Word("alpha--beta---".into())),
-        Token::new(span(31, 32), Symbol("-".into())),
-        Token::new(span(32, 34), Word("no".into())),
-        Token::new(span(35, 37), Symbol("--".into())),
-        Token::new(span(37, 42), Word("no-no".into())),
-        Token::new(span(42, 42), EndOfInput),
-    ],);
+    assert_lex_eq!(
+        "alpha- alpha-: alpha--beta--- -no --no-no",
+        vec![
+            Token::new(span(1, 7), Word("alpha-".into())),
+            Token::new(span(8, 14), Word("alpha-".into())),
+            Token::new(span(14, 15), Colon),
+            Token::new(span(16, 30), Word("alpha--beta---".into())),
+            Token::new(span(31, 32), Symbol("-".into())),
+            Token::new(span(32, 34), Word("no".into())),
+            Token::new(span(35, 37), Symbol("--".into())),
+            Token::new(span(37, 42), Word("no-no".into())),
+            Token::new(span(42, 42), EndOfInput),
+        ],
+    );
 }
 
 #[test]
 fn keywords_and_lookalikes() {
-    assert_lex_eq!("    self self_ self-self in _", vec![
-        Token::new(span(5, 9), Self_),
-        Token::new(span(10, 15), Word("self_".into())),
-        Token::new(span(16, 25), Word("self-self".into())),
-        Token::new(span(26, 28), In),
-        Token::new(span(29, 30), Underscore),
-        Token::new(span(30, 30), EndOfInput),
-    ],);
+    assert_lex_eq!(
+        "    self self_ self-self in _",
+        vec![
+            Token::new(span(5, 9), Self_),
+            Token::new(span(10, 15), Word("self_".into())),
+            Token::new(span(16, 25), Word("self-self".into())),
+            Token::new(span(26, 28), In),
+            Token::new(span(29, 30), Underscore),
+            Token::new(span(30, 30), EndOfInput),
+        ],
+    );
 }
 
 #[test]
 fn symbols() {
-    assert_lex_eq!("+ +>alpha//$~%  #0 . ..", vec![
-        Token::new(span(1, 2), Symbol("+".into())),
-        Token::new(span(3, 5), Symbol("+>".into())),
-        Token::new(span(5, 10), Word("alpha".into())),
-        Token::new(span(10, 15), Symbol("//$~%".into())),
-        Token::new(span(17, 18), Symbol("#".into())),
-        Token::new(span(18, 19), NumberLiteral("0".into())),
-        Token::new(span(20, 21), Dot),
-        Token::new(span(22, 24), Symbol("..".into())),
-        Token::new(span(24, 24), EndOfInput),
-    ],);
+    assert_lex_eq!(
+        "+ +>alpha//$~%  #0 . ..",
+        vec![
+            Token::new(span(1, 2), Symbol("+".into())),
+            Token::new(span(3, 5), Symbol("+>".into())),
+            Token::new(span(5, 10), Word("alpha".into())),
+            Token::new(span(10, 15), Symbol("//$~%".into())),
+            Token::new(span(17, 18), Symbol("#".into())),
+            Token::new(span(18, 19), NumberLiteral("0".into())),
+            Token::new(span(20, 21), Dot),
+            Token::new(span(22, 24), Symbol("..".into())),
+            Token::new(span(24, 24), EndOfInput),
+        ],
+    );
 }
 
 #[test]
 fn identifier_with_trailing_dot() {
-    assert_lex_eq!("namespace.", vec![
-        Token::new(span(1, 10), Word("namespace".into())),
-        Token::new(span(10, 11), Dot),
-        Token::new(span(11, 11), EndOfInput),
-    ],);
+    assert_lex_eq!(
+        "namespace.",
+        vec![
+            Token::new(span(1, 10), Word("namespace".into())),
+            Token::new(span(10, 11), Dot),
+            Token::new(span(11, 11), EndOfInput),
+        ],
+    );
 }
 
 #[test]
 fn identifier_dot_symbol() {
-    assert_lex_eq!("namespace.+>!", vec![
-        Token::new(span(1, 10), Word("namespace".into())),
-        Token::new(span(10, 11), Dot),
-        Token::new(span(11, 14), Symbol("+>!".into())),
-        Token::new(span(14, 14), EndOfInput),
-    ],);
+    assert_lex_eq!(
+        "namespace.+>!",
+        vec![
+            Token::new(span(1, 10), Word("namespace".into())),
+            Token::new(span(10, 11), Dot),
+            Token::new(span(11, 14), Symbol("+>!".into())),
+            Token::new(span(14, 14), EndOfInput),
+        ],
+    );
 }
 
 #[test]
 fn lex_identifier_dot_dotted_symbol() {
-    assert_lex_eq!("namespace.$.?!.", vec![
-        Token::new(span(1, 10), Word("namespace".into())),
-        Token::new(span(10, 11), Dot),
-        Token::new(span(11, 16), Symbol("$.?!.".into())),
-        Token::new(span(16, 16), EndOfInput),
-    ],);
+    assert_lex_eq!(
+        "namespace.$.?!.",
+        vec![
+            Token::new(span(1, 10), Word("namespace".into())),
+            Token::new(span(10, 11), Dot),
+            Token::new(span(11, 16), Symbol("$.?!.".into())),
+            Token::new(span(16, 16), EndOfInput),
+        ],
+    );
 }
 
 #[test]
 fn lex_identifier_and_dotted_symbol_after_space() {
-    assert_lex_eq!("namespace .$.?!.", vec![
-        Token::new(span(1, 10), Word("namespace".into())),
-        Token::new(span(11, 17), Symbol(".$.?!.".into())),
-        Token::new(span(17, 17), EndOfInput),
-    ],);
+    assert_lex_eq!(
+        "namespace .$.?!.",
+        vec![
+            Token::new(span(1, 10), Word("namespace".into())),
+            Token::new(span(11, 17), Symbol(".$.?!.".into())),
+            Token::new(span(17, 17), EndOfInput),
+        ],
+    );
 }
 
 #[test]
 fn lex_keyword_dot_symbol() {
-    assert_lex_eq!("data.#", vec![
-        Token::new(span(1, 5), Data),
-        Token::new(span(5, 6), Dot),
-        Token::new(span(6, 7), Symbol("#".into())),
-        Token::new(span(7, 7), EndOfInput),
-    ],);
+    assert_lex_eq!(
+        "data.#",
+        vec![
+            Token::new(span(1, 5), Data),
+            Token::new(span(5, 6), Dot),
+            Token::new(span(6, 7), Symbol("#".into())),
+            Token::new(span(7, 7), EndOfInput),
+        ],
+    );
 }
 
 #[test]
 fn lex_number_literals() {
-    assert_lex_eq!("1001409409220293022239833211 01", vec![
-        Token::new(span(1, 29), NumberLiteral("1001409409220293022239833211".into()),),
-        Token::new(span(30, 32), NumberLiteral("01".into())),
-        Token::new(span(32, 32), EndOfInput),
-    ],);
+    assert_lex_eq!(
+        "1001409409220293022239833211 01",
+        vec![
+            Token::new(span(1, 29), NumberLiteral("1001409409220293022239833211".into()),),
+            Token::new(span(30, 32), NumberLiteral("01".into())),
+            Token::new(span(32, 32), EndOfInput),
+        ],
+    );
 }
 
 #[test]
 fn lex_number_literals_with_separators() {
-    assert_lex_eq!(r#"334 1'000what 3'2'2'1"" 500 10"" -23 3''100 10' 1'"#, vec![
-        Token::new(span(1, 4), NumberLiteral("334".into())),
-        Token::new(span(5, 10), NumberLiteral("1000".into())),
-        Token::new(span(10, 14), Word("what".into())),
-        Token::new(span(15, 22), NumberLiteral("3221".into())),
-        Token::new(span(22, 24), TextLiteral("".into())),
-        Token::new(span(25, 28), NumberLiteral("500".into())),
-        Token::new(span(29, 31), NumberLiteral("10".into())),
-        Token::new(span(31, 33), TextLiteral("".into())),
-        Token::new(span(34, 37), NumberLiteral("-23".into())),
-        Token::new(span(38, 44), NumberLiteral("3100".into())),
-        Token::new(span(45, 48), NumberLiteral("10".into())),
-        Token::new(span(49, 51), NumberLiteral("1".into())),
-        Token::new(span(51, 51), EndOfInput),
-    ],);
+    assert_lex_eq!(
+        r#"334 1'000what 3'2'2'1"" 500 10"" -23 3''100 10' 1'"#,
+        vec![
+            Token::new(span(1, 4), NumberLiteral("334".into())),
+            Token::new(span(5, 10), NumberLiteral("1000".into())),
+            Token::new(span(10, 14), Word("what".into())),
+            Token::new(span(15, 22), NumberLiteral("3221".into())),
+            Token::new(span(22, 24), TextLiteral("".into())),
+            Token::new(span(25, 28), NumberLiteral("500".into())),
+            Token::new(span(29, 31), NumberLiteral("10".into())),
+            Token::new(span(31, 33), TextLiteral("".into())),
+            Token::new(span(34, 37), NumberLiteral("-23".into())),
+            Token::new(span(38, 44), NumberLiteral("3100".into())),
+            Token::new(span(45, 48), NumberLiteral("10".into())),
+            Token::new(span(49, 51), NumberLiteral("1".into())),
+            Token::new(span(51, 51), EndOfInput),
+        ],
+    );
 }
 
 #[test]
@@ -346,31 +382,38 @@ fn lex_unterminated_text_literal() {
 
 #[test]
 fn lex_single_quote() {
-    assert_lex_eq!("'", vec![
-        Token::new(span(1, 2), Apostrophe),
-        Token::new(span(2, 2), EndOfInput),
-    ],);
+    assert_lex_eq!(
+        "'",
+        vec![Token::new(span(1, 2), Apostrophe), Token::new(span(2, 2), EndOfInput),],
+    );
 }
 
 #[test]
 fn lex_brackets() {
-    assert_lex_eq!("(( )( ))", vec![
-        Token::new(span(1, 2), OpeningRoundBracket),
-        Token::new(span(2, 3), OpeningRoundBracket),
-        Token::new(span(4, 5), ClosingRoundBracket),
-        Token::new(span(5, 6), OpeningRoundBracket),
-        Token::new(span(7, 8), ClosingRoundBracket),
-        Token::new(span(8, 9), ClosingRoundBracket),
-        Token::new(span(9, 9), EndOfInput),
-    ],);
+    assert_lex_eq!(
+        "(( )( ))",
+        vec![
+            Token::new(span(1, 2), OpeningRoundBracket),
+            Token::new(span(2, 3), OpeningRoundBracket),
+            Token::new(span(4, 5), ClosingRoundBracket),
+            Token::new(span(5, 6), OpeningRoundBracket),
+            Token::new(span(7, 8), ClosingRoundBracket),
+            Token::new(span(8, 9), ClosingRoundBracket),
+            Token::new(span(9, 9), EndOfInput),
+        ],
+    );
 }
 
 #[test]
 fn bare_non_ascii_is_invalid() {
-    assert_lex_eq!("函数", vec![Token::new(span(7, 7), EndOfInput),], vec![
-        Error::new(span(1, 4), BareError::InvalidToken('\u{51FD}')),
-        Error::new(span(4, 7), BareError::InvalidToken('\u{6570}')),
-    ],);
+    assert_lex_eq!(
+        "函数",
+        vec![Token::new(span(7, 7), EndOfInput),],
+        vec![
+            Error::new(span(1, 4), BareError::InvalidToken('\u{51FD}')),
+            Error::new(span(4, 7), BareError::InvalidToken('\u{6570}')),
+        ],
+    );
 }
 
 #[test]
@@ -390,10 +433,11 @@ fn bare_non_ascii_are_invalid_but_non_fatal() {
 
 #[test]
 fn backticks_are_invalid() {
-    assert_lex_eq!("`", vec![Token::new(span(2, 2), EndOfInput),], vec![Error::new(
-        span(1, 2),
-        BareError::InvalidToken('`')
-    ),]);
+    assert_lex_eq!(
+        "`",
+        vec![Token::new(span(2, 2), EndOfInput),],
+        vec![Error::new(span(1, 2), BareError::InvalidToken('`')),]
+    );
 }
 
 #[test]
@@ -407,10 +451,14 @@ fn backticks_are_invalid_right_after_number_literal() {
 
 #[test]
 fn tabs_are_invalid() {
-    assert_lex_eq!("\t\t", vec![Token::new(span(3, 3), EndOfInput),], vec![
-        Error::new(span(1, 2), BareError::InvalidToken('\t')),
-        Error::new(span(2, 3), BareError::InvalidToken('\t')),
-    ]);
+    assert_lex_eq!(
+        "\t\t",
+        vec![Token::new(span(3, 3), EndOfInput),],
+        vec![
+            Error::new(span(1, 2), BareError::InvalidToken('\t')),
+            Error::new(span(2, 3), BareError::InvalidToken('\t')),
+        ]
+    );
 }
 
 #[test]

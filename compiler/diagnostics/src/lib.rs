@@ -55,11 +55,7 @@ impl<const S: Severity> Diagnostic<S> {
     }
 
     fn highlight(mut self, spanning: impl Spanning, label: Option<Str>, role: Role) -> Self {
-        self.untagged.highlights.insert(Highlight {
-            span: spanning.span(),
-            label: label.map(Into::into),
-            role,
-        });
+        self.untagged.highlights.insert(Highlight { span: spanning.span(), label, role });
         self
     }
 

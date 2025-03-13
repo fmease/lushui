@@ -60,11 +60,14 @@ impl Parser<'_> {
             span,
             ast::QuantifiedType {
                 quantifier,
-                parameters: smallvec![ast::Parameter::new(domain.span, ast::BareParameter {
-                    kind: ParameterKind::Explicit,
-                    binder: None,
-                    type_: Some(domain),
-                },)],
+                parameters: smallvec![ast::Parameter::new(
+                    domain.span,
+                    ast::BareParameter {
+                        kind: ParameterKind::Explicit,
+                        binder: None,
+                        type_: Some(domain),
+                    },
+                )],
                 codomain,
             }
             .into(),
