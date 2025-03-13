@@ -24,7 +24,6 @@ use span::{
     source_map::{LineWithHighlight, LinesWithHighlight},
 };
 use std::io::{self, Write};
-use unicode_width::UnicodeWidthStr;
 use utility::paint::{AnsiColor, Effects, Painter};
 
 #[cfg(test)]
@@ -397,7 +396,7 @@ impl Renderer<'_> {
             write!(self.painter, "{line}")?;
         }
 
-        let severity_spacing = " ".repeat(severity.name().width() + 1);
+        let severity_spacing = " ".repeat(utility::width(severity.name()) + 1);
 
         for line in lines {
             if !line.is_empty() {
@@ -427,9 +426,11 @@ impl Renderer<'_> {
             .substitution
             .parts
             .iter()
-            .map(|part| match part {
-                SubstitutionPart::Str(value) => value.width(),
-                SubstitutionPart::Placeholder(name) => name.width(),
+            .map(|part| {
+                utility::width(match part {
+                    SubstitutionPart::Str(value) => value,
+                    SubstitutionPart::Placeholder(name) => name,
+                })
             })
             .sum();
         let zero_length_highlight = substitution_width == 0;

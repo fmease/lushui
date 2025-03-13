@@ -13,4 +13,3 @@ resolver = "2"
 [workspace.dependencies]
 clap = { version = "4.5.23", features = ["deprecated", "string"] }
 joinery = "3.1.0"
-unicode-width = "0.2.0"

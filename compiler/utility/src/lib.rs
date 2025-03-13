@@ -372,3 +372,11 @@ mod test {
         );
     }
 }
+
+pub fn width(str: &str) -> usize {
+    let width = |char| match char {
+        '\n' => 0,
+        _ => unicode_width::UnicodeWidthChar::width(char).unwrap_or(1),
+    };
+    str.chars().map(width).sum()
+}

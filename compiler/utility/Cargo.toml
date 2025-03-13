@@ -8,11 +8,12 @@ publish = false
 test = []
 
 [dependencies]
+anstyle = "1.0.1"
+derivation = { path = "../../project/library/derivation" }
 difference = "2.0.0"
 index_map = { path = "../../project/library/index_map" }
 num-bigint = "0.4.6"
 rustc-hash = "2.1.1"
 smallvec = { version = "1.10.0", features = ["const_generics"] }
-anstyle = "1.0.1"
 supports-color = "3.0.2"
-derivation = { path = "../../project/library/derivation" }
+unicode-width = "0.2.0"

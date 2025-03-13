@@ -122,7 +122,7 @@ To build the Lushui compiler with all (Cargo) features, run:
 
 [source,sh]
 ----
-cargo +nightly build --all-features
+cargo build --all-features
 ----
 
 To show the help text (on Unix-like systems), execute:
@@ -133,7 +133,7 @@ To show the help text (on Unix-like systems), execute:
 ----
 
 [subs=-replacements]
-On Windows, use `cargo +nightly run -- -h`.
+On Windows, use `cargo run -- -h`.
 
 Currently, the bash script `./lushui` also rebuilds the compiler if necessary
 (no status info shown though during building) and

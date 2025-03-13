@@ -1,7 +1,6 @@
 use super::{ByteIndex, LocalByteIndex, LocalSpan, Span, Spanning};
 use index_map::IndexMap;
 use std::{io, ops::Range, path::Path, sync::Arc};
-use unicode_width::UnicodeWidthStr;
 use utility::{
     ComponentIndex, default, obtain,
     path::{CanonicalPath, CanonicalPathBuf},
@@ -241,8 +240,8 @@ impl SourceMap {
                     highlight: Highlight {
                         start: start.try_into().unwrap(),
                         end: end.try_into().unwrap(),
-                        width: highlight.width(),
-                        prefix_width: highlight_prefix.width(),
+                        width: utility::width(highlight),
+                        prefix_width: utility::width(highlight_prefix),
                     },
                 })
             }

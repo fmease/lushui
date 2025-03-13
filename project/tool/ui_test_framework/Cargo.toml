@@ -15,6 +15,5 @@ pathdiff = "0.2.1"
 recnot = { path = "../../library/recnot" }
 span = { path = "../../../compiler/span" }
 terminal_size = "0.4.2"
-unicode-width.workspace = true
 utility = { path = "../../../compiler/utility" }
 walkdir = "2.5.0"

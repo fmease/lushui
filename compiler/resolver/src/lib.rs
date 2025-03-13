@@ -33,7 +33,6 @@ use session::{
 };
 use span::{Span, Spanned, Spanning};
 use std::{cmp::Ordering, fmt, io, mem, sync::Mutex};
-use unicode_width::UnicodeWidthStr;
 use utility::{
     Atom, ChangesetExt, Conjunction, HashMap, ListingExt,
     OwnedOrBorrowed::*,
@@ -2208,7 +2207,7 @@ impl Lookalike {
 
         write!(painter, "’")?;
 
-        if !(purely_additive || actual.width() == 1 && changeset.distance == 2) {
+        if !(purely_additive || utility::width(actual) == 1 && changeset.distance == 2) {
             write!(painter, " (")?;
             changeset.render(painter)?;
             write!(painter, ")")?;

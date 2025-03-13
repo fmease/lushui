@@ -40,7 +40,6 @@ if [[ "$1" =~ $HAS_FEATURE_FLAGS ]]; then
 fi
 
 cargo \
-    +nightly \
     run \
     --quiet \
     --manifest-path="$FOLDER/Cargo.toml" \

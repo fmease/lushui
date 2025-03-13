@@ -487,7 +487,6 @@ version = "0.0.0"
 dependencies = [
  "derivation",
  "span",
- "unicode-width",
  "utility",
 ]
 
@@ -1335,7 +1334,6 @@ dependencies = [
  "session",
  "span",
  "strsim",
- "unicode-width",
  "utility",
 ]
 
@@ -1504,7 +1502,6 @@ name = "span"
 version = "0.0.0"
 dependencies = [
  "index_map",
- "unicode-width",
  "utility",
 ]
 
@@ -1761,7 +1758,6 @@ dependencies = [
  "recnot",
  "span",
  "terminal_size",
- "unicode-width",
  "utility",
  "walkdir",
 ]
@@ -1838,6 +1834,7 @@ dependencies = [
  "rustc-hash 2.1.1",
  "smallvec",
  "supports-color",
+ "unicode-width",
 ]
 
 [[package]]

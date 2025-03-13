@@ -42,7 +42,6 @@ if [[ $? == 0 ]]; then
     echo "note: running golden ui tests"
 
     cargo \
-        +nightly \
         run \
         --release \
         --quiet \
@@ -61,7 +60,6 @@ if [[ $? == 0 ]]; then
     echo "note: running unit tests"
 
     cargo \
-        +nightly \
         test \
         --quiet \
         --manifest-path="$FOLDER/../Cargo.toml" \

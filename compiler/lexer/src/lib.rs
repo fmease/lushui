@@ -3,7 +3,7 @@
 
 use BareToken::*;
 use span::{FileName, LocalByteIndex, LocalSpan, SourceFile, SourceMap, Span, Spanned};
-use std::{cmp::Ordering, iter::Peekable, mem, str::CharIndices, sync::Arc};
+use std::{cmp::Ordering, mem, str::CharIndices, sync::Arc};
 use token::{
     BareToken, Bracket, BracketKind, BracketOrientation, Indentation, IndentationError, Spaces,
     Token,
@@ -35,11 +35,18 @@ pub struct Options {
 
 /// The state of the lexer.
 struct Lexer<'a> {
-    characters: Peekable<CharIndices<'a>>,
+    chars: CharIndices<'a>,
+    // We don't use Peekable<CharIndices<'_>> for Self::chars because that would
+    // prevent us from accessing the current index at *all* times (without adding
+    // extra state (which would lead to the index getting tracked twice)).
+    #[allow(clippy::option_option)] // I disagree; FIXME: move into global config
+    peeked: Option<Option<(usize, char)>>,
     file: &'a SourceFile,
     options: &'a Options,
     tokens: Vec<Token>,
     errors: Vec<Error>,
+    // FIXME: Try to get rid of this field by making `Self::add{,_with}`
+    //        take the local span as a parameter instead.
     local_span: LocalSpan,
     indentation: Spaces,
     sections: Sections,
@@ -49,7 +56,8 @@ struct Lexer<'a> {
 impl<'a> Lexer<'a> {
     fn new(file: &'a SourceFile, options: &'a Options) -> Self {
         Self {
-            characters: file.content().char_indices().peekable(),
+            chars: file.content().char_indices(),
+            peeked: None,
             file,
             options,
             tokens: Vec::new(),
@@ -62,53 +70,54 @@ impl<'a> Lexer<'a> {
     }
 
     fn lex(mut self) -> Outcome {
-        while let Some((index, character)) = self.peek_with_index() {
+        while let Some(char) = self.peek() {
+            let index = self.index();
             self.local_span = LocalSpan::empty(index);
 
-            match character {
-                '#' if index == default() => self.lex_shebang_candidate(),
+            match char {
+                '#' if index == default() => self.lex_shebang_candidate(char),
                 ' ' if index == default() => self.lex_indentation(),
                 ' ' => self.lex_whitespace(),
                 ';' => {
-                    self.take();
+                    self.take(char);
                     self.advance();
 
-                    if let Some(';') = self.peek() {
-                        self.lex_comment();
+                    if let Some(char @ ';') = self.peek() {
+                        self.lex_comment(char);
                     } else {
                         self.add(Semicolon);
                     }
                 }
-                character if character.is_word_segment_start() => self.lex_word(),
+                char if char.is_word_segment_start() => self.lex_word(),
                 '\n' => {
-                    self.take();
+                    self.take(char);
                     self.advance();
                     self.lex_indentation();
                 }
-                '-' => self.lex_symbol_or_number_literal(),
-                character if character.is_ascii_digit() => {
-                    self.take();
+                '-' => self.lex_symbol_or_number_literal(char),
+                char if char.is_ascii_digit() => {
+                    self.take(char);
                     self.advance();
                     self.lex_number_literal();
                 }
-                character if character.is_symbol() => {
-                    self.take();
+                char if char.is_symbol() => {
+                    self.take(char);
                     self.advance();
                     self.lex_symbol();
                 }
-                '"' => self.lex_text_literal(),
-                '(' => self.add_opening_bracket(BracketKind::Round),
-                '[' => self.add_opening_bracket(BracketKind::Square),
-                '{' => self.add_opening_bracket(BracketKind::Curly),
-                ')' => self.add_closing_bracket(BracketKind::Round),
-                ']' => self.add_closing_bracket(BracketKind::Square),
-                '}' => self.add_closing_bracket(BracketKind::Curly),
-                ',' => self.consume(Comma),
-                '\'' => self.consume(Apostrophe),
-                character => {
-                    self.take();
+                '"' => self.lex_text_literal(char),
+                '(' => self.add_opening_bracket(char, BracketKind::Round),
+                '[' => self.add_opening_bracket(char, BracketKind::Square),
+                '{' => self.add_opening_bracket(char, BracketKind::Curly),
+                ')' => self.add_closing_bracket(char, BracketKind::Round),
+                ']' => self.add_closing_bracket(char, BracketKind::Square),
+                '}' => self.add_closing_bracket(char, BracketKind::Curly),
+                ',' => self.consume(char, Comma),
+                '\'' => self.consume(char, Apostrophe),
+                char => {
+                    self.take(char);
                     self.advance();
-                    self.error(BareError::InvalidToken(character));
+                    self.error(BareError::InvalidToken(char));
                 }
             }
         }
@@ -134,25 +143,25 @@ impl<'a> Lexer<'a> {
         Outcome { tokens: self.tokens, errors: self.errors }
     }
 
-    fn add_opening_bracket(&mut self, bracket: BracketKind) {
-        self.take();
+    fn add_opening_bracket(&mut self, char: char, bracket: BracketKind) {
+        self.take(char);
         self.add(bracket.opening());
 
         self.brackets.open(Spanned::new(self.span(), bracket));
         self.advance();
     }
 
-    fn add_closing_bracket(&mut self, bracket: BracketKind) {
-        self.take();
+    fn add_closing_bracket(&mut self, char: char, bracket: BracketKind) {
+        self.take(char);
 
-        if let (Section::Indented { brackets }, size) = self.sections.current_continued() {
-            if self.brackets.stack.len() <= brackets {
-                self.add(Dedentation);
-                // @Question can this panic??
-                let dedentation = self.sections.0.len() - size;
-                self.sections.0.truncate(size);
-                self.indentation -= Indentation(dedentation);
-            }
+        if let (Section::Indented { brackets }, size) = self.sections.current_continued()
+            && self.brackets.stack.len() <= brackets
+        {
+            self.add(Dedentation);
+            // @Question can this panic??
+            let dedentation = self.sections.0.len() - size;
+            self.sections.0.truncate(size);
+            self.indentation -= Indentation(dedentation);
         }
 
         self.add(bracket.closing());
@@ -163,18 +172,18 @@ impl<'a> Lexer<'a> {
         self.advance();
     }
 
-    fn lex_shebang_candidate(&mut self) {
-        self.take();
+    fn lex_shebang_candidate(&mut self, char: char) {
+        self.take(char);
         self.advance();
 
         if let Some('!') = self.peek() {
-            while let Some(character) = self.peek() {
+            while let Some(char) = self.peek() {
                 if self.options.keep_comments {
-                    self.take();
+                    self.take(char);
                 }
                 self.advance();
 
-                if character == '\n' {
+                if char == '\n' {
                     break;
                 }
             }
@@ -189,38 +198,37 @@ impl<'a> Lexer<'a> {
 
     fn lex_whitespace(&mut self) {
         self.advance();
-        while let Some(character) = self.peek() {
-            if character != ' ' {
+        while let Some(char) = self.peek() {
+            if char != ' ' {
                 break;
             }
             self.advance();
         }
     }
 
-    fn lex_comment(&mut self) {
-        self.take();
+    fn lex_comment(&mut self, char: char) {
+        self.take(char);
         self.advance();
+        let mut is_doc_comment = true;
 
-        let mut is_documentation = true;
-
-        if let Some(character) = self.peek() {
+        if let Some(char) = self.peek() {
             self.advance();
 
-            if character == ';' {
-                is_documentation = false;
+            if char == ';' {
+                is_doc_comment = false;
             }
 
-            if character != '\n' {
-                self.take();
+            if char != '\n' {
+                self.take(char);
 
-                while let Some(character) = self.peek() {
-                    if character == '\n' {
+                while let Some(char) = self.peek() {
+                    if char == '\n' {
                         self.advance();
                         break;
                     }
 
-                    if is_documentation || self.options.keep_comments {
-                        self.take();
+                    if is_doc_comment || self.options.keep_comments {
+                        self.take(char);
                     }
 
                     self.advance();
@@ -228,7 +236,7 @@ impl<'a> Lexer<'a> {
             }
         }
 
-        if is_documentation {
+        if is_doc_comment {
             self.add(DocumentationComment);
         } else if self.options.keep_comments {
             self.add(Comment);
@@ -237,8 +245,8 @@ impl<'a> Lexer<'a> {
 
     fn lex_word(&mut self) {
         self.lex_first_word_segment();
-        while self.peek() == Some('-') {
-            self.take();
+        while let Some(char @ '-') = self.peek() {
+            self.take(char);
             self.advance();
             self.lex_word_segment();
         }
@@ -266,23 +274,22 @@ impl<'a> Lexer<'a> {
             word => Word(word),
         });
 
-        const DOT: char = '.';
-        if let Some((index, DOT)) = self.peek_with_index() {
+        if let Some(char @ '.') = self.peek() {
             #[allow(clippy::cast_possible_truncation)] // always within 1..=4
-            const LENGTH: u32 = DOT.len_utf8() as _;
-            self.local_span = LocalSpan::with_length(index, LENGTH);
+            let length = char.len_utf8() as u32;
+            self.local_span = LocalSpan::with_length(self.index(), length);
             self.add(Dot);
             self.advance();
         }
     }
 
     fn lex_first_word_segment(&mut self) {
-        if let Some(character) = self.peek() {
-            if character.is_word_segment_start() {
-                self.take();
-                self.advance();
-                self.take_while(char::is_word_segment_middle);
-            }
+        if let Some(char) = self.peek()
+            && char.is_word_segment_start()
+        {
+            self.take(char);
+            self.advance();
+            self.take_while(char::is_word_segment_middle);
         }
     }
 
@@ -298,17 +305,16 @@ impl<'a> Lexer<'a> {
         // Squash consecutive line breaks into a single one.
         // This leads to more legible and fewer diagnostics later in the parser in case the
         // line break wasn't expected. Further, it might lead to less churn in the parser.
-        self.take_while(|character| character == '\n');
+        self.take_while(|char| char == '\n');
         // Tentatively register the line break.
         // If certain conditions are met later on (*), we will remove it again.
         self.add(LineBreak);
         let mut has_removed_line_break = false;
 
-        self.local_span =
-            self.index().map_or_else(|| self.file.local_span().end(), LocalSpan::empty);
+        self.local_span = LocalSpan::empty(self.index());
 
         let mut spaces = Spaces(0);
-        self.take_while_with(|character| character == ' ', || spaces.0 += 1);
+        self.take_while_with(|char| char == ' ', || spaces.0 += 1);
 
         // If the line is empty ignore it. While most places in the parser can deal with
         // “empty declarations”, in the future (once `line_is_empty` can detect comments
@@ -399,19 +405,19 @@ impl<'a> Lexer<'a> {
         self.peek() == Some('\n')
         // @Bug has unforseen consequences (investigation needed)
         // || self.peek() == Some(';') && {
-        //     let mut characters = self.characters.clone();
-        //     characters.next();
-        //     matches!(characters.next(), Some((_, ';')))
-        //         && matches!(characters.next(), Some((_, ';')))
+        //     let mut chars = self.chars.clone();
+        //     chars.next();
+        //     matches!(chars.next(), Some((_, ';')))
+        //         && matches!(chars.next(), Some((_, ';')))
         // }
     }
 
-    fn lex_symbol_or_number_literal(&mut self) {
-        self.take();
+    fn lex_symbol_or_number_literal(&mut self, char: char) {
+        self.take(char);
         self.advance();
 
         match self.peek() {
-            Some(character) if character.is_ascii_digit() => self.lex_number_literal(),
+            Some(char) if char.is_ascii_digit() => self.lex_number_literal(),
             _ => self.lex_symbol(),
         }
     }
@@ -438,15 +444,15 @@ impl<'a> Lexer<'a> {
     fn lex_number_literal(&mut self) {
         let mut number = self.source().to_owned();
 
-        while let Some(character) = self.peek() {
-            if !character.is_number_literal_middle() {
+        while let Some(char) = self.peek() {
+            if !char.is_number_literal_middle() {
                 break;
             }
-            self.take();
+            self.take(char);
             self.advance();
 
-            if character != char::NUMERIC_SEPARATOR {
-                number.push(character);
+            if char != char::NUMERIC_SEPARATOR {
+                number.push(char);
             }
         }
 
@@ -454,18 +460,18 @@ impl<'a> Lexer<'a> {
     }
 
     // @Task escape sequences
-    fn lex_text_literal(&mut self) {
-        self.take();
+    fn lex_text_literal(&mut self, char: char) {
+        self.take(char);
         self.advance();
 
         let mut is_terminated = false;
 
         const QUOTE: char = '"';
-        while let Some(character) = self.peek() {
-            self.take();
+        while let Some(char) = self.peek() {
+            self.take(char);
             self.advance();
 
-            if character == QUOTE {
+            if char == QUOTE {
                 is_terminated = true;
                 break;
             }
@@ -495,27 +501,28 @@ impl<'a> Lexer<'a> {
 
     /// Step to the next token in the input stream.
     fn advance(&mut self) {
-        self.characters.next();
+        if self.peeked.take().is_none() {
+            self.chars.next();
+        }
+    }
+
+    fn index(&self) -> LocalByteIndex {
+        let index = match self.peeked {
+            Some(Some((index, _))) => index,
+            _ => self.chars.offset(),
+        };
+        index.try_into().unwrap()
     }
 
     /// Include the span of the current token in the span of the token-to-be-added.
     ///
     /// Preparation for [`Self::add`] and variants.
-    fn take(&mut self) {
-        let (index, character) = self.peek_with_index().unwrap();
-        self.local_span.set_end(index + character);
+    fn take(&mut self, char: char) {
+        self.local_span.set_end(self.index() + char);
     }
 
     fn peek(&mut self) -> Option<char> {
-        self.peek_with_index().map(|(_, character)| character)
-    }
-
-    fn peek_with_index(&mut self) -> Option<(LocalByteIndex, char)> {
-        self.characters.peek().map(|&(index, character)| (index.try_into().unwrap(), character))
-    }
-
-    fn index(&mut self) -> Option<LocalByteIndex> {
-        self.peek_with_index().map(|(index, _)| index)
+        self.peeked.get_or_insert_with(|| self.chars.next()).map(|(_, char)| char)
     }
 
     /// [Take](Self::take) the span of all succeeding tokens where the predicate holds and step.
@@ -525,11 +532,11 @@ impl<'a> Lexer<'a> {
 
     /// [Take](Self::take) the span of all succeeding tokens where the predicate holds, step and perform the given action.
     fn take_while_with(&mut self, predicate: fn(char) -> bool, mut action: impl FnMut()) {
-        while let Some(character) = self.peek() {
-            if !predicate(character) {
+        while let Some(char) = self.peek() {
+            if !predicate(char) {
                 break;
             }
-            self.take();
+            self.take(char);
             self.advance();
             action();
         }
@@ -553,8 +560,8 @@ impl<'a> Lexer<'a> {
         self.errors.push(Error::new(self.span(), error));
     }
 
-    fn consume(&mut self, token: BareToken) {
-        self.take();
+    fn consume(&mut self, char: char, token: BareToken) {
+        self.take(char);
         self.advance();
         self.add(token);
     }

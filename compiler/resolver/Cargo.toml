@@ -16,5 +16,4 @@ lo_ast = { path = "../lo_ast" }
 session = { path = "../session" }
 span = { path = "../span" }
 strsim = "0.11.1"
-unicode-width.workspace = true
 utility = { path = "../utility" }

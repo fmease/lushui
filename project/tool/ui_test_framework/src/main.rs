@@ -53,7 +53,7 @@ fn try_main() -> Result<(), ()> {
     stdout.flush().unwrap();
 
     let output = Command::new("cargo")
-        .args(["+nightly", "--color=always", "build", "--manifest-path"])
+        .args(["--color=always", "build", "--manifest-path"])
         .arg(path::compiler_manifest())
         .args(match arguments.compiler_build_mode {
             #[allow(clippy::needless_borrow)] // false positive, maybe #9111
@@ -781,10 +781,8 @@ fn section_separator() -> String {
 }
 
 fn section_header(title: &str) -> String {
-    use unicode_width::UnicodeWidthStr;
-
     let mut header = format!("==== {title} ");
-    let width = header.width();
+    let width = utility::width(&header);
     header += &"=".repeat(terminal_width().saturating_sub(width));
     header
 }
