@@ -1,4 +1,4 @@
-;;; TEST pass run
+# TEST pass run
 
 use extern.core.(
     bool.(self, Bool, false, true),
@@ -6,8 +6,8 @@ use extern.core.(
 )
 
 main: Nat = factorial 20
-;;; main: Nat = factorial 50 ;;; @Note takes several minutes after a rustc update (compared to a second)
-;;; main: Nat = factorial 100 ;;; @Note overflows stack :/ we need to optimize
+# main: Nat = factorial 50 # @Note takes several minutes after a rustc update (compared to a second)
+# main: Nat = factorial 100 # @Note overflows stack :/ we need to optimize
 
 factorial (n: Nat): Nat =
     case n of

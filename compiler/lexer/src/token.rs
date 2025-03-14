@@ -15,7 +15,7 @@ pub enum BareToken {
     //
     Shebang,
     Comment,
-    DocumentationComment,
+    DocComment,
     //
     // Keywords
     //
@@ -70,7 +70,6 @@ pub enum BareToken {
     OpeningCurlyBracket,
     OpeningRoundBracket,
     OpeningSquareBracket,
-    Semicolon,
     //
     // Other Tokens
     //
@@ -98,7 +97,7 @@ impl fmt::Display for BareToken {
             //
             Shebang => "shebang",
             Comment => "comment",
-            DocumentationComment => "documentation comment",
+            DocComment => "documentation comment",
             //
             // Keywords
             //
@@ -145,7 +144,6 @@ impl fmt::Display for BareToken {
             OpeningCurlyBracket => quoted!("{"),
             OpeningRoundBracket => quoted!("("),
             OpeningSquareBracket => quoted!("["),
-            Semicolon => quoted!(";"),
             //
             // Other Tokens
             //

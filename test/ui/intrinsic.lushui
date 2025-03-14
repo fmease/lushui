@@ -1,4 +1,4 @@
-;;; TEST pass run
+# TEST pass run
 
 use extern.core.(
     type.Type,

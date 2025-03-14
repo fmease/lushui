@@ -9,7 +9,7 @@ error[E024]: the declarations ‘topmost.fake-my-dude.alpha0’ and ‘topmost.a
 7 │     use super.alpha1 as alpha0
   │                         ══════
 
-error[E024]: the declarations ‘topmost.fake-my-dude.beta2’, ‘topmost.fake-my-dude.beta0’ and ‘topmost.fake-my-dude.beta1’ are circular
+error[E024]: the declarations ‘topmost.fake-my-dude.beta0’, ‘topmost.fake-my-dude.beta2’ and ‘topmost.fake-my-dude.beta1’ are circular
    ┌─ ${TEST_FOLDER}/name-resolution/circular-uses.lushui:4:18
    │
  4 │     use beta0 as beta1

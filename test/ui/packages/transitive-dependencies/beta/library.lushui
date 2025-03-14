@@ -1,4 +1,4 @@
-;;; TEST auxiliary packages/transitive-dependencies
+# TEST auxiliary packages/transitive-dependencies
 
 use extern.core.(type.Type, nat.*, list.List, tuple.Tuple)
 use extern.gamma.(N, G, g1, gam)

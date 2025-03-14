@@ -1,4 +1,4 @@
-;;; TEST compiler-args --no-core -Z internals
+# TEST compiler-args --no-core -Z internals
 
 @intrinsic
 data Type: Type

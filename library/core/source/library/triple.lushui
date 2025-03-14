@@ -1,10 +1,10 @@
-;; Canonical 3-tuple types (heterogeneous lists of size three) and related functions.
+; Canonical 3-tuple types (heterogeneous lists of size three) and related functions.
 module
 
-;; @Task get rid of this (in favor of Tuple)
+; @Task get rid of this (in favor of Tuple)
 
 @public
 record Triple A B C of
-    ;;; first: A
-    ;;; second: B
-    ;;; third: C
+    # first: A
+    # second: B
+    # third: C

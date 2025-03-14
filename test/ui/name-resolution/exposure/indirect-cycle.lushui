@@ -1,3 +1,9 @@
+# FIXME: (1) Currently, this would lead to a cycle error if this placed below
+#            all the other declarations.
+#        (2) This is non-determinstic and flaky (across Rust versions) and likely
+#            change 180° on the next bump.
+#        (3) We need to replace our rather naive cycle detection code with proper
+#            SCC computation to fix actually this.
+use topmost as component
 @(public topmost) use Center as C
 @(public component) data Center: extern.core.type.Type of
-use topmost as component

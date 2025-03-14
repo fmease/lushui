@@ -1,4 +1,4 @@
-;;; FIXME: Improve the error message. Explain that `X = ...` means `X: Type = ...`.
-;;;        Find a better name for this test, too!
+# FIXME: Improve the error message. Explain that `X = ...` means `X: Type = ...`.
+#        Find a better name for this test, too!
 
 Ty = 0

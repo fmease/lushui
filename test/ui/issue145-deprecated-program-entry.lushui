@@ -1,9 +1,9 @@
-;;; TEST pass check
+# TEST pass check
 
 @deprecated
 main: extern.core.text.Text = ""
 
-;;; [Description]
-;;;
-;;; Deprecating the program entry `main` should have no effect
-;;; (if `main` is not used anywhere else, of course).
+# [Description]
+#
+# Deprecating the program entry `main` should have no effect
+# (if `main` is not used anywhere else, of course).

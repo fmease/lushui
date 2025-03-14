@@ -1,4 +1,4 @@
-;;; TEST compiler-args -Z internals --no-core
+# TEST compiler-args -Z internals --no-core
 
 @intrinsic
 data Void of

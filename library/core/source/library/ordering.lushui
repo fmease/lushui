@@ -1,4 +1,4 @@
-;; Types and functions related to comparing and ordering.
+; Types and functions related to comparing and ordering.
 module
 
 use topmost.(
@@ -22,12 +22,12 @@ invert (o: Ordering): Ordering =
         equal => equal
         greater => less
 
-;;; @Task uncomment once `@lazy` is implemented
-;;; @public
-;;; then (o: Ordering) @lazy (p: Thunk Ordering): Ordering =
-;;;     case o of
-;;;         equal => force 'Ordering p
-;;;         let o => o
+# @Task uncomment once `@lazy` is implemented
+# @public
+# then (o: Ordering) @lazy (p: Thunk Ordering): Ordering =
+#     case o of
+#         equal => force 'Ordering p
+#         let o => o
 
 @public
 then_ (o: Ordering) (p: Ordering): Ordering =

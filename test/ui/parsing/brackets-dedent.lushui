@@ -1,5 +1,5 @@
-;;; TEST pass check
-;;; TEST compiler-args -Z parse-only --no-core
+# TEST pass check
+# TEST compiler-args -Z parse-only --no-core
 
 M: (case N of
     Q => Q)

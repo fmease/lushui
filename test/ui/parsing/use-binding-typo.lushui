@@ -1,6 +1,6 @@
-;;; Make sure we list an extensive list of expected tokens in case
-;;; the user typo'es ‘in’ as ‘inn’. This test mostly exists to exercise
-;;; parsing expectations
+# Make sure we list an extensive list of expected tokens in case
+# the user typo'es ‘in’ as ‘inn’. This test mostly exists to exercise
+# parsing expectations
 
 main =
     use extern.core.nat.Nat inn

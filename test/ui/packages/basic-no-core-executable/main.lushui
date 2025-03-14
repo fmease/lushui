@@ -1,4 +1,4 @@
-;;; TEST auxiliary packages/basic-no-core-executable
+# TEST auxiliary packages/basic-no-core-executable
 
 main: Text =
     concat "Running" (concat " without " subject)

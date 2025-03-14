@@ -1,2 +1,2 @@
-;;; TEST compiler-args --component-type=executable
+# TEST compiler-args --component-type=executable
 

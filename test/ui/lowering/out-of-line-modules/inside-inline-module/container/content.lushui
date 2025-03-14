@@ -1,2 +1,2 @@
-;;; TEST auxiliary lowering/out-of-line-modules/inside-inline-module
+# TEST auxiliary lowering/out-of-line-modules/inside-inline-module
 

@@ -1,4 +1,4 @@
-;;; TEST auxiliary packages/direct-dependencies
+# TEST auxiliary packages/direct-dependencies
 
 @public
 data Token: extern.core.type.Type of

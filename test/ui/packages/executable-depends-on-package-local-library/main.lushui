@@ -1,4 +1,4 @@
-;;; TEST auxiliary packages/executable-depends-on-package-local-library
+# TEST auxiliary packages/executable-depends-on-package-local-library
 
 main: extern.core.text.Text =
     extern.container.message

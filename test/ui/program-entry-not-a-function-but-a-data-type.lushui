@@ -1,3 +1,3 @@
-;;; TEST compiler-args --component-type=executable
+# TEST compiler-args --component-type=executable
 
 data main: extern.core.type.Type of

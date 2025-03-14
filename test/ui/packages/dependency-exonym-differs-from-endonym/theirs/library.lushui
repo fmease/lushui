@@ -1,4 +1,4 @@
-;;; TEST auxiliary packages/dependency-exonym-differs-from-endonym
+# TEST auxiliary packages/dependency-exonym-differs-from-endonym
 
 @public
 def: extern.core.nat.Nat = 9

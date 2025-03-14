@@ -18,9 +18,9 @@ module outer of
 
 Struct = outer.south
 
-;;; [Description]
-;;; Bindings not marked `@public` should be considered private to the module the binding is defined in.
-;;; Irrespective of whether it is accessed by `use` or inside of an expression.
-;;; Furthermore, processing use-declarations that break exposure rules should not lead to a
-;;; fatal error but allow the name resolver to keep resolving and checking.
-;;; Lastly, this test case exercises the exposure checker with out of order bindings.
+# [Description]
+# Bindings not marked `@public` should be considered private to the module the binding is defined in.
+# Irrespective of whether it is accessed by `use` or inside of an expression.
+# Furthermore, processing use-declarations that break exposure rules should not lead to a
+# fatal error but allow the name resolver to keep resolving and checking.
+# Lastly, this test case exercises the exposure checker with out of order bindings.

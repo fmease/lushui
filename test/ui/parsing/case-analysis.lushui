@@ -1,7 +1,7 @@
-;;; TEST pass check
-;;; TEST compiler-args -Z parse-only --no-core
-;;; @Task expand test (include attributes etc)
-;;; @Task make this more about parsing patterns
+# TEST pass check
+# TEST compiler-args -Z parse-only --no-core
+# @Task expand test (include attributes etc)
+# @Task make this more about parsing patterns
 
 main0: Untyped =
     case 100 of

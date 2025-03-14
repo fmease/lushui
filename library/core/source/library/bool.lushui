@@ -1,4 +1,4 @@
-;; The canonical Boolean type and related functions.
+; The canonical Boolean type and related functions.
 module
 
 @public @known
@@ -17,30 +17,27 @@ not (b: Bool): Bool =
 
 use topmost.unit.(Unit, Thunk, force)
 
-;;; @Task uncomment once `@lazy` is implemented
-;;; @public
-;;; if 'A
-;;;     (condition: Bool)
-;;;     @lazy (consequent: Thunk A)
-;;;     @lazy (alternate: Thunk A): A
-;;;     =
-;;;     case condition of
-;;;         false => force 'A alternate
-;;;         true => force 'A consequent
+# @Task uncomment once `@lazy` is implemented
+# @public
+# if 'A
+#     (condition: Bool)
+#     @lazy (consequent: Thunk A)
+#     @lazy (alternate: Thunk A): A
+#     =
+#     case condition of
+#         false => force 'A alternate
+#         true => force 'A consequent
 
-;;; ;;; @Question or `&&`?
-;;; @public
-;;; use and as &
+# @public
+# use and as /\
 
-;;; @Task uncomment once `@lazy` is implemented
-;;; @public
-;;; and (b: Bool) @lazy (c: Thunk Bool): Bool = if Bool b (! Bool c) false
+# @Task uncomment once `@lazy` is implemented
+# @public
+# and (b: Bool) @lazy (c: Thunk Bool): Bool = if Bool b (! Bool c) false
 
-;;; @public
-;;; ;;; @Question or `||`?
-;;; use or as |
+# @public
+# use or as \/
 
-;;; @Task uncomment once `@lazy` is implemented
-;;; @public
-;;; or (b: Bool) @lazy (c: Thunk Bool): Bool = if Bool b true (! Bool c)
-
+# @Task uncomment once `@lazy` is implemented
+# @public
+# or (b: Bool) @lazy (c: Thunk Bool): Bool = if Bool b true (! Bool c)

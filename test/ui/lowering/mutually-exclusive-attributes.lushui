@@ -1,7 +1,7 @@
-;;; TEST compiler-args -Z internals
+# TEST compiler-args -Z internals
 
 @intrinsic @known
 data Typ: const Type 12
-;;;data Typ: const Type @Int @Int32 (@Nat 12)
-;;; @Beacon @Task create several internal testing attributes; in this case conflicting ones and
-;;; update this test with them
+#data Typ: const Type @Int @Int32 (@Nat 12)
+# @Beacon @Task create several internal testing attributes; in this case conflicting ones and
+# update this test with them

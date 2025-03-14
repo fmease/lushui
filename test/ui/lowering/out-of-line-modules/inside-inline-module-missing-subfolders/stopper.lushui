@@ -1,4 +1,4 @@
-;;; TEST auxiliary lowering/out-of-line-modules/inside-inline-module-missing-subfolders
+# TEST auxiliary lowering/out-of-line-modules/inside-inline-module-missing-subfolders
 
 module omega0
 

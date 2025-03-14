@@ -1,4 +1,4 @@
-;;; TEST auxiliary lowering/out-of-line-modules/basic
+# TEST auxiliary lowering/out-of-line-modules/basic
 
 @intrinsic
 data Type: Type

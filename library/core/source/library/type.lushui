@@ -1,6 +1,6 @@
-;; The type of types and related functionality.
+; The type of types and related functionality.
 module
 
-;; The type of types.
+; The type of types.
 @public @intrinsic
 data Type

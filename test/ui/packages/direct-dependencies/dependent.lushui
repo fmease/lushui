@@ -1,4 +1,4 @@
-;;; TEST auxiliary packages/direct-dependencies
+# TEST auxiliary packages/direct-dependencies
 
 use extern.dependency.Token
 

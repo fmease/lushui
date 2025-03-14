@@ -1,6 +1,6 @@
-;;; TEST pass check
-;;; TEST compiler-args -Zparse-only
-;;; FIXME: Turn this into an actual test somehow maybe.
+# TEST pass check
+# TEST compiler-args -Zparse-only
+# FIXME: Turn this into an actual test somehow maybe.
 
 use extern.core.type.Type
 
@@ -30,8 +30,6 @@ Delta (y: U) =
     negate (For (p: power U) -> sigma y p -> p (tau (sigma y)))
 Omega =
     tau (for (p: power U) => For (x: U) -> sigma x p -> p x)
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 main: _ =
     (for (zero: For (p: power U) -> (For (x: U) -> sigma x p -> p x) -> p Omega) =>

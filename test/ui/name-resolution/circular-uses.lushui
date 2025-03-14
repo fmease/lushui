@@ -16,10 +16,10 @@ module fake-my-dude of
 
     Omega: extern.core.type.Type = extern.core.type.Type
 
-;;; [Description]
-;;; Circular / cyclic / mutually recursive use-bindings should
-;;; * be forbidden
-;;; * not crash the compiler
-;;; * give a good error message
-;;;   * distinct cycles should be reported separately
+# [Description]
+# Circular / cyclic / mutually recursive use-bindings should
+# * be forbidden
+# * not crash the compiler
+# * give a good error message
+#   * distinct cycles should be reported separately
 

@@ -1,4 +1,4 @@
-;;; @Task create several internal testing attributes with various characteristics and extend this test with them
+# @Task create several internal testing attributes with various characteristics and extend this test with them
 
 @(allow never-gonna-be-implied)
 module m of

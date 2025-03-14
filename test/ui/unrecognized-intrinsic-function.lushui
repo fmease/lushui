@@ -1,11 +1,11 @@
-;;; TEST compiler-args -Z internals
+# TEST compiler-args -Z internals
 
-;;; @Note it used to be the case that we could report unrecognized intrinsic types *and* functions together in one module
-;;; but we moved the registration of intrinsic types from the typer to the resolver
+# @Note it used to be the case that we could report unrecognized intrinsic types *and* functions together in one module
+# but we moved the registration of intrinsic types from the typer to the resolver
 
-;;; @Bug for `@intrinsic i-definitely-do-not-exist: I-Definitely-Do-Not-Exist` only one error is reported
-;;; being the "the binding is not defined" but the "unrecognized intrinsic" error is not reported
-;;; @Task fix it and update this test again
+# @Bug for `@intrinsic i-definitely-do-not-exist: I-Definitely-Do-Not-Exist` only one error is reported
+# being the "the binding is not defined" but the "unrecognized intrinsic" error is not reported
+# @Task fix it and update this test again
 
 @intrinsic
 i-definitely-do-not-exist: I-Do-Exist

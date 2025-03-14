@@ -1,5 +1,5 @@
-;;; TEST ignore
-;;;      ^ incorrect diagnostics, see #113
+# TEST ignore
+#      ^ incorrect diagnostics, see #113
 
 { ( } )
 

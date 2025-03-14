@@ -1,4 +1,4 @@
-;; The canonical unit type and related functions.
+; The canonical unit type and related functions.
 module
 
 @public @known

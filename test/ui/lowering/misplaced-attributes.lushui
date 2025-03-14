@@ -1,5 +1,5 @@
-;;; @Task create several internal testing attributes with various differences
-;;; and extend this test file here
+# @Task create several internal testing attributes with various differences
+# and extend this test file here
 
 @intrinsic
 @intrinsic

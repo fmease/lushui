@@ -213,18 +213,18 @@ fn parse_configuraiton_no_parameters() {
 fn parse_configuration_single_parameter() {
     assert_eq!(
         Ok(Configuration { tag: TestTag::Pass { mode: Mode::Build }, ..default() }),
-        parse_configuration(";;; TEST pass build", SourceFile, &mut SourceMap::default())
+        parse_configuration("# TEST pass build", SourceFile, &mut SourceMap::default())
     );
 }
 
 #[test]
 fn parse_configuration_conflicting_parameters_0() {
     assert_eq!(
-        Err(Error::new("a test tag is already set", span(22, 39))),
+        Err(Error::new("a test tag is already set", span(20, 35))),
         parse_configuration(
             "
-;;; TEST pass build
-;;; TEST fail run
+# TEST pass build
+# TEST fail run
     ",
             SourceFile,
             &mut SourceMap::default()
@@ -235,11 +235,11 @@ fn parse_configuration_conflicting_parameters_0() {
 #[test]
 fn parse_configuration_conflicting_parameters_1() {
     assert_eq!(
-        Err(Error::new("a timeout is already set", span(24, 42))),
+        Err(Error::new("a timeout is already set", span(22, 38))),
         parse_configuration(
             "
-;;; TEST timeout none
-;;; TEST timeout 0
+# TEST timeout none
+# TEST timeout 0
     ",
             SourceFile,
             &mut SourceMap::default()
@@ -253,9 +253,9 @@ fn parse_configuration_accumulating_parameters() {
         Ok(Configuration { compiler_args: vec!["one", "two", "three"], ..default() }),
         parse_configuration(
             "
-;;; TEST compiler-args one two
-;;;
-;;; TEST compiler-args three
+# TEST compiler-args one two
+#
+# TEST compiler-args three
 ",
             SourceFile,
             &mut SourceMap::default()
@@ -290,17 +290,17 @@ fn parse_configuration_unsupported_program_env_var() {
 #[test]
 fn parse_configuration_unsupported_revisions_parameter() {
     assert_eq!(
-        Err(Error::new("the test parameter ‘revisions’ is not supported yet", span(1, 30))),
-        parse_configuration(";;; TEST revisions base modif", SourceFile, &mut SourceMap::default()),
+        Err(Error::new("the test parameter ‘revisions’ is not supported yet", span(1, 28))),
+        parse_configuration("# TEST revisions base modif", SourceFile, &mut SourceMap::default()),
     );
 }
 
 #[test]
 fn parse_configuration_unsupported_revisions_syntax() {
     assert_eq!(
-        Err(Error::new("revisions are not supported yet", span(1, 43))),
+        Err(Error::new("revisions are not supported yet", span(1, 41))),
         parse_configuration(
-            ";;; TEST @modif compiler-args -Zparse-only",
+            "# TEST @modif compiler-args -Zparse-only",
             SourceFile,
             &mut SourceMap::default()
         ),
@@ -310,9 +310,9 @@ fn parse_configuration_unsupported_revisions_syntax() {
 #[test]
 fn parse_configuration_unsupported_substitution() {
     assert_eq!(
-        Err(Error::new("the test parameter ‘substitution’ is not supported yet", span(1, 40))),
+        Err(Error::new("the test parameter ‘substitution’ is not supported yet", span(1, 38))),
         parse_configuration(
-            r";;; TEST substitution DIR path/to/(\w+)",
+            r"# TEST substitution DIR path/to/(\w+)",
             SourceFile,
             &mut SourceMap::default()
         ),
@@ -340,7 +340,7 @@ fn parse_configuration_end_of_line_source_file() {
     assert_eq!(
         Ok(Configuration { tag: TestTag::Pass { mode: Mode::Check }, ..default() }),
         parse_configuration(
-            "some filler content ;;; TEST pass check",
+            "some filler content # TEST pass check",
             SourceFile,
             &mut SourceMap::default()
         )
@@ -350,12 +350,8 @@ fn parse_configuration_end_of_line_source_file() {
 #[test]
 fn parse_configuration_end_of_line_source_file_invalid() {
     assert_eq!(
-        Err(Error::new("‘undefined’ is not a valid test parameter", span(14, 32))),
-        parse_configuration(
-            "Int -> Int32 ;;; TEST undefined",
-            SourceFile,
-            &mut SourceMap::default()
-        )
+        Err(Error::new("‘undefined’ is not a valid test parameter", span(14, 30))),
+        parse_configuration("Int -> Int32 # TEST undefined", SourceFile, &mut SourceMap::default())
     );
 }
 
@@ -365,7 +361,7 @@ fn do_not_parse_configuration_inside_text_literal() {
         Ok(Configuration::default()),
         parse_configuration(
             r#"constant: Text = "
-;;; TEST trigger?""#,
+# TEST trigger?""#,
             SourceFile,
             &mut SourceMap::default()
         ),

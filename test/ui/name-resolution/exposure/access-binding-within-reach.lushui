@@ -1,4 +1,4 @@
-;;; TEST pass check
+# TEST pass check
 
 use extern.core.type.Type
 
@@ -18,7 +18,7 @@ module inner of
             @(public topmost.n)
             Th: topmost.Type = topmost.Type
 
-        TH: topmost.Type = innermost.Th ;;; @Beacon @Bug lexing/parsing: this is placed in the same line as `innermore`, `Z`!
+        TH: topmost.Type = innermost.Th # @Beacon @Bug lexing/parsing: this is placed in the same line as `innermore`, `Z`!
 
     Z: topmost.Type = m.X
 

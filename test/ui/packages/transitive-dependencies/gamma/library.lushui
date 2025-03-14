@@ -1,4 +1,4 @@
-;;; TEST auxiliary packages/transitive-dependencies
+# TEST auxiliary packages/transitive-dependencies
 
 @public use extern.core.nat.Nat as N
 use extern.core.nat.+

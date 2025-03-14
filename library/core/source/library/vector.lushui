@@ -1,4 +1,4 @@
-;; Homogeneous lists with a fixed length and related functions.
+; Homogeneous lists with a fixed length and related functions.
 module
 
 use topmost.(

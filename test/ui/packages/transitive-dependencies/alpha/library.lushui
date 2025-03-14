@@ -1,4 +1,4 @@
-;;; TEST auxiliary packages/transitive-dependencies
+# TEST auxiliary packages/transitive-dependencies
 
 @public
 use extern.beta.(Unsigned, bet, g-one)

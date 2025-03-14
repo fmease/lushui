@@ -1,5 +1,5 @@
-;;; TEST pass check
-;;; TEST compiler-args --no-core -Z internals
+# TEST pass check
+# TEST compiler-args --no-core -Z internals
 
 use extension.Definition
 

@@ -1,4 +1,4 @@
-;;; TEST auxiliary lowering/out-of-line-modules/out-of-line-inline-inline-explicit-location-out-of-line
+# TEST auxiliary lowering/out-of-line-modules/out-of-line-inline-inline-explicit-location-out-of-line
 
 module two of
     module three of

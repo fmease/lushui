@@ -1,4 +1,4 @@
-;;; TEST compiler-args --no-core -Z internals
+# TEST compiler-args --no-core -Z internals
 
 @intrinsic
 data Type: Type
@@ -7,7 +7,7 @@ data Type: Type
 data Box: Type of
     box: Type -> Box
 
-;;; [Description]
-;;; Only one error should me emitted: `Box` not being a module (for it to be a valid exposure reach).
-;;; However, it used to be the case (issue #69) that a second error was emitted incorrectly stating
-;;; that `Box` was not defined. This is a regression test for this issue.
+# [Description]
+# Only one error should me emitted: `Box` not being a module (for it to be a valid exposure reach).
+# However, it used to be the case (issue #69) that a second error was emitted incorrectly stating
+# that `Box` was not defined. This is a regression test for this issue.

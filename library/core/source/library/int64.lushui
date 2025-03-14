@@ -1,4 +1,4 @@
-;; (Signed) integers with 64-bit precision and related functions.
+; (Signed) integers with 64-bit precision and related functions.
 module
 
 @public @intrinsic

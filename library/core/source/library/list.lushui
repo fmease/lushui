@@ -1,4 +1,4 @@
-;; Homogeneous list types and related functions.
+; Homogeneous list types and related functions.
 module
 
 @public @known

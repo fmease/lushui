@@ -1,4 +1,4 @@
-;;; TEST pass check
+# TEST pass check
 
 module first of
     use alpha.alias

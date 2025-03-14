@@ -1,4 +1,4 @@
-;; Canonical tuples (heterogeneous lists) and related functions.
+; Canonical tuples (heterogeneous lists) and related functions.
 module
 
 use topmost.type.Type

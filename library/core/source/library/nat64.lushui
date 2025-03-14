@@ -1,4 +1,4 @@
-;; Natural numbers (unsigned integers) with 64-bit precision and related functions.
+; Natural numbers (unsigned integers) with 64-bit precision and related functions.
 module
 
 @public @intrinsic

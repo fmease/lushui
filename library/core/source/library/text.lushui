@@ -1,4 +1,4 @@
-;; The UTF-8-encoded text type and text manipulation functions.
+; The UTF-8-encoded text type and text manipulation functions.
 module
 
 @public @intrinsic

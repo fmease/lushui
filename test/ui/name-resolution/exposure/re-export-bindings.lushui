@@ -1,7 +1,6 @@
-;;; TEST pass check
+# TEST pass check
 
 use extern.core.type.Type
-use topmost as component ;;; @Bug needs to be above the bindings below otherwise it gets flagged as circular
 
 use Identity as Alias
 data Identity: Type of
@@ -11,6 +10,13 @@ data Identity: Type of
 
 @(public topmost) use Center as C
 @(public component) data Center: Type of
+# FIXME: (1) Currently, this would lead to a cycle error if this was placed between
+#            the import of Type and the import of Identity as Alias.
+#        (2) This is non-determinstic and flaky (across Rust versions) and likely
+#            change 180° on the next bump.
+#        (3) We need to replace our rather naive cycle detection code with proper
+#            SCC computation to fix actually this.
+use topmost as component # @Bug needs to be above the bindings below otherwise it gets flagged as circular
 
 module namespace of
     T: topmost.Type = topmost.Type

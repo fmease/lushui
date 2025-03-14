@@ -1,9 +1,9 @@
-;; Canonical 2-tuple types (heterogeneous lists of size two) and related functions.
+; Canonical 2-tuple types (heterogeneous lists of size two) and related functions.
 module
 
-;; @Task get rid of this (in favor of Tuple)
+; @Task get rid of this (in favor of Tuple)
 
 @public
 record Duple A B of
-    ;;; first: A
-    ;;; second: B
+    # first: A
+    # second: B

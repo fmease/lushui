@@ -5,6 +5,6 @@ use extern.core.type.Type
 data Hunk: Type of
     hunk: Hunk
 
-imposter: Hunk = xxx ;;; Hunk.hunk
+imposter: Hunk = xxx # Hunk.hunk
 
 @(public imposter) data Void: Type of

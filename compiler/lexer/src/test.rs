@@ -31,6 +31,10 @@ macro assert_lex_eq {
 #[track_caller]
 #[allow(clippy::needless_pass_by_value)] // more legible call sites, flexibility doesn't matter here
 fn assert_eq(actual: Outcome, expected: Outcome) {
+    // FIXME: The diff is emitted "eagerly" and disconnected from the panic message
+    //        and libtest still interferes despite us locking both output streams!
+    //        Write a custom test runner I suppose!
+
     if actual != expected {
         // We also lock stdout since the test runner would otherwise interfere.
         let stdout = std::io::stdout().lock();
@@ -52,36 +56,36 @@ fn assert_eq(actual: Outcome, expected: Outcome) {
 fn comments() {
     assert_lex_eq!(
         "
-;;; bland commentary ensues
-;;; a filler line
-;;; and an end
+# bland commentary ensues
+# a filler line
+# and an end
 ",
         vec![
             Token::new(span(1, 2), LineBreak),
-            Token::new(span(2, 29), Comment),
-            Token::new(span(30, 47), Comment),
-            Token::new(span(48, 62), Comment),
-            Token::new(span(63, 63), EndOfInput),
+            Token::new(span(2, 27), Comment),
+            Token::new(span(28, 43), Comment),
+            Token::new(span(44, 56), Comment),
+            Token::new(span(57, 57), EndOfInput),
         ],
     );
 }
 
 #[test]
-fn documentation_comments() {
+fn doc_comments() {
     assert_lex_eq!(
         "\
-alpha;;;文本
-0401 ;; stray documentation comment
-;; next one
-;;有意思的信",
+alpha#文本
+0401 ; stray documentation comment
+; next one
+;有意思的信",
         vec![
             Token::new(span(1, 6), Word("alpha".into())),
-            Token::new(span(6, 15), Comment),
-            Token::new(span(16, 20), NumberLiteral("0401".into())),
-            Token::new(span(21, 51), DocumentationComment),
-            Token::new(span(52, 63), DocumentationComment),
-            Token::new(span(64, 81), DocumentationComment),
-            Token::new(span(81, 81), EndOfInput),
+            Token::new(span(6, 13), Comment),
+            Token::new(span(14, 18), NumberLiteral("0401".into())),
+            Token::new(span(19, 48), DocComment),
+            Token::new(span(49, 59), DocComment),
+            Token::new(span(60, 76), DocComment),
+            Token::new(span(76, 76), EndOfInput),
         ],
     );
 }
@@ -90,17 +94,22 @@ alpha;;;文本
 fn empty_documentation_comment_followed_by_non_empty_one() {
     assert_lex_eq!(
         "\
-;;
-;; non-empty
+;
+; non-empty
 ",
         vec![
-            Token::new(span(1, 3), DocumentationComment),
-            Token::new(span(4, 16), DocumentationComment),
-            Token::new(span(17, 17), EndOfInput),
+            Token::new(span(1, 2), DocComment),
+            Token::new(span(3, 14), DocComment),
+            Token::new(span(15, 15), EndOfInput),
         ],
     );
 }
 
+/// Indeed, shebang interpreter directives get stripped by virtue of
+/// `#` starting comments just like in Shell languages. This didn't
+/// use to be the case and it's possible it may change again in the
+/// future. Therefore, test this explicitly to prevent it from ever
+/// regressing.
 #[test]
 fn shebang() {
     assert_lex_eq!(
@@ -108,65 +117,9 @@ fn shebang() {
 #!/usr/bin/lushui run
 it",
         vec![
-            Token::new(span(1, 23), Shebang),
+            Token::new(span(1, 22), Comment),
             Token::new(span(23, 25), Word("it".into())),
             Token::new(span(25, 25), EndOfInput),
-        ],
-    );
-}
-
-#[test]
-fn not_a_shebang_but_a_hashtag() {
-    assert_lex_eq!(
-        "\
-#hashtag",
-        vec![
-            Token::new(span(1, 2), Symbol("#".into())),
-            Token::new(span(2, 9), Word("hashtag".into())),
-            Token::new(span(9, 9), EndOfInput),
-        ],
-    );
-}
-
-#[test]
-fn not_a_shabang_but_a_hash() {
-    assert_lex_eq!(
-        "\
-#",
-        vec![Token::new(span(1, 2), Symbol("#".into())), Token::new(span(2, 2), EndOfInput),],
-    );
-}
-
-#[test]
-fn not_a_shebang_but_a_symbol() {
-    assert_lex_eq!(
-        "\
-#?/WEIRD",
-        vec![
-            Token::new(span(1, 4), Symbol("#?/".into())),
-            Token::new(span(4, 9), Word("WEIRD".into())),
-            Token::new(span(9, 9), EndOfInput),
-        ],
-    );
-}
-
-#[test]
-fn shebang_lookalike_not_first_line() {
-    assert_lex_eq!(
-        "
-#!/usr/bin/lushui run
-",
-        vec![
-            Token::new(span(1, 2), LineBreak),
-            Token::new(span(2, 5), Symbol("#!/".into())),
-            Token::new(span(5, 8), Word("usr".into())),
-            Token::new(span(8, 9), Symbol("/".into())),
-            Token::new(span(9, 12), Word("bin".into())),
-            Token::new(span(12, 13), Symbol("/".into())),
-            Token::new(span(13, 19), Word("lushui".into())),
-            Token::new(span(20, 23), Word("run".into())),
-            Token::new(span(23, 24), LineBreak),
-            Token::new(span(24, 24), EndOfInput),
         ],
     );
 }
@@ -235,13 +188,13 @@ fn keywords_and_lookalikes() {
 #[test]
 fn symbols() {
     assert_lex_eq!(
-        "+ +>alpha//$~%  #0 . ..",
+        "+ +>alpha//$~%  !0 . ..",
         vec![
             Token::new(span(1, 2), Symbol("+".into())),
             Token::new(span(3, 5), Symbol("+>".into())),
             Token::new(span(5, 10), Word("alpha".into())),
             Token::new(span(10, 15), Symbol("//$~%".into())),
-            Token::new(span(17, 18), Symbol("#".into())),
+            Token::new(span(17, 18), Symbol("!".into())),
             Token::new(span(18, 19), NumberLiteral("0".into())),
             Token::new(span(20, 21), Dot),
             Token::new(span(22, 24), Symbol("..".into())),
@@ -303,11 +256,11 @@ fn lex_identifier_and_dotted_symbol_after_space() {
 #[test]
 fn lex_keyword_dot_symbol() {
     assert_lex_eq!(
-        "data.#",
+        "data.&",
         vec![
             Token::new(span(1, 5), Data),
             Token::new(span(5, 6), Dot),
-            Token::new(span(6, 7), Symbol("#".into())),
+            Token::new(span(6, 7), Symbol("&".into())),
             Token::new(span(7, 7), EndOfInput),
         ],
     );
@@ -465,13 +418,13 @@ fn tabs_are_invalid() {
 fn line_breaks_are_terminators_at_the_toplevel() {
     assert_lex_eq!(
         "\
-alpha #?
+alpha !?
 100 it
 
 \"moot\"",
         vec![
             Token::new(span(1, 6), Word("alpha".into())),
-            Token::new(span(7, 9), Symbol("#?".into())),
+            Token::new(span(7, 9), Symbol("!?".into())),
             Token::new(span(9, 10), LineBreak),
             Token::new(span(10, 13), NumberLiteral("100".into())),
             Token::new(span(14, 16), Word("it".into())),
@@ -711,7 +664,7 @@ fn square_bracket_closes_indented_section() {
         "\
 [of
     fo]
-#",
+%",
         vec![
             Token::new(span(1, 2), OpeningSquareBracket),
             Token::new(span(2, 4), Of),
@@ -721,7 +674,7 @@ fn square_bracket_closes_indented_section() {
             Token::new(span(11, 12), Dedentation),
             Token::new(span(11, 12), ClosingSquareBracket),
             Token::new(span(12, 13), LineBreak),
-            Token::new(span(13, 14), Symbol("#".into())),
+            Token::new(span(13, 14), Symbol("%".into())),
             Token::new(span(14, 14), EndOfInput),
         ],
     );

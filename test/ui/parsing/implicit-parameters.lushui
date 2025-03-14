@@ -1,5 +1,5 @@
-;;; TEST pass check
-;;; TEST compiler-args -Z parse-only --no-core
+# TEST pass check
+# TEST compiler-args -Z parse-only --no-core
 
 data X 'A '(B): For '(b: Bool) -> Type of
     x'z'z'(p: P): X

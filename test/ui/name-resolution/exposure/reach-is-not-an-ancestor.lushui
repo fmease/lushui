@@ -1,14 +1,14 @@
-@(public solipsism) ;;; itself
+@(public solipsism) # itself
 module solipsism of
 
-@(public store.shelves) ;;; descendant
+@(public store.shelves) # descendant
 module store of
     module shelves of
 
-@(public brother) ;;; sibling
+@(public brother) # sibling
 module sister of
 
-@(public locked-up.brother) ;;; private relative
+@(public locked-up.brother) # private relative
 module brother of
 
 module locked-up of

@@ -75,18 +75,44 @@ impl<'a> Lexer<'a> {
             self.local_span = LocalSpan::empty(index);
 
             match char {
-                '#' if index == default() => self.lex_shebang_candidate(char),
                 ' ' if index == default() => self.lex_indentation(),
                 ' ' => self.lex_whitespace(),
+                '#' => {
+                    if self.options.keep_comments {
+                        self.take(char);
+                    }
+                    self.advance();
+
+                    while let Some(char) = self.peek() {
+                        if self.options.keep_comments && char != '\n' {
+                            self.take(char);
+                        }
+                        self.advance();
+                        if char == '\n' {
+                            break;
+                        }
+                    }
+
+                    if self.options.keep_comments {
+                        self.add(Comment);
+                    }
+                }
                 ';' => {
                     self.take(char);
                     self.advance();
 
-                    if let Some(char @ ';') = self.peek() {
-                        self.lex_comment(char);
-                    } else {
-                        self.add(Semicolon);
+                    while let Some(char) = self.peek() {
+                        if char != '\n' {
+                            self.take(char);
+                        }
+                        self.advance();
+
+                        if char == '\n' {
+                            break;
+                        }
                     }
+
+                    self.add(DocComment);
                 }
                 char if char.is_word_segment_start() => self.lex_word(),
                 '\n' => {
@@ -172,30 +198,6 @@ impl<'a> Lexer<'a> {
         self.advance();
     }
 
-    fn lex_shebang_candidate(&mut self, char: char) {
-        self.take(char);
-        self.advance();
-
-        if let Some('!') = self.peek() {
-            while let Some(char) = self.peek() {
-                if self.options.keep_comments {
-                    self.take(char);
-                }
-                self.advance();
-
-                if char == '\n' {
-                    break;
-                }
-            }
-
-            if self.options.keep_comments {
-                self.add(Shebang);
-            }
-        } else {
-            self.lex_symbol();
-        }
-    }
-
     fn lex_whitespace(&mut self) {
         self.advance();
         while let Some(char) = self.peek() {
@@ -203,43 +205,6 @@ impl<'a> Lexer<'a> {
                 break;
             }
             self.advance();
-        }
-    }
-
-    fn lex_comment(&mut self, char: char) {
-        self.take(char);
-        self.advance();
-        let mut is_doc_comment = true;
-
-        if let Some(char) = self.peek() {
-            self.advance();
-
-            if char == ';' {
-                is_doc_comment = false;
-            }
-
-            if char != '\n' {
-                self.take(char);
-
-                while let Some(char) = self.peek() {
-                    if char == '\n' {
-                        self.advance();
-                        break;
-                    }
-
-                    if is_doc_comment || self.options.keep_comments {
-                        self.take(char);
-                    }
-
-                    self.advance();
-                }
-            }
-        }
-
-        if is_doc_comment {
-            self.add(DocumentationComment);
-        } else if self.options.keep_comments {
-            self.add(Comment);
         }
     }
 

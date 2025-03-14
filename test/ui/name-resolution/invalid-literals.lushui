@@ -1,4 +1,4 @@
-;;; TEST compiler-args -Z internals --no-core
+# TEST compiler-args -Z internals --no-core
 
 numv: Nat = Void.234
 
@@ -38,6 +38,6 @@ data Void: Type of
 @intrinsic
 data Type: Type
 
-;;; [Note]
-;;; Putting the data type declarations below their usage site is intentional: We want to ensure that known and intrinsic bindings
-;;; work out of order.
+# [Note]
+# Putting the data type declarations below their usage site is intentional: We want to ensure that known and intrinsic bindings
+# work out of order.

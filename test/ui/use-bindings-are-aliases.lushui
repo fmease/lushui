@@ -1,4 +1,4 @@
-;;; TEST pass check
+# TEST pass check
 
 use extern.core.(
     type.Type,
@@ -35,5 +35,5 @@ module nonlinear of
     data Orig: topmost.Type of
         orig: Orig
 
-;;; [Description]
-;;; Use-bindings should be interchangeable with their target without the program changing in meaning.
+# [Description]
+# Use-bindings should be interchangeable with their target without the program changing in meaning.

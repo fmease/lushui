@@ -1,8 +1,8 @@
-;; The canonical empty type and related functions.
+; The canonical empty type and related functions.
 module
 
 @public
 data Void of
 
-;;; @public
-;;; absurd 'A (v: Void): A = case v of
+# @public
+# absurd 'A (v: Void): A = case v of

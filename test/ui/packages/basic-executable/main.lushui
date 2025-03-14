@@ -1,4 +1,4 @@
-;;; TEST auxiliary packages/basic-executable
+# TEST auxiliary packages/basic-executable
 
 use extern.core.text.Text
 

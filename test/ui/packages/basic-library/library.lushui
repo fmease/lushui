@@ -1,4 +1,4 @@
-;;; TEST auxiliary packages/basic-library
+# TEST auxiliary packages/basic-library
 
 use extern.core.(type.Type, nat.Nat)
 

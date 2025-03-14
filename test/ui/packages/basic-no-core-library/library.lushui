@@ -1,4 +1,4 @@
-;;; TEST auxiliary packages/basic-no-core-library
+# TEST auxiliary packages/basic-no-core-library
 
 @public @intrinsic
 data Type: Type

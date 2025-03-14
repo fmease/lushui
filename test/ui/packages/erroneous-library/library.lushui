@@ -1,4 +1,4 @@
-;;; TEST auxiliary packages/erroneous-library
+# TEST auxiliary packages/erroneous-library
 
 use extern.core.type.Type
 

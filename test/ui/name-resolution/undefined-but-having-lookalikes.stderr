@@ -15,13 +15,13 @@ error[E021]: the binding ‘Pathway’ is not defined in this scope
 error[E021]: the binding ‘kore’ is not defined in the root module
    ┌─ ${TEST_FOLDER}/name-resolution/undefined-but-having-lookalikes.lushui:13:14
    │
-13 │     a: super.kore.nat.Nat = tree-sinner ;;; @Bug "core" should be suggested for "kore"
+13 │     a: super.kore.nat.Nat = tree-sinner # @Bug "core" should be suggested for "kore"
    │              ════
 
 error[E021]: the binding ‘tree-sinner’ is not defined in this scope
    ┌─ ${TEST_FOLDER}/name-resolution/undefined-but-having-lookalikes.lushui:13:29
    │
-13 │     a: super.kore.nat.Nat = tree-sinner ;;; @Bug "core" should be suggested for "kore"
+13 │     a: super.kore.nat.Nat = tree-sinner # @Bug "core" should be suggested for "kore"
    │                             ═══════════
 
 error[E021]: the binding ‘bet’ is not defined in this scope
@@ -49,7 +49,7 @@ error[E021]: the binding ‘gamha_blocker’ is not defined in this scope
 error[E021]: the binding ‘Alppa’ is not defined in this scope
    ┌─ ${TEST_FOLDER}/name-resolution/undefined-but-having-lookalikes.lushui:24:9
    │
-24 │         Alppa (let omega) 0 => onega ;;; @Bug fatal
+24 │         Alppa (let omega) 0 => onega # @Bug fatal
    │         ═════
    │
   help: a binding with a similar name exists in scope: ‘Alpha’ (Alppha)

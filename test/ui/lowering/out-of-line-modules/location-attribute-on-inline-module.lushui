@@ -1,4 +1,4 @@
-;;; TEST compiler-args --no-core
+# TEST compiler-args --no-core
 
 @(location "somewhere-not-inline")
 module inline of

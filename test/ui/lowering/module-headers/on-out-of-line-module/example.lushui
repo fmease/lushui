@@ -1,6 +1,6 @@
-;;; TEST auxiliary lowering/module-headers/on-out-of-line-module
+# TEST auxiliary lowering/module-headers/on-out-of-line-module
 
-;; Top-level documentation
+; Top-level documentation.
 module
 
 data Content: extern.core.type.Type of

@@ -1,4 +1,4 @@
-;;; @Task better error message
+# @Task better error message
 
 main = lengthy-space-filler (case 0 of
     \\n => n

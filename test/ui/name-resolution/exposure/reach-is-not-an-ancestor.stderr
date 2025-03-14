@@ -1,25 +1,25 @@
 error[E037]: exposure can only be restricted to ancestor modules
   ┌─ ${TEST_FOLDER}/name-resolution/exposure/reach-is-not-an-ancestor.lushui:1:10
   │
-1 │ @(public solipsism) ;;; itself
+1 │ @(public solipsism) # itself
   │          ═════════
 
 error[E037]: exposure can only be restricted to ancestor modules
   ┌─ ${TEST_FOLDER}/name-resolution/exposure/reach-is-not-an-ancestor.lushui:4:10
   │
-4 │ @(public store.shelves) ;;; descendant
+4 │ @(public store.shelves) # descendant
   │          ═════════════
 
 error[E037]: exposure can only be restricted to ancestor modules
   ┌─ ${TEST_FOLDER}/name-resolution/exposure/reach-is-not-an-ancestor.lushui:8:10
   │
-8 │ @(public brother) ;;; sibling
+8 │ @(public brother) # sibling
   │          ═══════
 
 error[E037]: exposure can only be restricted to ancestor modules
    ┌─ ${TEST_FOLDER}/name-resolution/exposure/reach-is-not-an-ancestor.lushui:11:10
    │
-11 │ @(public locked-up.brother) ;;; private relative
+11 │ @(public locked-up.brother) # private relative
    │          ═════════════════
 
 error: aborting due to 4 previous errors

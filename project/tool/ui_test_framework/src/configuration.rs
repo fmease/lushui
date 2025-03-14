@@ -15,6 +15,7 @@ mod tests;
 // @Beacon @Bug `timeout ` fails with `‘’ is not a valid duration` when it should report a missing argument
 //        @Task trim stuff!
 
+// FIXME: Change to "|"!
 const PREFIX: &str = " TEST ";
 
 /// The test configuration.
@@ -387,10 +388,7 @@ enum Language {
 
 impl Language {
     const fn comment(self) -> &'static str {
-        match self {
-            Self::Lushui => ";;;",
-            Self::Recnot => "#",
-        }
+        "#"
     }
 }
 

@@ -1,4 +1,4 @@
-;;; TEST compiler-args --no-core
+# TEST compiler-args --no-core
 
 module shapeless
 

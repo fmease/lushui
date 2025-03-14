@@ -1,4 +1,4 @@
-;; Natural numbers and related functions.
+; Natural numbers and related functions.
 module
 
 use topmost.(option.Option, bool.Bool, text.Text)
@@ -21,7 +21,7 @@ subtract: Nat -> Nat -> Option Nat
 @public
 use unchecked-subtract as -?
 
-;;; @Temporary
+# @Temporary
 @public @intrinsic
 unchecked-subtract: Nat -> Nat -> Nat
 
@@ -43,10 +43,10 @@ use equal as ==
 @public @intrinsic
 equal: Nat -> Nat -> Bool
 
-;;; equal (n m: Nat): Bool =
-;;;     case duple Nat Nat n m of
-;;;         duple Nat Nat \n n => true
-;;;         \_ => false
+# equal (n m: Nat): Bool =
+#     case duple Nat Nat n m of
+#         duple Nat Nat \n n => true
+#         \_ => false
 
 @public
 use less as <
@@ -85,5 +85,5 @@ compare (n: Nat) (m: Nat): ordering.Ordering =
             bool.true => ordering.less
             bool.false => ordering.greater
 
-;;; @public @intrinsic
-;;; to-int: Nat -> topmost.int.Int
+# @public @intrinsic
+# to-int: Nat -> topmost.int.Int

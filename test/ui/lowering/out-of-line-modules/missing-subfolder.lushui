@@ -1,5 +1,5 @@
-;;; TEST compiler-args --no-core
+# TEST compiler-args --no-core
 
-;; famous recording
+; Famous recording.
 module nowhere-to-be-found
 

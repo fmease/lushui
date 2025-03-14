@@ -1,4 +1,4 @@
-;;; TEST pass run
+# TEST pass run
 
 use extern.core.(
     text.(concat, Text),
@@ -10,10 +10,6 @@ base: Nat = 1034032
 name: Text = concat "Jane#" (nat.display (nat.add 1 base))
 
 message: Text = concat (concat "Hello, " name) "."
-
-;;;;;;;;;;;;;;;;;;;;;
-;;; PROGRAM ENTRY ;;;
-;;;;;;;;;;;;;;;;;;;;;
 
 main: Text =
     message

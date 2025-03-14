@@ -1,4 +1,4 @@
-;; The Lushui standard library.
+; The Lushui standard library.
 module
 
 @public module type

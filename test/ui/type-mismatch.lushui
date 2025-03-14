@@ -1,11 +1,11 @@
-;;; @Note @Bug if we moved this module declaration below the declaration of `take`, then the containing type mismatch is
-;;; not immediately reported alongside the others but just when "the other errors in the code are fixed". this is of course due
-;;; to the apparently naive way we handle out of order bindings (in the typer specifically) even though we accumulate the errors
-;;; of those 2 passes so I am not sure we we bail out too early... need to investigative if this is fixable in our current architecture
-;;;
-;;; @Update
-;;; it goes from 4 to 3 errors putting `module core` between the `take` and `t`
-;;; declaration: the type error in `take 44` is not shown in this case
+# @Note @Bug if we moved this module declaration below the declaration of `take`, then the containing type mismatch is
+# not immediately reported alongside the others but just when "the other errors in the code are fixed". this is of course due
+# to the apparently naive way we handle out of order bindings (in the typer specifically) even though we accumulate the errors
+# of those 2 passes so I am not sure we we bail out too early... need to investigative if this is fixable in our current architecture
+#
+# @Update
+# it goes from 4 to 3 errors putting `module core` between the `take` and `t`
+# declaration: the type error in `take 44` is not shown in this case
 
 data X of
     x: X

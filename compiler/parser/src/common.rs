@@ -340,7 +340,10 @@ impl Parser<'_> {
 
             fields.push(ast::Field { binder, body });
 
-            if self.consume(Semicolon) {
+            // FIXME: Temporary syntax. This used to be a `;` but now is `,,`
+            //        because (single) semicolons now denote doc comments.
+            //        Find a proper replacement!
+            if self.consume(Comma) && self.consume(Comma) {
                 base = Some(self.parse_item()?);
                 span.merging(self.expect(ClosingCurlyBracket)?);
                 break;
@@ -593,7 +596,7 @@ impl Parser<'_> {
                     }
                     attribute
                 }
-                DocumentationComment => {
+                DocComment => {
                     self.advance();
                     if skip_line_breaks == SkipLineBreaks::Yes {
                         while self.consume(LineBreak) {}

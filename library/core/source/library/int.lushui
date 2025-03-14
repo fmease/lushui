@@ -1,12 +1,12 @@
-;; Integers and related functions.
+; Integers and related functions.
 module
 
 @public @intrinsic
 data Int
 
-;;; @public @intrinsic
-;;; to-nat: Int -> Option topmost.nat.Nat
+# @public @intrinsic
+# to-nat: Int -> Option topmost.nat.Nat
 
-;;; @public @intrinsic
-;;; absolute: Int -> topmost.nat.Nat
+# @public @intrinsic
+# absolute: Int -> topmost.nat.Nat
 

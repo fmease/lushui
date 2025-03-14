@@ -1,4 +1,4 @@
-;; Simple combinators working on and with functions.
+; Simple combinators working on and with functions.
 module
 
 @public
@@ -7,7 +7,7 @@ identity 'A (a: A): A = a
 @public
 constant 'A 'B (a: A) (b: B): A = a
 
-;;; @Task write a more general version (wrt dependent typing)
+# @Task write a more general version (wrt dependent typing)
 @public
 compose 'A 'B 'C
     (f: A -> B) (g: B -> C) (a: A): C

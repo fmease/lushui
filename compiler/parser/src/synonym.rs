@@ -15,7 +15,7 @@ pub(crate) macro Identifier($identifier:pat) {
 ///
 /// [attribute]: ast::Attribute
 pub(crate) macro AttributePrefix() {
-    At | DocumentationComment
+    At | DocComment
 }
 
 /// The prefix of a lower expression.

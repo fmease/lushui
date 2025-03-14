@@ -1,4 +1,4 @@
-;; Error handling with the Result type.
+; Error handling with the Result type.
 module
 
 @public
